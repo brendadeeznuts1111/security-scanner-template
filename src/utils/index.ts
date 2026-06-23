@@ -137,6 +137,7 @@ export {
 	INTERRUPT_SIGNALS,
 	SIGNAL_BEHAVIOR,
 	formatSignalBehaviorTable,
+	getSignalRuntimeInfo,
 	interruptAbortController,
 	onCtrlC,
 	onInterruptSignals,
@@ -146,7 +147,29 @@ export {
 	type ProcessExitHandlers,
 	type SignalHandler,
 	type SignalListenerOptions,
+	type SignalRuntimeInfo,
 } from './signals.ts';
+export {
+	INSPECT_CUSTOM,
+	formatInspectCustom,
+	isInspectCustomAvailable,
+	withInspectCustom,
+	type InspectCustomFormatter,
+} from './inspect-custom.ts';
+export {
+	collectDoctorDiagnostics,
+	createDoctorTimingSnapshot,
+	doctorDiagnosticsInspectable,
+	formatDoctorDiagnosticsInspect,
+	formatDoctorDiagnosticsTable,
+	getDoctorUtilityRuntime,
+	readMonotonicNanoseconds,
+	type DoctorDiagnostics,
+	type DoctorDiagnosticsInspectable,
+	type DoctorProcessSnapshot,
+	type DoctorTimingSnapshot,
+	type DoctorUtilityRuntime,
+} from './doctor-diagnostics.ts';
 export {
 	EVAL_TOP_LEVEL_AWAIT_NOTE,
 	getTerminalIORuntimeInfo,

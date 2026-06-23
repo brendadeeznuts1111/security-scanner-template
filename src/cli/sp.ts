@@ -11,6 +11,7 @@ import {runTool} from '../scan/tools.ts';
 import {SecurityShell} from '../interactive/index.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
+import {waitForInterruptSignal} from '../utils/signals.ts';
 
 const HELP = `Usage:
   bun sp [shell] [--domain <reverse-dns-domain>]
@@ -94,7 +95,8 @@ async function runStart(values: {
 		console.error(colorize(TERMINAL.scannerDim, '[sp] watching domains/ for config changes'));
 	}
 
-	await new Promise<void>(() => {});
+	console.error(colorize(TERMINAL.scannerDim, '[sp] press Ctrl+C to stop'));
+	await waitForInterruptSignal();
 }
 
 async function runDelegatedVisual(args: string[]): Promise<void> {

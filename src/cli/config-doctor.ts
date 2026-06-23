@@ -12,6 +12,13 @@ import {getRuntimeInfo, validateBunRuntime} from '../utils/runtime.ts';
 import {validateCrossRefApis} from '../xref/index.ts';
 import {benchmark, formatBenchmarkReport, type BenchmarkResult} from '../utils/benchmark.ts';
 import {collectBenchmarkRunMetadata} from '../utils/bench-metadata.ts';
+import {
+	collectDoctorDiagnostics,
+	createDoctorTimingSnapshot,
+	formatDoctorDiagnosticsInspect,
+	formatDoctorDiagnosticsTable,
+} from '../utils/doctor-diagnostics.ts';
+import {createTimer} from '../utils/timing.ts';
 
 function formatIssue(issue: DoctorIssue, branding?: DomainBrandingProfile): string {
 	const label = issue.severity.toUpperCase();
@@ -216,6 +223,23 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 		);
 	}
 
+	const diagnostics = result.runtime.diagnostics;
+	if (diagnostics) {
+		lines.push('');
+		lines.push(colorize(TERMINAL.warn, 'Runtime diagnostics (spawn / signals / timing)'));
+		lines.push(
+			formatDoctorDiagnosticsTable(diagnostics)
+				.split('\n')
+				.map(line => (line.length > 0 ? `  ${line}` : line))
+				.join('\n'),
+		);
+		const tty =
+			diagnostics.process.stdinIsTTY && diagnostics.process.stdoutIsTTY
+				? 'interactive TTY'
+				: 'piped or non-TTY';
+		lines.push(colorize(TERMINAL.muted, `  session: ${tty} | Ctrl+C → SIGINT`));
+	}
+
 	return lines.join('\n');
 }
 
@@ -266,6 +290,7 @@ async function peerMetaDoctorResult(
 			systemCA: getSystemCARuntimeInfo(),
 			terminalIO: getTerminalIORuntimeInfo(),
 			platform: await getPlatformRuntimeInfo(`${root}/package.json`),
+			diagnostics: collectDoctorDiagnostics(),
 		},
 		templateCoverage: {
 			ok: templateCoverageRaw.ok,
@@ -283,6 +308,7 @@ async function peerMetaDoctorResult(
  */
 export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promise<void> {
 	const root = options.root ?? process.cwd();
+	const timer = createTimer();
 
 	const doctorOptions = {
 		matrix: options.matrix === true,
@@ -322,13 +348,18 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 					}),
 				)
 			: undefined;
+		const timing = createDoctorTimingSnapshot(timer.elapsedNs());
 
 		console.log(
 			JSON.stringify(
 				{
 					...result,
 					benchmarkMs: options.benchmark ? timed.durationMs : undefined,
+					benchmarkDurationNs:
+						options.benchmark && 'durationNs' in timed ? timed.durationNs : undefined,
 					benchmark: benchmarkReport,
+					timing,
+					diagnosticsInspect: formatDoctorDiagnosticsInspect(result.runtime.diagnostics),
 					packagesScanned: options.checkPeerMeta
 						? (timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>)
 								.packagesScanned
@@ -364,8 +395,19 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 		console.error(formatResult(result, options));
 	}
 
+	const timing = createDoctorTimingSnapshot(timer.elapsedNs());
 	if (options.benchmark) {
-		console.error(colorize(TERMINAL.muted, `Benchmark: ${timed.durationMs.toFixed(2)}ms`));
+		const benchmarkNs = 'durationNs' in timed ? timed.durationNs : undefined;
+		console.error(
+			colorize(
+				TERMINAL.muted,
+				`Benchmark: ${timed.durationMs.toFixed(2)}ms${benchmarkNs !== undefined ? ` (${benchmarkNs}ns avg)` : ''} | total ${timing.elapsedMs}ms (${timing.elapsedNs}ns)`,
+			),
+		);
+	} else {
+		console.error(
+			colorize(TERMINAL.muted, `Doctor timing: ${timing.elapsedMs}ms (${timing.elapsedNs}ns)`),
+		);
 	}
 	process.exit(result.ok ? 0 : 1);
 }

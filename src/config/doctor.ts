@@ -24,6 +24,7 @@ import {
 	MIN_BUN_TYPES_FFI_TSGo_FIX,
 	type PlatformRuntimeInfo,
 } from '../utils/platform-runtime.ts';
+import {collectDoctorDiagnostics, type DoctorDiagnostics} from '../utils/doctor-diagnostics.ts';
 import {isInteractiveForced, isInteractiveSession} from '../utils/process.ts';
 import {
 	getTerminalIORuntimeInfo,
@@ -78,6 +79,8 @@ export interface DoctorRuntimeReport extends BunRuntimeInfo {
 	systemCA: SystemCARuntimeInfo;
 	terminalIO: TerminalIORuntimeInfo;
 	platform: PlatformRuntimeInfo;
+	/** Process spawn, OS signals, Bun.nanoseconds / stringWidth / inspect.custom. */
+	diagnostics: DoctorDiagnostics;
 }
 
 export interface DoctorTemplateCoverage {
@@ -807,6 +810,7 @@ export async function checkAllDomains(
 		systemCA,
 		terminalIO,
 		platform,
+		diagnostics: collectDoctorDiagnostics(),
 	};
 
 	if (platform.platform === 'win32' && !platform.windowsRuntimeSafe) {

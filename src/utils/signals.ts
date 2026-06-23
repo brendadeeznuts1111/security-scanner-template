@@ -22,6 +22,21 @@ export interface SignalListenerOptions {
 	signals?: readonly InterruptSignal[];
 }
 
+export interface SignalRuntimeInfo {
+	interruptSignals: readonly InterruptSignal[];
+	osSignalsDocsUrl: string;
+	ctrlCDocsUrl: string;
+}
+
+/** Snapshot signal handling capabilities for doctor / CLI diagnostics. */
+export function getSignalRuntimeInfo(): SignalRuntimeInfo {
+	return {
+		interruptSignals: INTERRUPT_SIGNALS,
+		osSignalsDocsUrl: BUN_OS_SIGNALS_DOCS_URL,
+		ctrlCDocsUrl: BUN_CTRL_C_DOCS_URL,
+	};
+}
+
 /** Operator notes for Bun process signal handling. */
 export const SIGNAL_BEHAVIOR = {
 	sigint: 'Ctrl+C sends SIGINT — process.on("SIGINT", handler)',
