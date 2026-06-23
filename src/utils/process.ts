@@ -1,5 +1,6 @@
 /**
  * Bun.spawn / stdio helpers aligned with
+ * https://bun.sh/docs/guides/process/spawn
  * https://bun.sh/docs/runtime/child-process#terminal-pty-support
  */
 
@@ -9,8 +10,19 @@ export const DEFAULT_TERM_NAME = 'xterm-256color';
 /** Default `COLORTERM` for truecolor PTY children (Bun `terminal.name` does not set env). */
 export const DEFAULT_COLORTERM = 'truecolor';
 
+export const BUN_SPAWN_GUIDE_URL = 'https://bun.sh/docs/guides/process/spawn';
 export const BUN_SPAWN_DOCS_URL = 'https://bun.com/docs/runtime/child-process';
+export const BUN_SPAWN_STDOUT_DOCS_URL =
+	'https://bun.sh/docs/guides/process/spawn-stdout#read-stdout-from-a-child-process';
+export const BUN_SPAWN_STDERR_DOCS_URL =
+	'https://bun.sh/docs/guides/process/spawn-stderr#read-stderr-from-a-child-process';
 export const BUN_TERMINAL_DOCS_URL = 'https://bun.com/reference/bun/Terminal';
+
+/** Bun.spawn defaults: stdout piped (`proc.stdout`), stderr inherited by parent. */
+export const SPAWN_STDIO_DEFAULTS = {
+	stdout: 'pipe' as const,
+	stderr: 'inherit' as const,
+};
 
 export const INTERACTIVE_FORCE_ENV = 'SP_FORCE_SHELL';
 export const FORCE_COLOR_ENV = 'FORCE_COLOR';
@@ -33,11 +45,20 @@ export interface SpawnWaitResult {
 	signalCode: NodeJS.Signals | null;
 }
 
-export interface SpawnCapturedOptions extends SpawnInheritOptions {
+export type SpawnProc = ReturnType<typeof Bun.spawn>;
+
+export type SpawnOnExitHandler = NonNullable<
+	NonNullable<Parameters<typeof Bun.spawn>[1]>['onExit']
+>;
+
+export interface SpawnChildOptions extends SpawnInheritOptions {
 	stdin?: SpawnWritable | null;
 	stdout?: SpawnReadable;
 	stderr?: SpawnReadable;
+	onExit?: SpawnOnExitHandler;
 }
+
+export interface SpawnCapturedOptions extends SpawnChildOptions {}
 
 export interface SpawnCapturedResult extends SpawnWaitResult {
 	stdout: string;
@@ -85,7 +106,7 @@ export function resolveHumanStdout(): NodeJS.WriteStream {
 
 /**
  * Resolve stdout mode for Bun.spawn children: inherit on TTY, pipe in CI/pipelines.
- * @see Bun.spawn stdout option
+ * @see {@link BUN_SPAWN_STDOUT_DOCS_URL}
  */
 export function resolveSpawnStdout(): SpawnReadable {
 	return process.stdout.isTTY ? 'inherit' : 'pipe';
@@ -124,6 +145,46 @@ export function requireInteractiveSession(context: string, forceEnv = INTERACTIV
 			`For piped output use JSON flags (e.g. bun sp doctor --json | fx). ` +
 			`Set ${forceEnv}=1 to override in tests.`,
 	);
+}
+
+function baseSpawnOptions(options: SpawnInheritOptions = {}): SpawnInheritOptions {
+	return {
+		cwd: options.cwd,
+		env: spawnEnvWithTerm(options.env),
+		signal: options.signal,
+		timeout: options.timeout,
+		killSignal: options.killSignal,
+	};
+}
+
+/**
+ * Spawn a child process (`Bun.spawn`) with Bun guide defaults.
+ * Await completion via {@link spawnAndWait} or `await proc.exited`.
+ * @see {@link BUN_SPAWN_GUIDE_URL}
+ */
+export function spawnChild(command: string[], options: SpawnChildOptions = {}): SpawnProc {
+	return Bun.spawn(command, {
+		...baseSpawnOptions(options),
+		stdin: options.stdin,
+		stdout: options.stdout ?? SPAWN_STDIO_DEFAULTS.stdout,
+		stderr: options.stderr ?? SPAWN_STDIO_DEFAULTS.stderr,
+		onExit: options.onExit,
+	});
+}
+
+/** Spawn and await `proc.exited` (Bun spawn guide completion pattern). */
+export async function spawnAndWait(
+	command: string[],
+	options: SpawnChildOptions = {},
+): Promise<SpawnWaitResult & {proc: SpawnProc}> {
+	const proc = spawnChild(command, options);
+	const exitCode = await proc.exited;
+	return {
+		proc,
+		exitCode,
+		killed: proc.killed,
+		signalCode: proc.signalCode,
+	};
 }
 
 /** Log a fatal message and exit when interactive mode is unavailable. */
@@ -175,6 +236,74 @@ export async function readSpawnText(
 	return new Response(stream).text();
 }
 
+/** Read piped child stdout (equivalent to `await proc.stdout.text()`). */
+export async function readSpawnStdout(proc: {
+	stdout: number | ReadableStream<Uint8Array> | undefined | null;
+}): Promise<string> {
+	return readSpawnText(proc.stdout);
+}
+
+/** Read piped child stderr (equivalent to `await proc.stderr.text()`). */
+export async function readSpawnStderr(proc: {
+	stderr: number | ReadableStream<Uint8Array> | undefined | null;
+}): Promise<string> {
+	return readSpawnText(proc.stderr);
+}
+
+/**
+ * Spawn with piped stdout (Bun default) and inherited stderr.
+ * @see {@link BUN_SPAWN_STDOUT_DOCS_URL}
+ */
+export function spawnStdoutCaptured(
+	command: string[],
+	options: SpawnInheritOptions = {},
+): SpawnProc {
+	return spawnChild(command, {
+		...options,
+		stdin: null,
+		stdout: SPAWN_STDIO_DEFAULTS.stdout,
+		stderr: SPAWN_STDIO_DEFAULTS.stderr,
+	});
+}
+
+/**
+ * Spawn with piped stderr and inherited stdout.
+ * @see {@link BUN_SPAWN_STDERR_DOCS_URL}
+ */
+export function spawnStderrCaptured(
+	command: string[],
+	options: SpawnInheritOptions = {},
+): SpawnProc {
+	return spawnChild(command, {
+		...options,
+		stdin: null,
+		stdout: 'inherit',
+		stderr: 'pipe',
+	});
+}
+
+export interface SpawnStdoutTextResult extends SpawnWaitResult {
+	stdout: string;
+}
+
+/**
+ * Spawn, await exit, and read stdout text (`echo hello` guide pattern).
+ * @see {@link BUN_SPAWN_GUIDE_URL}
+ */
+export async function spawnStdoutText(
+	command: string[],
+	options: SpawnChildOptions = {},
+): Promise<SpawnStdoutTextResult> {
+	const proc = spawnChild(command, options);
+	const [exitCode, stdout] = await Promise.all([proc.exited, readSpawnStdout(proc)]);
+	return {
+		exitCode,
+		stdout,
+		killed: proc.killed,
+		signalCode: proc.signalCode,
+	};
+}
+
 function wasSpawnTimedOut(
 	proc: {killed: boolean; signalCode: NodeJS.Signals | null},
 	timeoutMs: number | undefined,
@@ -208,21 +337,23 @@ export async function spawnCaptured(
 	options: SpawnCapturedOptions = {},
 ): Promise<SpawnCapturedResult> {
 	const timeoutMs = options.timeout ?? DEFAULT_SPAWN_TIMEOUT_MS;
-	const proc = Bun.spawn(command, {
-		cwd: options.cwd,
-		env: spawnEnvWithTerm(options.env),
+	const proc = spawnChild(command, {
+		...options,
 		stdin: options.stdin ?? null,
 		stdout: options.stdout ?? 'pipe',
 		stderr: options.stderr ?? 'pipe',
-		signal: options.signal,
 		timeout: timeoutMs,
-		killSignal: options.killSignal,
 	});
 
 	const exitCode = await proc.exited;
 	const timedOut = wasSpawnTimedOut(proc, timeoutMs, options.signal);
-	const stdout = timedOut ? '' : await readSpawnText(proc.stdout);
-	const stderr = timedOut ? `Timed out after ${timeoutMs}ms` : await readSpawnText(proc.stderr);
+	let stdout = '';
+	let stderr = '';
+	if (timedOut) {
+		stderr = `Timed out after ${timeoutMs}ms`;
+	} else {
+		[stdout, stderr] = await Promise.all([readSpawnStdout(proc), readSpawnStderr(proc)]);
+	}
 
 	return {
 		exitCode,
@@ -259,6 +390,7 @@ export interface ProcessRuntimeInfo {
 	term: string | undefined;
 	colorterm: string | undefined;
 	docsUrl: string;
+	spawnGuideUrl: string;
 }
 
 /** Snapshot Bun process/spawn capabilities for doctor diagnostics. */
@@ -280,6 +412,7 @@ export function getProcessRuntimeInfo(): ProcessRuntimeInfo {
 		term: process.env.TERM,
 		colorterm: process.env.COLORTERM,
 		docsUrl: BUN_SPAWN_DOCS_URL,
+		spawnGuideUrl: BUN_SPAWN_GUIDE_URL,
 	};
 }
 
