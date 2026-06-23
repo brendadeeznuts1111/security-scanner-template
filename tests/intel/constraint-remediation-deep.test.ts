@@ -87,10 +87,7 @@ test('collectConstraintDoctorIssues surfaces license violations', async () => {
 	await rm(TEST_DIR, {recursive: true, force: true});
 	const target = path.join(TEST_DIR, 'node_modules/gpl-lib/package.json');
 	await mkdir(path.dirname(target), {recursive: true});
-	await writeFile(
-		target,
-		JSON.stringify({name: 'gpl-lib', version: '1.0.0', license: 'GPL-3.0'}),
-	);
+	await writeFile(target, JSON.stringify({name: 'gpl-lib', version: '1.0.0', license: 'GPL-3.0'}));
 	await writeFile(
 		path.join(TEST_DIR, 'package.json'),
 		JSON.stringify({dependencies: {'gpl-lib': '1.0.0'}}),

@@ -107,8 +107,7 @@ export function matchPackagePathFilter(pattern: string, relativePath: string): b
 	const globPattern = raw.startsWith('./') ? raw.slice(2) : raw;
 	const dir = normalizeWorkspacePath(relativePath);
 	const matched =
-		new Bun.Glob(globPattern).match(dir) ||
-		new Bun.Glob(globPattern).match(`${dir}/package.json`);
+		new Bun.Glob(globPattern).match(dir) || new Bun.Glob(globPattern).match(`${dir}/package.json`);
 	return negated ? !matched : matched;
 }
 
@@ -148,8 +147,7 @@ export async function discoverWorkspacePackages(root: string): Promise<Workspace
 		const pkgPath = path.join(root, workspaceRel, 'package.json');
 		try {
 			const pkg = (await Bun.file(pkgPath).json()) as {name?: string};
-			const name =
-				typeof pkg.name === 'string' && pkg.name.length > 0 ? pkg.name : workspaceRel;
+			const name = typeof pkg.name === 'string' && pkg.name.length > 0 ? pkg.name : workspaceRel;
 			entries.push({name, path: normalizeWorkspacePath(workspaceRel)});
 		} catch {
 			entries.push({name: workspaceRel, path: normalizeWorkspacePath(workspaceRel)});

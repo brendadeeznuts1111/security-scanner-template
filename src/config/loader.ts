@@ -206,10 +206,7 @@ export async function loadDomainSecurity(
 /**
  * Load one domain config by its `domain` field (does not load sibling domains).
  */
-export async function loadSingleDomain(
-	root: string,
-	domainName: string,
-): Promise<LoadedDomain> {
+export async function loadSingleDomain(root: string, domainName: string): Promise<LoadedDomain> {
 	for (const filePath of discoverDomainFiles(root)) {
 		const file = Bun.file(filePath);
 		const text = await file.text();

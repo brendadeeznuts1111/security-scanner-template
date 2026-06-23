@@ -132,10 +132,7 @@ async function licenseViolations(
 			}
 		}
 
-		if (
-			constraints.strictLicenseAllowlist &&
-			!isLicenseConstraintAllowed(license, constraints)
-		) {
+		if (constraints.strictLicenseAllowlist && !isLicenseConstraintAllowed(license, constraints)) {
 			violations.push({
 				category: 'license',
 				source: 'policy-constraint-license',
@@ -276,9 +273,9 @@ export async function scanPolicyConstraints(options: {
 	const useTransitive = options.transitive ?? constraints.scanTransitive === true;
 	const installed: InstalledPackageRecord[] = useTransitive
 		? await listAllInstalledPackages(options.root)
-		: (await import('./semver-checks.ts').then(m => m.readProjectDependencyVersions(options.root))).map(
-				pkg => ({...pkg}),
-			);
+		: (
+				await import('./semver-checks.ts').then(m => m.readProjectDependencyVersions(options.root))
+			).map(pkg => ({...pkg}));
 	const packages = Object.fromEntries(installed.map(pkg => [pkg.name, pkg]));
 
 	const packageVersions = Object.fromEntries(
@@ -314,9 +311,7 @@ export async function scanPolicyConstraints(options: {
 	};
 }
 
-function dedupeConstraintViolations(
-	violations: ConstraintViolation[],
-): ConstraintViolation[] {
+function dedupeConstraintViolations(violations: ConstraintViolation[]): ConstraintViolation[] {
 	const seen = new Set<string>();
 	const out: ConstraintViolation[] = [];
 	for (const violation of violations) {
@@ -325,9 +320,7 @@ function dedupeConstraintViolations(
 		seen.add(key);
 		out.push(violation);
 	}
-	return out.sort((a, b) =>
-		(a.package ?? a.file ?? '').localeCompare(b.package ?? b.file ?? ''),
-	);
+	return out.sort((a, b) => (a.package ?? a.file ?? '').localeCompare(b.package ?? b.file ?? ''));
 }
 
 /** Suppress threat-feed hits for packages on the policy allow list. */
@@ -440,7 +433,7 @@ export function formatConstraintViolationLine(violation: ConstraintViolation): s
 		? `${violation.file}${violation.line ? `:${violation.line}` : ''}`
 		: violation.package
 			? `${violation.package}${violation.version ? `@${violation.version}` : ''}`
-			: violation.ruleId ?? 'constraint';
+			: (violation.ruleId ?? 'constraint');
 	const lines = [`${violation.severity} [${violation.category}] ${loc} — ${violation.message}`];
 	if (violation.remediation) {
 		lines.push(`   → ${violation.remediation}`);

@@ -1,5 +1,8 @@
 import {expect, test} from 'bun:test';
-import {canonicalSerialize, fingerprintFromSections} from '../../src/domain/doctor-snapshot-canonical.ts';
+import {
+	canonicalSerialize,
+	fingerprintFromSections,
+} from '../../src/domain/doctor-snapshot-canonical.ts';
 import {computeDomainFingerprint} from '../../src/domain/doctor-snapshot-deep.ts';
 import {buildDomainSnapshot} from '../../src/domain/doctor-snapshot.ts';
 

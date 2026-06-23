@@ -30,8 +30,7 @@ export class FeedParser {
 	matchThreats(packageName: string, version: string): ThreatFeedEntry[] {
 		return this.threats.filter(
 			threat =>
-				threat.package === packageName &&
-				SemverMatcher.satisfies(version, threat.versionRange),
+				threat.package === packageName && SemverMatcher.satisfies(version, threat.versionRange),
 		);
 	}
 

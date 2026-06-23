@@ -5,11 +5,17 @@
  * @see https://bun.com/docs/runtime/archive#filtering-with-glob-patterns
  */
 import path from 'path';
-import {listTestFilesForSlice, TEST_SLICE_GLOBS, type TestSliceId} from '../src/domain/test-layout.ts';
+import {
+	listTestFilesForSlice,
+	TEST_SLICE_GLOBS,
+	type TestSliceId,
+} from '../src/domain/test-layout.ts';
 
 const slice = process.argv[2] as TestSliceId | undefined;
 if (!slice || !(slice in TEST_SLICE_GLOBS)) {
-	console.error(`usage: bun run scripts/test-slice.ts <${Object.keys(TEST_SLICE_GLOBS).join('|')}>`);
+	console.error(
+		`usage: bun run scripts/test-slice.ts <${Object.keys(TEST_SLICE_GLOBS).join('|')}>`,
+	);
 	process.exit(1);
 }
 

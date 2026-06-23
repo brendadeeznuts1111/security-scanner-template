@@ -89,7 +89,7 @@ export function buildDomainPackageJson(plan: DomainPackageInitPlan): Record<stri
 		type: 'module',
 		description: `Security domain package for ${plan.domain}`,
 		scripts: {
-			doctor: 'bun sp doctor --root .. --matrix',
+			'doctor': 'bun sp doctor --root .. --matrix',
 			'network-start': `bun sp network start --domain ${plan.domain}`,
 		},
 	};

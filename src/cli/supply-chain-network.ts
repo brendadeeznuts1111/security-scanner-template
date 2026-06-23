@@ -29,8 +29,7 @@ function buildNetworkOptions(
 		json: values.json === true,
 		herdrTab: values['herdr-tab'] === true,
 		failOnHealth: values['fail-on-health'] === true,
-		failOnDrift:
-			values['fail-on-drift'] === true || values['fail-on-endpoint-change'] === true,
+		failOnDrift: values['fail-on-drift'] === true || values['fail-on-endpoint-change'] === true,
 		noColor: values['no-color'] === true,
 	};
 }
@@ -39,22 +38,22 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			path: {type: 'string'},
-			root: {type: 'string'},
-			domain: {type: 'string'},
+			'path': {type: 'string'},
+			'root': {type: 'string'},
+			'domain': {type: 'string'},
 			'health-url': {type: 'string'},
 			'health-url-secret': {type: 'string'},
-			baseline: {type: 'string'},
+			'baseline': {type: 'string'},
 			'update-baseline': {type: 'boolean'},
-			watch: {type: 'boolean'},
+			'watch': {type: 'boolean'},
 			'debounce-ms': {type: 'string'},
-			json: {type: 'boolean'},
+			'json': {type: 'boolean'},
 			'herdr-tab': {type: 'boolean'},
 			'fail-on-health': {type: 'boolean'},
 			'fail-on-drift': {type: 'boolean'},
 			'fail-on-endpoint-change': {type: 'boolean'},
 			'no-color': {type: 'boolean'},
-			help: {type: 'boolean', short: 'h'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});

@@ -1,10 +1,7 @@
 import {parseArgs} from 'util';
 import {colorize, TERMINAL} from '../color/index.ts';
 import {domainRegistry} from '../config/registry.ts';
-import {
-	isSupplyChainScanProfile,
-	SUPPLY_CHAIN_SCAN_PROFILES,
-} from './supply-chain-profiles.ts';
+import {isSupplyChainScanProfile, SUPPLY_CHAIN_SCAN_PROFILES} from './supply-chain-profiles.ts';
 import {runSupplyChainDeepScan, type SupplyChainDeepScanOptions} from './supply-chain-scan.ts';
 import {runSupplyChainDeepScanLoop} from './supply-chain-loop.ts';
 import {watchSupplyChainDeepScan} from './supply-chain-watch.ts';
@@ -52,12 +49,18 @@ function buildScanOptions(
 	};
 }
 
-async function runSupplyChainScan(values: Record<string, unknown>, positionals: string[]): Promise<number> {
+async function runSupplyChainScan(
+	values: Record<string, unknown>,
+	positionals: string[],
+): Promise<number> {
 	const profileName = values.profile as string | undefined;
 	if (profileName && !isSupplyChainScanProfile(profileName)) {
 		const known = Object.keys(SUPPLY_CHAIN_SCAN_PROFILES).join(', ');
 		console.error(
-			colorize(TERMINAL.scannerFatal, `[supply-chain] unknown profile "${profileName}" (known: ${known})`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[supply-chain] unknown profile "${profileName}" (known: ${known})`,
+			),
 		);
 		return 1;
 	}
@@ -96,12 +99,18 @@ async function runSupplyChainScan(values: Record<string, unknown>, positionals: 
 	}
 }
 
-async function runSupplyChainWatch(values: Record<string, unknown>, positionals: string[]): Promise<number> {
+async function runSupplyChainWatch(
+	values: Record<string, unknown>,
+	positionals: string[],
+): Promise<number> {
 	const profileName = values.profile as string | undefined;
 	if (profileName && !isSupplyChainScanProfile(profileName)) {
 		const known = Object.keys(SUPPLY_CHAIN_SCAN_PROFILES).join(', ');
 		console.error(
-			colorize(TERMINAL.scannerFatal, `[supply-chain] unknown profile "${profileName}" (known: ${known})`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[supply-chain] unknown profile "${profileName}" (known: ${known})`,
+			),
 		);
 		return 1;
 	}
@@ -137,34 +146,34 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			profile: {type: 'string'},
-			path: {type: 'string'},
-			root: {type: 'string'},
-			domain: {type: 'string'},
-			policy: {type: 'string'},
-			rules: {type: 'string'},
-			format: {type: 'string'},
-			output: {type: 'string'},
+			'profile': {type: 'string'},
+			'path': {type: 'string'},
+			'root': {type: 'string'},
+			'domain': {type: 'string'},
+			'policy': {type: 'string'},
+			'rules': {type: 'string'},
+			'format': {type: 'string'},
+			'output': {type: 'string'},
 			'verify-integrity': {type: 'boolean'},
 			'threat-feed': {type: 'boolean'},
 			'feed-url': {type: 'string'},
-			transitive: {type: 'boolean'},
-			fix: {type: 'boolean'},
+			'transitive': {type: 'boolean'},
+			'fix': {type: 'boolean'},
 			'operator-log': {type: 'boolean'},
 			'max-rounds': {type: 'string'},
 			'debounce-ms': {type: 'string'},
 			'health-url': {type: 'string'},
 			'health-url-secret': {type: 'string'},
-			baseline: {type: 'string'},
+			'baseline': {type: 'string'},
 			'update-baseline': {type: 'boolean'},
-			watch: {type: 'boolean'},
+			'watch': {type: 'boolean'},
 			'herdr-tab': {type: 'boolean'},
 			'fail-on-health': {type: 'boolean'},
 			'fail-on-drift': {type: 'boolean'},
 			'fail-on-endpoint-change': {type: 'boolean'},
-			json: {type: 'boolean'},
-			markdown: {type: 'boolean'},
-			help: {type: 'boolean', short: 'h'},
+			'json': {type: 'boolean'},
+			'markdown': {type: 'boolean'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});
@@ -242,8 +251,7 @@ Options:
 						herdrTab: values['herdr-tab'] === true,
 						failOnHealth: values['fail-on-health'] === true,
 						failOnDrift:
-							values['fail-on-drift'] === true ||
-							values['fail-on-endpoint-change'] === true,
+							values['fail-on-drift'] === true || values['fail-on-endpoint-change'] === true,
 					}),
 				);
 			} catch (error) {

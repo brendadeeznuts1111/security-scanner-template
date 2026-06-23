@@ -1,3 +1,9 @@
+/**
+ * One-shot network audit tick (patterns, semver, health, baseline).
+ *
+ * @see https://github.com/oven-sh/bun/blob/main/docs/runtime/http/server.mdx
+ * @see https://github.com/Effect-TS/effect/blob/main/packages/effect/src/Deferred.ts
+ */
 import path from 'path';
 import type {DomainConfig} from '../config/types.ts';
 import {auditBundleNetwork} from '../intel/network-audit.ts';
@@ -17,14 +23,8 @@ import {loadProjectPolicies} from '../policy/loader.ts';
 import type {PackageSemverViolation} from '../intel/semver-checks.ts';
 import type {PatternMatch} from '../scan/patterns/index.ts';
 import {resolveHealthUrl} from './health-secrets.ts';
-import {
-	buildHerdrDoctorTabDocument,
-	formatHerdrDoctorTabText,
-} from './herdr-tab.ts';
-import {
-	formatNetworkLoopStatusLine,
-	resolveNetworkLoopColors,
-} from './loop-color.ts';
+import {buildHerdrDoctorTabDocument, formatHerdrDoctorTabText} from './herdr-tab.ts';
+import {formatNetworkLoopStatusLine, resolveNetworkLoopColors} from './loop-color.ts';
 import {buildNetworkNdjsonEvent, formatNetworkNdjsonLine} from './ndjson.ts';
 import type {NetworkAuditSummary, NetworkHealthProbeResult} from './types.ts';
 import {probeNetworkHealth as probeSingleHealth} from './probe.ts';
@@ -71,10 +71,7 @@ async function readDependencyMap(
 	distPath: string,
 ): Promise<Record<string, string> | null> {
 	const {existsSync, readFileSync} = await import('fs');
-	const candidates = [
-		path.join(distPath, 'package.json'),
-		path.join(projectRoot, 'package.json'),
-	];
+	const candidates = [path.join(distPath, 'package.json'), path.join(projectRoot, 'package.json')];
 	for (const pkgPath of candidates) {
 		if (!existsSync(pkgPath)) continue;
 		try {
@@ -90,9 +87,7 @@ async function readDependencyMap(
 	return null;
 }
 
-function resolveBaselinePath(
-	options: NetworkTickOptions,
-): string {
+function resolveBaselinePath(options: NetworkTickOptions): string {
 	if (options.baselinePath) {
 		return path.resolve(options.baselinePath);
 	}

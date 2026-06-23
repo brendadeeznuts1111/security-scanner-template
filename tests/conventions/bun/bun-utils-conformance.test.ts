@@ -54,4 +54,3 @@ test('docs: file URL path helpers round-trip', () => {
 	expect(fileUrl.href).toContain('file://');
 	expect(filePathFromModuleUrl(fileUrl)).toBe('/foo/bar.txt');
 });
-

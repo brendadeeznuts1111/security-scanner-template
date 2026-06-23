@@ -60,6 +60,7 @@ export interface BunCreateArtifactAudit {
 const TEST_FIELD_MATRIX = 'tests/domain/field-matrix.test.ts';
 const TEST_BUN_INIT = 'tests/domain/bun-init-catalog.test.ts';
 const TEST_BUN_CREATE = 'tests/utils/bun-create-catalog.test.ts';
+const TEST_GROUND_TRUTH = 'tests/conventions/ground-truth/ground-truth-conformance.test.ts';
 
 export const BUN_CREATE_ARTIFACT_SPEC: readonly BunCreateArtifactEntry[] = [
 	{
@@ -98,6 +99,15 @@ export const BUN_CREATE_ARTIFACT_SPEC: readonly BunCreateArtifactEntry[] = [
 		docsUrl: BUN_CREATE_DOCS_URL,
 		testModules: [TEST_BUN_CREATE],
 	},
+	{
+		id: 'ground-truth.catalog',
+		path: 'src/utils/ground-truth-catalog.ts',
+		kind: 'package',
+		description: 'Upstream repo ground-truth references (oven-sh/bun, Effect-TS/effect)',
+		related: ['domain.template'],
+		docsUrl: 'https://github.com/oven-sh/bun',
+		testModules: [TEST_GROUND_TRUTH, TEST_BUN_CREATE],
+	},
 ] as const;
 
 const PROJECT_ROOT = path.join(import.meta.dir, '..', '..');
@@ -132,8 +142,11 @@ export function walkArtifactSpecLoop(
 	startId: string,
 	options: ArtifactSpecLoopOptions = {},
 ): BunCreateArtifactEntry[] {
-	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = false} =
-		options;
+	const {
+		maxDepth = Number.POSITIVE_INFINITY,
+		bidirectional = false,
+		includeStart = false,
+	} = options;
 	const start = getArtifactSpecEntry(startId);
 	if (!start) return [];
 
@@ -169,8 +182,7 @@ export function planArtifactSpecLoop(
 	startId: string,
 	options: ArtifactSpecLoopOptions = {},
 ): ArtifactSpecLoopStep[] {
-	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} =
-		options;
+	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} = options;
 	const start = getArtifactSpecEntry(startId);
 	if (!start) return [];
 

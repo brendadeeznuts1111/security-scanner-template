@@ -51,6 +51,43 @@ test('getCrossRef returns bun.run.filter with runtime docs', () => {
 	expect(entry?.modules).toContain('src/utils/bun-run-filter.ts');
 });
 
+test('getCrossRef returns ground-truth.catalog with repo reference exports', () => {
+	const entry = getCrossRef('ground-truth.catalog');
+	expect(entry?.exports).toContain('GROUND_TRUTH_CATALOG');
+	expect(entry?.exports).toContain('formatRepoRefUrl');
+	expect(entry?.related).toContain('repo.bun');
+	expect(entry?.related).toContain('repo.effect');
+});
+
+test('getCrossRef returns workflow.loop with scanner orchestrator exports', () => {
+	const entry = getCrossRef('workflow.loop');
+	expect(entry?.exports).toContain('WorkflowLoop');
+	expect(entry?.exports).toContain('WORKFLOW_SCANNER_IDS');
+	expect(entry?.configFields).toContain('service.workflow.enabled');
+	expect(entry?.cliCommands).toContain('sp workflow run');
+	expect(entry?.modules).toContain('src/workflow/loop.ts');
+});
+
+test('getCrossRefsByConfigField resolves service.workflow.enabled', () => {
+	expect(crossRefIds(getCrossRefsByConfigField('service.workflow.enabled'))).toContain(
+		'workflow.loop',
+	);
+});
+
+test('getCrossRefsByCli resolves sp workflow run', () => {
+	expect(crossRefIds(getCrossRefsByCli('sp workflow run'))).toContain('workflow.loop');
+});
+
+test('walkCrossRefLoop reaches scanner satellites from workflow.loop', () => {
+	const loop = crossRefIds(
+		walkCrossRefLoop('workflow.loop', {bidirectional: false, includeStart: true, maxDepth: 1}),
+	);
+	expect(loop).toContain('workflow.loop');
+	expect(loop).toContain('service.network');
+	expect(loop).toContain('intel.semver');
+	expect(loop).toContain('feature.intel-dns');
+});
+
 test('getCrossRef returns bun.test with catalog and helper exports', () => {
 	const entry = getCrossRef('bun.test');
 	expect(entry?.bunApi).toBe('bun:test');

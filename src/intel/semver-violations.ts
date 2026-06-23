@@ -1,9 +1,6 @@
 import type {DomainConfig} from '../config/types.ts';
 import type {SemverRule, SemverRuleSeverity} from '../policy/types.ts';
-import {
-	semverConstraintsFromDocument,
-	semverRulesFromDocument,
-} from '../policy/semver.ts';
+import {semverConstraintsFromDocument, semverRulesFromDocument} from '../policy/semver.ts';
 import type {PolicyDocument} from '../policy/types.ts';
 import type {ThreatFeedEntry} from '../provider/feed-types.ts';
 import {safeRangeFromThreat} from './semver-ranges.ts';

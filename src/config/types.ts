@@ -190,6 +190,30 @@ export interface DomainNetworkConfig {
 	noColor?: boolean;
 }
 
+/** Full-spectrum workflow loop orchestrating network, semver, patterns, TLS, and DNS scanners. */
+export interface DomainWorkflowConfig {
+	enabled?: boolean;
+	/** Scanner ids (default: all). */
+	scanners?: string[];
+	/** Periodic run interval in ms (default 60000). */
+	interval?: number;
+	/** Re-run when watched paths change. */
+	watch?: boolean;
+	/** Paths relative to project root (default dist, src, domains). */
+	watchPaths?: string[];
+	/** Debounce for watch triggers in ms. */
+	debounceMs?: number;
+	output?: 'table' | 'json' | 'ndjson' | 'herdr';
+	failOnIssue?: boolean;
+	failOnSeverity?: 'low' | 'medium' | 'high' | 'critical';
+	/** JSON5 golden-state seed loaded before each loop run. */
+	seedPath?: string;
+	/** Capture scanner metrics to this seed path after each run. */
+	seedWritePath?: string;
+	/** Exit non-zero when current state drifts from seed. */
+	failOnDrift?: boolean;
+}
+
 export interface DomainService {
 	/**
 	 * Enable Bun.Terminal PTY for external scanner orchestration (`scan interactive`, REPL `scan`).
@@ -208,6 +232,8 @@ export interface DomainService {
 	scan?: DomainServiceScan;
 	/** Continuous dist audit, semver, and health monitoring. */
 	network?: DomainNetworkConfig;
+	/** Unified security scanner workflow loop. */
+	workflow?: DomainWorkflowConfig;
 }
 
 export interface DomainAuditBackendConfig {

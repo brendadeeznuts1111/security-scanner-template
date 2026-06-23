@@ -129,6 +129,18 @@
 		// 	herdrTab: false,
 		// 	noColor: false,
 		// },
+		// Unified scanner orchestrator (`bun sp workflow start --domain <name>`).
+		// service.workflow: {
+		// 	enabled: true,
+		// 	scanners: ['network', 'semver', 'patterns', 'tls', 'dns'],
+		// 	interval: 60000,
+		// 	watch: true,
+		// 	watchPaths: ['./dist', './src', './domains'],
+		// 	debounceMs: 500,
+		// 	output: 'ndjson',
+		// 	failOnIssue: false,
+		// 	failOnSeverity: 'medium',
+		// },
 	},
 
 	// Visual artifacts (Bun.Image, operator QR).

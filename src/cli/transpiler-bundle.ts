@@ -136,9 +136,7 @@ export async function runTranspilerBundleCli(options: TranspilerBundleCliOptions
 	const body = formatTranspilerReport(report, format);
 
 	if (options.profile) {
-		console.error(
-			colorize(TERMINAL.scannerDim, `[scan] profile=${options.profile}`),
-		);
+		console.error(colorize(TERMINAL.scannerDim, `[scan] profile=${options.profile}`));
 	}
 
 	if (options.output) {
@@ -147,7 +145,11 @@ export async function runTranspilerBundleCli(options: TranspilerBundleCliOptions
 
 	if (format === 'json' || options.json) {
 		console.log(body);
-	} else if ((format === 'markdown' || format === 'html') && options.emitFormattedStdout && !options.output) {
+	} else if (
+		(format === 'markdown' || format === 'html') &&
+		options.emitFormattedStdout &&
+		!options.output
+	) {
 		console.log(body);
 	} else if (!options.output) {
 		console.error(
@@ -235,7 +237,11 @@ export async function runTranspilerBundleCli(options: TranspilerBundleCliOptions
 		}
 	}
 
-	if (options.failOnBundleDrift && report.snapshotCompatibility && !report.snapshotCompatibility.ok) {
+	if (
+		options.failOnBundleDrift &&
+		report.snapshotCompatibility &&
+		!report.snapshotCompatibility.ok
+	) {
 		return 1;
 	}
 	if (options.failOnBundleDrift && report.bundleDrift?.changed) {

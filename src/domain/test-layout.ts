@@ -56,10 +56,7 @@ export const TEST_TOP_LEVEL_SLICES = [
 
 export type TestTopLevelSlice = (typeof TEST_TOP_LEVEL_SLICES)[number];
 
-export type TestSliceId =
-	| TestTopLevelSlice
-	| typeof TEST_CONVENTIONS_BUN_DIR
-	| 'conventions';
+export type TestSliceId = TestTopLevelSlice | typeof TEST_CONVENTIONS_BUN_DIR | 'conventions';
 
 /** Bun conformance + serial tests (not run concurrently with each other). */
 export const TEST_CONVENTIONS_BUN_DIR = 'conventions/bun';
@@ -87,41 +84,41 @@ export const PACKAGE_TEST_SLICES = [
 export type PackageTestSlice = (typeof PACKAGE_TEST_SLICES)[number];
 
 export const TEST_SLICE_GLOBS: Record<TestSliceId, readonly string[]> = {
-	domain: ['domain/**', '!domain-runtime/**'],
+	'domain': ['domain/**', '!domain-runtime/**'],
 	'domain-runtime': ['domain-runtime/**'],
-	network: ['network/**'],
-	conventions: ['conventions/**'],
-	cli: ['cli/**'],
-	intel: ['intel/**', '!threat-intel/**'],
-	audit: ['audit/**'],
-	build: ['build/**'],
-	color: ['color/**'],
-	config: ['config/**'],
-	core: ['core/**'],
-	crypto: ['crypto/**'],
-	csrf: ['csrf/**'],
-	features: ['features/**'],
-	image: ['image/**'],
-	integrity: ['integrity/**'],
-	interactive: ['interactive/**'],
-	logging: ['logging/**'],
-	markdown: ['markdown/**'],
-	policy: ['policy/**'],
-	provider: ['provider/**'],
-	registry: ['registry/**'],
-	report: ['report/**'],
-	scan: ['scan/**'],
-	scripts: ['scripts/**'],
-	security: ['security/**'],
-	semver: ['semver/**'],
-	service: ['service/**'],
-	shell: ['shell/**'],
+	'network': ['network/**'],
+	'conventions': ['conventions/**'],
+	'cli': ['cli/**'],
+	'intel': ['intel/**', '!threat-intel/**'],
+	'audit': ['audit/**'],
+	'build': ['build/**'],
+	'color': ['color/**'],
+	'config': ['config/**'],
+	'core': ['core/**'],
+	'crypto': ['crypto/**'],
+	'csrf': ['csrf/**'],
+	'features': ['features/**'],
+	'image': ['image/**'],
+	'integrity': ['integrity/**'],
+	'interactive': ['interactive/**'],
+	'logging': ['logging/**'],
+	'markdown': ['markdown/**'],
+	'policy': ['policy/**'],
+	'provider': ['provider/**'],
+	'registry': ['registry/**'],
+	'report': ['report/**'],
+	'scan': ['scan/**'],
+	'scripts': ['scripts/**'],
+	'security': ['security/**'],
+	'semver': ['semver/**'],
+	'service': ['service/**'],
+	'shell': ['shell/**'],
 	'supply-chain': ['supply-chain/**'],
 	'threat-feed': ['threat-feed/**'],
 	'threat-intel': ['threat-intel/**'],
-	utils: ['utils/**'],
-	visual: ['visual/**'],
-	xref: ['xref/**'],
+	'utils': ['utils/**'],
+	'visual': ['visual/**'],
+	'xref': ['xref/**'],
 	'conventions/bun': ['conventions/bun/**'],
 };
 
@@ -130,12 +127,12 @@ export const TEST_SLICE_GLOBS: Record<TestSliceId, readonly string[]> = {
  * Trailing slash avoids accidental overlap (e.g. `domain` ⊂ `domain-runtime`).
  */
 export const TEST_SLICE_CLI_FILTERS: Partial<Record<TestSliceId, readonly string[]>> = {
-	domain: ['domain/'],
+	'domain': ['domain/'],
 	'domain-runtime': ['domain-runtime/'],
-	network: ['network/'],
-	conventions: ['conventions/'],
-	cli: ['cli/'],
-	intel: ['intel/'],
+	'network': ['network/'],
+	'conventions': ['conventions/'],
+	'cli': ['cli/'],
+	'intel': ['intel/'],
 };
 
 /**

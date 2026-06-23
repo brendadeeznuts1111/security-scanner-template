@@ -9,8 +9,7 @@ export {createAuditEntry} from '../audit/entry.ts';
 export const BUN_UUID_GUIDE_URL = 'https://bun.com/docs/guides/util/javascript-uuid';
 export const BUN_UUID_V7_DOCS_URL = 'https://bun.com/docs/runtime/utils#bun-randomuuidv7';
 
-const UUID_V4_RE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_V7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** UUID v4 via `crypto.randomUUID()` (Bun, Node, browsers). */

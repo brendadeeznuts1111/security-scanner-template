@@ -78,35 +78,35 @@ test('resolveProjectRootFromPath walks up to package.json', () => {
 });
 
 test('formatSupplyChainScanMarkdown includes remediation queue', () => {
-		const report: SupplyChainDeepScanReport = {
-			profile: 'supply-chain-network',
-			projectRoot: '/tmp/project',
-			bundlePath: '/tmp/project/dist',
-			identity: fixtureIdentity,
-			bundle: {
-				root: '/tmp/project/dist',
-				scannedFiles: 1,
-				findings: [
-					{
-						type: 'transpiler',
-						ruleId: 'remote-import',
-						severity: 'medium',
-						message: 'dynamic import',
-						file: '/tmp/project/dist/app.js',
-						line: 2,
-						column: 1,
-					},
-				],
-				files: [],
-			},
-			policyPresent: false,
-			durationMs: 2,
-		};
-		report.remediation = planSupplyChainRemediation(report);
-		const md = formatSupplyChainScanMarkdown(report);
-		expect(md).toContain('## Remediation queue');
-		expect(md).toContain('manual/bundle');
-	});
+	const report: SupplyChainDeepScanReport = {
+		profile: 'supply-chain-network',
+		projectRoot: '/tmp/project',
+		bundlePath: '/tmp/project/dist',
+		identity: fixtureIdentity,
+		bundle: {
+			root: '/tmp/project/dist',
+			scannedFiles: 1,
+			findings: [
+				{
+					type: 'transpiler',
+					ruleId: 'remote-import',
+					severity: 'medium',
+					message: 'dynamic import',
+					file: '/tmp/project/dist/app.js',
+					line: 2,
+					column: 1,
+				},
+			],
+			files: [],
+		},
+		policyPresent: false,
+		durationMs: 2,
+	};
+	report.remediation = planSupplyChainRemediation(report);
+	const md = formatSupplyChainScanMarkdown(report);
+	expect(md).toContain('## Remediation queue');
+	expect(md).toContain('manual/bundle');
+});
 
 test('formatSupplyChainScanMarkdown notes missing policy', () => {
 	const report: SupplyChainDeepScanReport = {

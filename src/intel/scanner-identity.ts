@@ -72,7 +72,10 @@ export async function resolveSupplyChainScanIdentity(
 	return {
 		capturedAt: options.capturedAt ?? new Date().toISOString(),
 		bun: getRuntimeInfo(),
-		scanner: partyFromMetadata(scannerMeta) ?? {name: '@acme/bun-security-scanner', version: '0.0.0'},
+		scanner: partyFromMetadata(scannerMeta) ?? {
+			name: '@acme/bun-security-scanner',
+			version: '0.0.0',
+		},
 		target: partyFromMetadata(targetMeta),
 		domain: options.domain,
 		domainDisplayName: resolvedDomainDisplayName,

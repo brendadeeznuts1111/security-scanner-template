@@ -94,7 +94,12 @@ export async function runScanConstraintsCli(options: ScanConstraintsCliOptions):
 		const pins = planConstraintSourcePins(report.violations);
 		const imports = planConstraintImportFixes(report.violations);
 
-		if (removals.length === 0 && installs.length === 0 && pins.length === 0 && imports.length === 0) {
+		if (
+			removals.length === 0 &&
+			installs.length === 0 &&
+			pins.length === 0 &&
+			imports.length === 0
+		) {
 			console.error(
 				colorize(TERMINAL.scannerWarn, '[scan] no auto-fix targets for these violations'),
 			);

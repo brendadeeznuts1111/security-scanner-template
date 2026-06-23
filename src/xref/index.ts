@@ -223,7 +223,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 			'withInspectCustom',
 		],
 		cliCommands: ['sp doctor', 'sp doctor --json', 'sp doctor --benchmark'],
-		related: ['utils.signals', 'utils.process', 'bun.nanoseconds'],
+		related: ['utils.signals', 'utils.process', 'bun.nanoseconds', 'xref.loop', 'workflow.loop'],
 		docsUrl: 'https://bun.com/docs/runtime/utils#bun-nanoseconds',
 	},
 	{
@@ -463,7 +463,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		modules: ['src/intel/dns-threat.ts', 'src/domain/index.ts', 'src/provider/feed.ts'],
 		exports: ['DNSThreatChecker', 'inspectFeedUrl'],
 		configFields: ['intel.dns.blocklist', 'intel.dns.requireResolution'],
-		related: ['bun.bundle.features'],
+		related: ['bun.bundle.features', 'workflow.loop'],
 	},
 	{
 		id: 'feature.report-markdown',
@@ -588,6 +588,172 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		related: ['bun.terminal'],
 	},
 	{
+		id: 'service.network',
+		name: 'Network audit loop',
+		layer: 'cli',
+		description:
+			'Continuous dist audit, semver checks, health probes, and baseline drift monitoring.',
+		modules: [
+			'src/network/loop.ts',
+			'src/network/tick.ts',
+			'src/network/resolve-config.ts',
+			'src/cli/network.ts',
+		],
+		exports: ['NetworkLoop', 'runNetworkTick', 'probeNetworkHealth', 'runNetworkCli'],
+		configFields: [
+			'service.network.enabled',
+			'service.network.distPath',
+			'service.network.healthUrl',
+			'service.network.probeInterval',
+			'service.network.watch',
+			'service.network.failOnHealth',
+			'service.network.failOnDrift',
+		],
+		cliCommands: ['sp network start', 'sp network stop', 'sp network status'],
+		related: ['bun.transpiler', 'intel.semver', 'scan.patterns', 'workflow.loop'],
+	},
+	{
+		id: 'workflow.loop',
+		name: 'Workflow scanner orchestrator',
+		layer: 'cli',
+		description:
+			'Unified full-spectrum loop orchestrating network, semver, patterns, TLS, and DNS scanners with interval and watch scheduling.',
+		modules: [
+			'src/workflow/loop.ts',
+			'src/workflow/scanners.ts',
+			'src/workflow/output.ts',
+			'src/workflow/types.ts',
+			'src/cli/workflow.ts',
+			'src/service/index.ts',
+		],
+		exports: [
+			'WorkflowLoop',
+			'AVAILABLE_SCANNERS',
+			'WORKFLOW_SCANNER_IDS',
+			'runWorkflowCli',
+			'aggregateWorkflowReport',
+			'workflowExitCode',
+		],
+		configFields: [
+			'service.workflow.enabled',
+			'service.workflow.scanners',
+			'service.workflow.interval',
+			'service.workflow.watch',
+			'service.workflow.output',
+			'service.workflow.failOnIssue',
+			'service.workflow.failOnSeverity',
+		],
+		cliCommands: ['sp workflow run', 'sp workflow start', 'sp workflow status'],
+		related: [
+			'service.network',
+			'intel.semver',
+			'scan.patterns',
+			'intel.tls',
+			'feature.intel-dns',
+			'xref.loop',
+			'utils.doctor-diagnostics',
+			'ground-truth.catalog',
+			'repo.bun',
+			'repo.effect',
+		],
+	},
+	{
+		id: 'ground-truth.catalog',
+		name: 'Ground truth repo references',
+		layer: 'config',
+		description:
+			'Maps local xref integrations to canonical oven-sh/bun and Effect-TS/effect source paths for conformance and code review.',
+		modules: ['src/utils/ground-truth-catalog.ts', 'tests/conventions/bun/'],
+		exports: [
+			'GROUND_TRUTH_CATALOG',
+			'GROUND_TRUTH_REPOS',
+			'WORKFLOW_SCANNER_GROUND_TRUTH',
+			'auditGroundTruthCatalog',
+			'getGroundTruthForXref',
+			'getGroundTruthForWorkflowScanner',
+			'planGroundTruthLoop',
+			'formatRepoRefUrl',
+			'formatGroundTruthTable',
+			'formatGroundTruthLoopTable',
+			'evaluateGroundTruthGoal',
+			'collectGroundTruthSnapshot',
+			'evaluateGroundTruthSnapshotGate',
+		],
+		cliCommands: [
+			'xref ground-truth',
+			'xref ground-truth --goal',
+			'xref ground-truth --snapshot',
+			'xref ground-truth --fail-on-drift',
+			'sp bench --suite ground-truth',
+		],
+		related: ['repo.bun', 'repo.effect', 'xref.loop', 'workflow.loop', 'utils.doctor-diagnostics'],
+	},
+	{
+		id: 'repo.bun',
+		name: 'Bun runtime ground truth',
+		layer: 'runtime',
+		description:
+			'oven-sh/bun docs and runtime source — primary upstream for CLI loops, watch, TLS, and test parity.',
+		modules: [
+			'src/utils/runtime.ts',
+			'src/utils/ground-truth-catalog.ts',
+			'tests/conventions/bun/bun-utils-conformance.test.ts',
+		],
+		related: ['ground-truth.catalog', 'workflow.loop', 'bun.test', 'utils.signals'],
+		docsUrl: 'https://github.com/oven-sh/bun',
+	},
+	{
+		id: 'repo.effect',
+		name: 'Effect-TS ground truth',
+		layer: 'runtime',
+		description:
+			'Effect-TS/effect scheduling, layers, and graph patterns — reference for orchestrator design.',
+		modules: ['src/utils/ground-truth-catalog.ts'],
+		related: ['ground-truth.catalog', 'workflow.loop', 'xref.loop'],
+		docsUrl: 'https://github.com/Effect-TS/effect',
+	},
+	{
+		id: 'intel.semver',
+		name: 'Package semver policy',
+		layer: 'intelligence',
+		description: 'Installed dependency version checks against unified policy semver constraints.',
+		modules: [
+			'src/intel/semver-checks.ts',
+			'src/provider/semver-matcher.ts',
+			'src/cli/scan-packages.ts',
+		],
+		exports: [
+			'readProjectDependencyVersions',
+			'checkPackageVersionsAgainstPolicy',
+			'SemverMatcher',
+		],
+		cliCommands: ['sp scan packages'],
+		related: ['bun.install', 'workflow.loop', 'service.network'],
+	},
+	{
+		id: 'scan.patterns',
+		name: 'Source pattern scanner',
+		layer: 'scanning',
+		description: 'AST and regex pattern rules over src/ and dist/ trees.',
+		modules: ['src/scan/patterns/index.ts', 'src/cli/scan-patterns.ts'],
+		exports: ['scanPatterns'],
+		cliCommands: ['sp scan source'],
+		related: ['bun.transpiler', 'workflow.loop', 'service.network'],
+	},
+	{
+		id: 'intel.tls',
+		name: 'TLS certificate inspection',
+		layer: 'intelligence',
+		bunApi: 'tls.getCACertificates',
+		description: 'Remote TLS chain validation, expiry, and system CA trust checks.',
+		modules: ['src/intel/tls/index.ts', 'src/intel/tls/inspector.ts', 'src/cli/tls.ts'],
+		exports: ['TLSInspector', 'resolveUseSystemCA'],
+		configFields: ['tls.useSystemCA'],
+		cliCommands: ['sp tls'],
+		related: ['workflow.loop'],
+		docsUrl: 'https://bun.com/docs/api/tls',
+	},
+	{
 		id: 'bun.transpiler',
 		name: 'Source transpiler scan',
 		layer: 'scanning',
@@ -709,8 +875,18 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'runtime',
 		bunApi: 'Bun.inspect',
 		description: 'Doctor tables, debug output, and inspect.custom formatters.',
-		modules: ['src/utils/inspect.ts', 'src/utils/inspect-custom.ts', 'src/utils/doctor-diagnostics.ts'],
-		exports: ['formatTable', 'formatValue', 'formatInspectCustom', 'withInspectCustom', 'isInspectAvailable'],
+		modules: [
+			'src/utils/inspect.ts',
+			'src/utils/inspect-custom.ts',
+			'src/utils/doctor-diagnostics.ts',
+		],
+		exports: [
+			'formatTable',
+			'formatValue',
+			'formatInspectCustom',
+			'withInspectCustom',
+			'isInspectAvailable',
+		],
 		docsUrl: 'https://bun.com/docs/runtime/utils#bun-inspect',
 		related: ['utils.process'],
 	},
@@ -839,17 +1015,42 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		name: 'Mitata microbenchmarks',
 		layer: 'cli',
 		description:
-			'Public mitata suites under bench/ (doctor, field-matrix, domain-load, artifact-spec) with BENCHMARK_RUNNER JSON output.',
+			'Public mitata suites under bench/ (doctor, field-matrix, domain-load, artifact-spec, ground-truth) with BENCHMARK_RUNNER JSON output.',
 		modules: [
 			'bench/runner.mjs',
 			'bench/doctor/bench.mjs',
 			'bench/artifact-spec/bench.mjs',
+			'bench/ground-truth/bench.mjs',
 			'src/cli/bench.ts',
 		],
 		exports: ['runBenchCli'],
 		cliCommands: ['bench', 'sp bench'],
 		docsUrl: 'https://bun.sh/docs/project/benchmarking',
-		related: ['bun.nanoseconds', 'bun.jsc.heapStats', 'bun.create', 'bun.init'],
+		related: ['bun.nanoseconds', 'bun.jsc.heapStats', 'bun.create', 'bun.init', 'xref.loop'],
+	},
+	{
+		id: 'xref.loop',
+		name: 'DD-Loop graph walks',
+		layer: 'cli',
+		description:
+			'Canonical xref / artifact / domain-init loop planner with dry-run, validate, and benchmark flags.',
+		modules: ['src/xref/loop-cli.ts', 'src/cli/xref.ts'],
+		exports: [
+			'executeLoopCli',
+			'executeLoopCliAsync',
+			'auditDoctorLoops',
+			'DOCTOR_LOOP_SEEDS',
+			'formatDoctorLoopTable',
+		],
+		cliCommands: ['xref loop', 'xref loop --all', 'xref loop --dry-run'],
+		related: [
+			'bench.mitata',
+			'bun.init',
+			'bun.create',
+			'utils.doctor-diagnostics',
+			'workflow.loop',
+		],
+		docsUrl: 'https://bun.com/docs/runtime/templating/create',
 	},
 	{
 		id: 'bun.jsc.heapStats',
@@ -1054,8 +1255,11 @@ export function walkCrossRefLoop(
 	startId: string,
 	options: CrossRefLoopOptions = {},
 ): CrossRefEntry[] {
-	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = false} =
-		options;
+	const {
+		maxDepth = Number.POSITIVE_INFINITY,
+		bidirectional = false,
+		includeStart = false,
+	} = options;
 	const start = getCrossRef(startId);
 	if (!start) return [];
 
@@ -1093,8 +1297,7 @@ export function planCrossRefLoop(
 	startId: string,
 	options: CrossRefLoopOptions = {},
 ): CrossRefLoopStep[] {
-	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} =
-		options;
+	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} = options;
 	const start = getCrossRef(startId);
 	if (!start) return [];
 
@@ -1325,3 +1528,19 @@ export function validateCrossRefApis(): CrossRefValidation {
 		catalog,
 	};
 }
+
+export {
+	auditDoctorLoops,
+	DOCTOR_LOOP_SEEDS,
+	executeLoopCli,
+	executeLoopCliAsync,
+	formatDoctorLoopTable,
+	formatLoopCliJson,
+	type DoctorLoopAudit,
+	type DoctorLoopSeed,
+	type DoctorLoopSeedResult,
+	type LoopCliOptions,
+	type LoopCliResult,
+	type LoopCliValidation,
+	type LoopKind,
+} from './loop-cli.ts';

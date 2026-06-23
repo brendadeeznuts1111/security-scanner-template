@@ -2,12 +2,9 @@ import {statSync} from 'fs';
 import path from 'path';
 import {resolveBundleIncludePaths} from '../scan/transpiler/bundle-scanner.ts';
 
-const URL_PATTERN =
-	/https?:\/\/[^\s"'`<>\\]+|wss?:\/\/[^\s"'`<>\\]+/gi;
-const ROUTE_PATTERN =
-	/(?:['"`])(\/(?:api|v\d|health|status|ready|live|ping|meta)[^\s"'`<>\\]*)/gi;
-const HEALTH_ROUTE_PATTERN =
-	/\/(?:healthz?|readyz?|livez?|status|ping|meta)(?:\/[^\s"'`<>\\]*)?/i;
+const URL_PATTERN = /https?:\/\/[^\s"'`<>\\]+|wss?:\/\/[^\s"'`<>\\]+/gi;
+const ROUTE_PATTERN = /(?:['"`])(\/(?:api|v\d|health|status|ready|live|ping|meta)[^\s"'`<>\\]*)/gi;
+const HEALTH_ROUTE_PATTERN = /\/(?:healthz?|readyz?|livez?|status|ping|meta)(?:\/[^\s"'`<>\\]*)?/i;
 
 export interface NetworkUrlHit {
 	value: string;
@@ -69,10 +66,7 @@ async function collectBundleJsFiles(bundlePath: string): Promise<string[]> {
 	return files.sort();
 }
 
-async function scanBundleFilesInDir(
-	base: string,
-	glob: Bun.Glob,
-): Promise<string[]> {
+async function scanBundleFilesInDir(base: string, glob: Bun.Glob): Promise<string[]> {
 	const scanned: string[] = [];
 	for await (const match of glob.scan({cwd: base, onlyFiles: true})) {
 		scanned.push(path.join(base, match));

@@ -6,8 +6,7 @@ function parseEndpointEntry(entry: Record<string, unknown>): EndpointProbeTarget
 	if (!url) return null;
 
 	const method = entry.method === 'HEAD' ? 'HEAD' : entry.method === 'GET' ? 'GET' : undefined;
-	const expectStatus =
-		typeof entry.expectStatus === 'number' ? entry.expectStatus : undefined;
+	const expectStatus = typeof entry.expectStatus === 'number' ? entry.expectStatus : undefined;
 	const label = typeof entry.label === 'string' ? entry.label : undefined;
 	const requireHeaders = Array.isArray(entry.requireHeaders)
 		? entry.requireHeaders.filter((h): h is string => typeof h === 'string')

@@ -23,7 +23,7 @@ test('scanPolicyConstraints detects blocked git sources and imports', async () =
 	await writeProject({
 		'package.json': JSON.stringify({
 			dependencies: {
-				axios: '1.0.0',
+				'axios': '1.0.0',
 				'evil-pkg': 'git+https://github.com/example/evil',
 			},
 		}),
@@ -39,7 +39,11 @@ pattern = "child_process"
 reason = "No subprocess"
 severity = "high"
 `,
-		'node_modules/axios/package.json': JSON.stringify({name: 'axios', version: '1.0.0', license: 'MIT'}),
+		'node_modules/axios/package.json': JSON.stringify({
+			name: 'axios',
+			version: '1.0.0',
+			license: 'MIT',
+		}),
 	});
 
 	const report = await scanPolicyConstraints({

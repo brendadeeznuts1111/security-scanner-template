@@ -1,4 +1,10 @@
-import type {DomainConfig, DomainColors, DomainChannels, DomainNetworkConfig, SecretEntry} from './types.ts';
+import type {
+	DomainConfig,
+	DomainColors,
+	DomainChannels,
+	DomainNetworkConfig,
+	SecretEntry,
+} from './types.ts';
 import {applyAuditDefaults} from '../domain/audit-paths.ts';
 import {syncSecretsService} from '../domain/secrets-service.ts';
 import {syncTokenIssuer} from '../domain/token-issuer.ts';

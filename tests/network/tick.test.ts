@@ -3,7 +3,11 @@ import {FIXED_TEST_ISO} from '../helpers.ts';
 import {mkdirSync, mkdtempSync, writeFileSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
-import {diffNetworkBaseline, saveNetworkBaseline, NETWORK_BASELINE_VERSION} from '../../src/intel/network-baseline.ts';
+import {
+	diffNetworkBaseline,
+	saveNetworkBaseline,
+	NETWORK_BASELINE_VERSION,
+} from '../../src/intel/network-baseline.ts';
 import {runNetworkTick} from '../../src/network/tick.ts';
 import {formatNetworkNdjsonLine, buildNetworkNdjsonEvent} from '../../src/network/ndjson.ts';
 import {formatNetworkLoopStatusLine} from '../../src/network/loop-color.ts';

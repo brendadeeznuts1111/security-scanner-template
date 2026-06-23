@@ -105,12 +105,7 @@ export {
 	type BenchmarkRunMetadata,
 } from './bench-metadata.ts';
 export {createDebouncer, createAsyncDebouncer} from './debounce.ts';
-export {
-	BUN_INSPECT_DOCS_URL,
-	formatTable,
-	formatValue,
-	isInspectAvailable,
-} from './inspect.ts';
+export {BUN_INSPECT_DOCS_URL, formatTable, formatValue, isInspectAvailable} from './inspect.ts';
 export {cloneStructured, deserializeStructured, serializeStructured} from './jsc.ts';
 export {runCliIfMain} from './cli.ts';
 export {
@@ -354,10 +349,7 @@ export {
 	type BunCreateArtifactAudit,
 	type BunCreateArtifactEntry,
 } from './bun-create-catalog.ts';
-export {
-	runBunPm,
-	type BunPmResult,
-} from './install-runtime.ts';
+export {runBunPm, type BunPmResult} from './install-runtime.ts';
 export {
 	CROSS_REF_CATALOG,
 	crossRefIds,
@@ -376,6 +368,14 @@ export {
 	validateCrossRefCatalog,
 	validateCrossRefApis,
 	walkCrossRefLoop,
+	auditDoctorLoops,
+	DOCTOR_LOOP_SEEDS,
+	executeLoopCli,
+	executeLoopCliAsync,
+	formatDoctorLoopTable,
+	type DoctorLoopAudit,
+	type DoctorLoopSeed,
+	type DoctorLoopSeedResult,
 	type CrossRefCatalogFinding,
 	type CrossRefCatalogValidation,
 	type CrossRefEntry,
@@ -385,6 +385,74 @@ export {
 	type CrossRefValidation,
 	type IntegrationLayer,
 } from '../xref/index.ts';
+export {
+	WorkflowLoop,
+	AVAILABLE_SCANNERS,
+	WORKFLOW_SCANNER_IDS,
+	aggregateWorkflowReport,
+	formatWorkflowOutput,
+	workflowExitCode,
+	type WorkflowLoopOptions,
+	type WorkflowLoopStatus,
+	type WorkflowOutputFormat,
+	type WorkflowRunReport,
+	type WorkflowScanner,
+	type WorkflowScannerId,
+} from '../workflow/index.ts';
+export {runWorkflowCli, type WorkflowCliOptions} from '../cli/workflow.ts';
+export {
+	GROUND_TRUTH_CATALOG,
+	GROUND_TRUTH_REPOS,
+	GROUND_TRUTH_REQUIRED_XREF_IDS,
+	GROUND_TRUTH_REPO_INDEX_URLS,
+	WORKFLOW_SCANNER_GROUND_TRUTH,
+	auditGroundTruthCatalog,
+	auditGroundTruthLocalModules,
+	extractGithubSeeRefs,
+	formatGroundTruthLoopTable,
+	formatGroundTruthTable,
+	formatRepoRefLine,
+	formatRepoRefUrl,
+	getGroundTruthForModule,
+	getGroundTruthForWorkflowScanner,
+	getGroundTruthForXref,
+	listGroundTruthEntries,
+	moduleLinksGroundTruth,
+	planGroundTruthLoop,
+	validateGroundTruthCatalog,
+	validateGroundTruthLoopSteps,
+	type GroundTruthCatalogAudit,
+	type GroundTruthCatalogFinding,
+	type GroundTruthCatalogValidation,
+	type GroundTruthEntry,
+	type GroundTruthLocalModuleAudit,
+	type GroundTruthLoopStep,
+	type GroundTruthRepoId,
+	type RepoGroundTruthRef,
+	type WorkflowScannerGroundTruthId,
+} from './ground-truth-catalog.ts';
+export {
+	evaluateGroundTruthGoal,
+	type GroundTruthGoalOptions,
+	type GroundTruthGoalResult,
+	type GroundTruthGoalTarget,
+} from './ground-truth-goal.ts';
+export {
+	GROUND_TRUTH_SNAPSHOT_VERSION,
+	buildGroundTruthSnapshot,
+	buildGroundTruthSnapshotEntries,
+	collectGroundTruthSnapshot,
+	compareGroundTruthSnapshots,
+	defaultGroundTruthSnapshotPath,
+	evaluateGroundTruthSnapshotGate,
+	fingerprintGroundTruthSnapshot,
+	loadGroundTruthSnapshot,
+	writeGroundTruthSnapshot,
+	type GroundTruthSnapshot,
+	type GroundTruthSnapshotDrift,
+	type GroundTruthSnapshotEntry,
+	type GroundTruthSnapshotGateResult,
+} from './ground-truth-snapshot.ts';
 export {
 	colorize,
 	TERMINAL,

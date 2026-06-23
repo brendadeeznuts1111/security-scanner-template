@@ -119,9 +119,7 @@ describe('vi fake timers', () => {
 
 describe('expect asymmetric matchers', () => {
 	test('any, objectContaining, and stringContaining', () => {
-		expect({id: 1, label: 'alpha'}).toEqual(
-			expect.objectContaining({id: expect.any(Number)}),
-		);
+		expect({id: 1, label: 'alpha'}).toEqual(expect.objectContaining({id: expect.any(Number)}));
 		expect('hello world').toEqual(expect.stringContaining('world'));
 		expect([1, 2, 3]).toEqual(expect.arrayContaining([2]));
 	});
@@ -162,14 +160,10 @@ describe('timeouts', () => {
 		setDefaultTimeout(5000);
 	});
 
-	test(
-		'per-test timeout via third argument',
-		async () => {
-			await Bun.sleep(1);
-			expect(true).toBe(true);
-		},
-		5000,
-	);
+	test('per-test timeout via third argument', async () => {
+		await Bun.sleep(1);
+		expect(true).toBe(true);
+	}, 5000);
 });
 
 describe('skip and failing modifiers', () => {

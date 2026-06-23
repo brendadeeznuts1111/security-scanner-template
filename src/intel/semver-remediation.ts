@@ -116,9 +116,7 @@ export function formatRemediationLine(
 	suggestion?: RemediationSuggestion,
 ): string {
 	const label =
-		violation.source === 'threat-feed' && violation.ruleId
-			? `[${violation.ruleId}] `
-			: '';
+		violation.source === 'threat-feed' && violation.ruleId ? `[${violation.ruleId}] ` : '';
 	const base = `${label}${violation.package}@${violation.version} — ${violation.message}`;
 	if (!suggestion?.suggestedVersion) {
 		return base;
@@ -127,8 +125,7 @@ export function formatRemediationLine(
 }
 
 export function formatPlannedUpgrade(plan: PlannedPackageUpgrade): string {
-	const refs =
-		plan.ruleIds.length > 0 ? ` (${plan.ruleIds.join(', ')})` : '';
+	const refs = plan.ruleIds.length > 0 ? ` (${plan.ruleIds.join(', ')})` : '';
 	return `${plan.package}@${plan.fromVersion} → ${plan.package}@${plan.toVersion}${refs}`;
 }
 

@@ -28,7 +28,9 @@ export function defaultNetworkBaselinePath(domain: string, root: string): string
 	return path.join(root, '.security', reverseDnsPathSegment(domain), NETWORK_BASELINE_FILENAME);
 }
 
-export async function loadNetworkBaseline(filePath: string): Promise<NetworkBaselineDocument | null> {
+export async function loadNetworkBaseline(
+	filePath: string,
+): Promise<NetworkBaselineDocument | null> {
 	const file = Bun.file(filePath);
 	if (!(await file.exists())) {
 		return null;
@@ -51,7 +53,10 @@ export async function saveNetworkBaseline(
 	await writeJson5File(filePath, document, {indent: 2});
 }
 
-function diffList(baseline: readonly string[], current: readonly string[]): {
+function diffList(
+	baseline: readonly string[],
+	current: readonly string[],
+): {
 	added: string[];
 	removed: string[];
 } {

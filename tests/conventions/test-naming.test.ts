@@ -5,7 +5,8 @@ import {isValidTestFileStem, topLevelTestSlice} from '../../src/domain/test-layo
 
 const TESTS_ROOT = path.join(import.meta.dir, '..');
 
-const TEST_CALL_PATTERN = /(?<![.\w])test(?:\.only|\.skip|\.todo|\.failing)?\s*\(\s*(['"`])([^'"`\n]+)\1/g;
+const TEST_CALL_PATTERN =
+	/(?<![.\w])test(?:\.only|\.skip|\.todo|\.failing)?\s*\(\s*(['"`])([^'"`\n]+)\1/g;
 const DESCRIBE_CALL_PATTERN =
 	/(?<![.\w])describe(?:\.only|\.skip|\.serial|\.concurrent)?\s*\(\s*(['"`])([^'"`\n]+)\1/g;
 

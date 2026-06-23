@@ -60,7 +60,8 @@ export function buildNetworkNdjsonEvent(input: {
 	if (input.semverViolations != null) event.semver = input.semverViolations;
 	if (input.trigger) event.file = input.trigger;
 	if (input.delta) {
-		event.deltaEndpoints = input.delta.endpoints.added.length - input.delta.endpoints.removed.length;
+		event.deltaEndpoints =
+			input.delta.endpoints.added.length - input.delta.endpoints.removed.length;
 		event.deltaRoutes = input.delta.healthRoutes.added.length;
 		event.baselineDrift = input.delta.hasEndpointDrift;
 	}

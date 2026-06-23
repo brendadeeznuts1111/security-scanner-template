@@ -15,10 +15,7 @@ export function deriveSafeRange(rule: Pick<SemverRule, 'range' | 'safeRange'>): 
 }
 
 /** Build a remediation target range from a threat-feed entry. */
-export function safeRangeFromThreat(entry: {
-	fixedIn?: string;
-	versionRange: string;
-}): string {
+export function safeRangeFromThreat(entry: {fixedIn?: string; versionRange: string}): string {
 	if (entry.fixedIn) {
 		return `>=${entry.fixedIn}`;
 	}

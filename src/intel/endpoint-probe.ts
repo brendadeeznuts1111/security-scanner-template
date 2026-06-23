@@ -7,8 +7,14 @@ import type {
 } from './endpoint-types.ts';
 
 const META_LEAK_PATTERNS: {pattern: RegExp; label: string}[] = [
-	{pattern: /(?:api[_-]?key|secret|password|token)\s*[:=]\s*['"][^'"]{8,}['"]/i, label: 'literal secret'},
-	{pattern: /"(?:apiKey|accessToken|refreshToken|privateKey)"\s*:\s*"[^"]{8,}"/i, label: 'JSON credential field'},
+	{
+		pattern: /(?:api[_-]?key|secret|password|token)\s*[:=]\s*['"][^'"]{8,}['"]/i,
+		label: 'literal secret',
+	},
+	{
+		pattern: /"(?:apiKey|accessToken|refreshToken|privateKey)"\s*:\s*"[^"]{8,}"/i,
+		label: 'JSON credential field',
+	},
 	{pattern: /BEGIN (?:RSA |EC )?PRIVATE KEY/i, label: 'PEM private key'},
 ];
 
@@ -194,9 +200,7 @@ export function summarizeEndpointProbeReport(report: EndpointProbeReport): {
 export function formatEndpointProbeLine(result: EndpointMetaProbeResult): string {
 	const label = result.label ? `${result.label} ` : '';
 	const status = result.status ?? '—';
-	const lines = [
-		`${label}${result.url} — ${result.method} ${status} (${result.latencyMs}ms)`,
-	];
+	const lines = [`${label}${result.url} — ${result.method} ${status} (${result.latencyMs}ms)`];
 	for (const violation of result.violations) {
 		lines.push(`   → ${violation.severity} [${violation.kind}] ${violation.message}`);
 	}

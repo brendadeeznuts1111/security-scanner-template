@@ -25,9 +25,7 @@ const DEFAULT_MAX_ROUNDS = 3;
 /**
  * Scan → plan remediation queue → optionally apply → re-scan loop.
  */
-export async function runSupplyChainDeepScanLoop(
-	options: SupplyChainLoopOptions,
-): Promise<number> {
+export async function runSupplyChainDeepScanLoop(options: SupplyChainLoopOptions): Promise<number> {
 	const maxRounds = options.maxRounds ?? (options.fix ? DEFAULT_MAX_ROUNDS : 1);
 	let lastExit = 0;
 
@@ -52,11 +50,7 @@ export async function runSupplyChainDeepScanLoop(
 					),
 				);
 			}
-			const applied = await applySupplyChainRemediationPlan(
-				report.projectRoot,
-				report,
-				plan,
-			);
+			const applied = await applySupplyChainRemediationPlan(report.projectRoot, report, plan);
 			for (const result of applied.results) {
 				if (options.format !== 'json' && !options.output) {
 					console.error(

@@ -17,16 +17,26 @@ test('validateSnapshotCompatibility rejects incompatible scanner', () => {
 });
 
 test('validateSnapshotCompatibility rejects baselines captured by incompatible scanner', () => {
-	const result = validateSnapshotCompatibility('2.0.0', '2.1.0', {
-		compatibleScannerVersions: '>=2.0.0 <3.0.0',
-	}, {storedScannerVersion: '1.5.0'});
+	const result = validateSnapshotCompatibility(
+		'2.0.0',
+		'2.1.0',
+		{
+			compatibleScannerVersions: '>=2.0.0 <3.0.0',
+		},
+		{storedScannerVersion: '1.5.0'},
+	);
 	expect(result.ok).toBe(false);
 	expect(result.message).toContain('1.5.0');
 });
 
 test('validateSnapshotCompatibility accepts stored scanner within policy range', () => {
-	const result = validateSnapshotCompatibility('2.0.0', '2.5.0', {
-		compatibleScannerVersions: '>=2.0.0 <3.0.0',
-	}, {storedScannerVersion: '2.1.0'});
+	const result = validateSnapshotCompatibility(
+		'2.0.0',
+		'2.5.0',
+		{
+			compatibleScannerVersions: '>=2.0.0 <3.0.0',
+		},
+		{storedScannerVersion: '2.1.0'},
+	);
 	expect(result.ok).toBe(true);
 });

@@ -23,10 +23,7 @@ test('safeRangeFromThreat prefers fixedIn over versionRange', () => {
 });
 
 test('SemverMatcher.latestSatisfying picks highest matching version', () => {
-	const latest = SemverMatcher.latestSatisfying(
-		['4.17.19', '4.17.21', '4.17.22'],
-		'>=4.17.21',
-	);
+	const latest = SemverMatcher.latestSatisfying(['4.17.19', '4.17.21', '4.17.22'], '>=4.17.21');
 	expect(latest).toBe('4.17.22');
 });
 

@@ -40,10 +40,7 @@ import {
 	readThreatFeedVersion,
 } from '../intel/semver-checks.ts';
 import {scanPackageSemverViolations, type SemverScanReport} from '../intel/semver-scan.ts';
-import {
-	buildPatternScanReport,
-	type PatternScanReport,
-} from '../intel/pattern-remediation.ts';
+import {buildPatternScanReport, type PatternScanReport} from '../intel/pattern-remediation.ts';
 import {scanPolicyConstraints} from '../intel/constraint-checks.ts';
 import type {ConstraintScanReport} from '../intel/constraint-types.ts';
 import {computeBundleSnapshotAtPath} from '../domain/doctor-snapshot-bundles.ts';
@@ -52,13 +49,12 @@ import {snapshotPolicyFromDocument} from '../policy/engine.ts';
 import {loadProjectPolicies} from '../policy/loader.ts';
 import {resolveScannerVersion} from '../intel/scanner-version.ts';
 import {auditBundleNetwork} from '../intel/network-audit.ts';
-import {
-	resolveAllEndpointProbeTargets,
-	scanDomainEndpointProbes,
-} from '../intel/endpoint-scan.ts';
+import {resolveAllEndpointProbeTargets, scanDomainEndpointProbes} from '../intel/endpoint-scan.ts';
 import type {EndpointProbeReport, EndpointProbeTarget} from '../intel/endpoint-types.ts';
 import {resolveHealthUrl} from '../network/health-secrets.ts';
 import {NetworkLoop, type NetworkLoopOptions} from '../network/loop.ts';
+import {WorkflowLoop} from '../workflow/loop.ts';
+import type {WorkflowLoopStatus} from '../workflow/loop.ts';
 import {
 	ENDPOINT_PROBE_CATALOG_PATH,
 	ENDPOINT_PROBE_META_PATH,
@@ -88,6 +84,7 @@ export class Service {
 	private domain?: Domain;
 	private server?: ReturnType<typeof Bun.serve>;
 	private networkLoop?: NetworkLoop;
+	private workflowLoop?: WorkflowLoop;
 	private lastNetworkExitCode = 0;
 
 	private readonly registry: DomainRegistry;
@@ -173,6 +170,11 @@ export class Service {
 			await this.startNetworkMonitor();
 		}
 
+		const workflow = config.service?.workflow;
+		if (workflow?.enabled) {
+			await this.startWorkflowLoop();
+		}
+
 		return this.server;
 	}
 
@@ -191,6 +193,7 @@ export class Service {
 	 */
 	stop(): void {
 		this.stopNetworkMonitor();
+		void this.stopWorkflowLoop();
 		this.server?.stop(true);
 		this.server = undefined;
 	}
@@ -267,6 +270,61 @@ export class Service {
 		this.networkLoop = undefined;
 	}
 
+	/** Start the unified workflow scanner loop (network, semver, patterns, TLS, DNS). */
+	async startWorkflowLoop(
+		overrides: import('../workflow/types.ts').WorkflowLoopOptions = {},
+	): Promise<WorkflowLoopStatus> {
+		if (!this.domain) {
+			await this.initialize();
+		}
+
+		const config = this.registry.get(this.domainName);
+		const workflow = config.service?.workflow;
+		if (!workflow?.enabled && Object.keys(overrides).length === 0) {
+			throw new Error(`Workflow loop is disabled for domain ${this.domainName}`);
+		}
+		if (this.workflowLoop?.status().running) {
+			return this.workflowLoop.status();
+		}
+
+		this.workflowLoop = workflow?.enabled
+			? WorkflowLoop.fromDomainConfig(this.domainName, this.registry, workflow, overrides)
+			: new WorkflowLoop(this.domainName, this.registry, overrides);
+
+		void this.workflowLoop.start();
+		return this.workflowLoop.status();
+	}
+
+	/** Run workflow scanners once without starting timers. */
+	async runWorkflowOnce(
+		overrides: import('../workflow/types.ts').WorkflowLoopOptions = {},
+	): Promise<import('../workflow/types.ts').WorkflowRunReport> {
+		const loop = new WorkflowLoop(this.domainName, this.registry, {
+			...overrides,
+			dryRun: true,
+		});
+		return loop.runAll();
+	}
+
+	workflowLoopStatus(): WorkflowLoopStatus {
+		if (this.workflowLoop) {
+			return this.workflowLoop.status();
+		}
+		return {
+			running: false,
+			domain: this.domainName,
+			runCount: 0,
+			scanners: this.registry.has(this.domainName)
+				? (this.registry.get(this.domainName).service?.workflow?.scanners ?? [])
+				: [],
+		};
+	}
+
+	async stopWorkflowLoop(): Promise<void> {
+		await this.workflowLoop?.stop();
+		this.workflowLoop = undefined;
+	}
+
 	/** Current network monitor status (idle when not running). */
 	networkMonitorStatus(): NetworkLoopStatus {
 		if (this.networkLoop) {
@@ -284,8 +342,7 @@ export class Service {
 			healthUrl: network?.healthUrl,
 			healthUrlSecret: network?.healthUrlSecret,
 			baselinePath:
-				network?.baselinePath ??
-				defaultNetworkBaselinePath(this.domainName, projectRoot),
+				network?.baselinePath ?? defaultNetworkBaselinePath(this.domainName, projectRoot),
 			probeIntervalMs: network?.probeInterval ?? 8000,
 			watchEnabled: network?.watch === true,
 			watchIntervalMs: network?.watchInterval ?? 750,

@@ -1,3 +1,10 @@
+/**
+ * Network audit loop — dist watch, health probes, baseline drift.
+ *
+ * @see https://github.com/oven-sh/bun/blob/main/docs/runtime/http/server.mdx
+ * @see https://github.com/oven-sh/bun/blob/main/docs/runtime/watch.mdx
+ * @see https://github.com/Effect-TS/effect/blob/main/packages/effect/src/Schedule.ts
+ */
 import {existsSync, statSync} from 'fs';
 import path from 'path';
 import type {DomainConfig} from '../config/types.ts';
@@ -10,11 +17,7 @@ import {
 	runNetworkTick,
 	type NetworkTickOptions,
 } from './tick.ts';
-import type {
-	NetworkAuditSummary,
-	NetworkHealthProbeResult,
-	NetworkLoopStatus,
-} from './types.ts';
+import type {NetworkAuditSummary, NetworkHealthProbeResult, NetworkLoopStatus} from './types.ts';
 
 export {probeNetworkHealth} from './probe.ts';
 export {NetworkDriftFailure} from './tick.ts';

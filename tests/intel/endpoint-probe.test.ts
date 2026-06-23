@@ -88,7 +88,9 @@ test('doctor reports endpoint probe failures', async () => {
 		const config = applyDefaults({
 			domain: 'com.example.probe',
 			intel: {
-				endpoints: [{url: `http://127.0.0.1:${server.port}/meta`, label: 'meta', expectStatus: 200}],
+				endpoints: [
+					{url: `http://127.0.0.1:${server.port}/meta`, label: 'meta', expectStatus: 200},
+				],
 			},
 		});
 		const issues = await collectEndpointDoctorIssues(

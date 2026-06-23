@@ -62,9 +62,7 @@ export function planConstraintInstalls(
 	for (const violation of violations) {
 		if (violation.source !== 'policy-constraint-require' || !violation.package) continue;
 
-		const addMatch = violation.remediation?.match(
-			/bun add (@?[^\s@]+(?:\/[^\s@]+)?)(?:@(\S+))?/,
-		);
+		const addMatch = violation.remediation?.match(/bun add (@?[^\s@]+(?:\/[^\s@]+)?)(?:@(\S+))?/);
 		if (!addMatch) continue;
 
 		const pkg = addMatch[1]!;

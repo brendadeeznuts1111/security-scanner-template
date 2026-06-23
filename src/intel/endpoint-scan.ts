@@ -67,9 +67,7 @@ export async function collectEndpointDoctorIssues(
 		field: `intel.endpoints.${violation.label ?? violation.url}`,
 		message: violation.message,
 		severity:
-			violation.severity === 'critical' || violation.severity === 'high'
-				? 'error'
-				: 'warning',
+			violation.severity === 'critical' || violation.severity === 'high' ? 'error' : 'warning',
 		code: 'ENDPOINT_PROBE',
 	}));
 }

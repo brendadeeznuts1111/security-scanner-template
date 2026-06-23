@@ -3,15 +3,19 @@
  * Bun.stringWidth, and Bun.inspect.custom formatters.
  */
 
-import {
-	auditBunRuntimeCatalog,
-	type BunRuntimeCatalogAudit,
-} from './bun-runtime-catalog.ts';
+import {auditBunRuntimeCatalog, type BunRuntimeCatalogAudit} from './bun-runtime-catalog.ts';
 import {auditBunTestCatalog, type BunTestCatalogAudit} from './bun-test-catalog.ts';
 import {auditBunCreateArtifactSpec, type BunCreateArtifactAudit} from './bun-create-catalog.ts';
 import {auditDomainPackageInits, type DomainPackageInitAudit} from '../domain/bun-init-catalog.ts';
+import {auditDoctorLoops, type DoctorLoopAudit} from '../xref/loop-cli.ts';
+import {auditGroundTruthCatalog, type GroundTruthCatalogAudit} from './ground-truth-catalog.ts';
+import {evaluateGroundTruthGoal, type GroundTruthGoalResult} from './ground-truth-goal.ts';
 import {formatTable} from './inspect.ts';
-import {formatInspectCustom, withInspectCustom, isInspectCustomAvailable} from './inspect-custom.ts';
+import {
+	formatInspectCustom,
+	withInspectCustom,
+	isInspectCustomAvailable,
+} from './inspect-custom.ts';
 import {getProcessRuntimeInfo, isSpawnAvailable, type ProcessRuntimeInfo} from './process.ts';
 import {
 	BUN_CTRL_C_DOCS_URL,
@@ -53,6 +57,12 @@ export interface DoctorDiagnostics {
 	bunTest: BunTestCatalogAudit;
 	bunCreate: BunCreateArtifactAudit;
 	bunInit: DomainPackageInitAudit;
+	/** DD-Loop: canonical xref / artifact / domain-init seed audits. */
+	loops: DoctorLoopAudit;
+	/** Upstream repo references (oven-sh/bun, Effect-TS/effect). */
+	groundTruth: GroundTruthCatalogAudit;
+	/** Goal checklist for ground-truth CI gates. */
+	groundTruthGoal: GroundTruthGoalResult;
 }
 
 export interface DoctorTimingSnapshot {
@@ -94,6 +104,14 @@ export async function collectDoctorDiagnostics(
 		bunTest: auditBunTestCatalog(),
 		bunCreate: auditBunCreateArtifactSpec(root),
 		bunInit: await auditDomainPackageInits(root),
+		loops: await auditDoctorLoops(root, {dryRun: true}),
+		...(await (async () => {
+			const groundTruth = await auditGroundTruthCatalog(root);
+			return {
+				groundTruth,
+				groundTruthGoal: evaluateGroundTruthGoal(groundTruth),
+			};
+		})()),
 	};
 }
 
@@ -169,9 +187,7 @@ export function formatDoctorDiagnosticsTable(diagnostics: DoctorDiagnostics): st
 		...diagnostics.bunTest.groups.map(group => ({
 			area: 'test',
 			api: `bun:test ${group.label}`,
-			value: diagnostics.bunTest.ok
-				? `${group.apis.length} apis`
-				: 'missing',
+			value: diagnostics.bunTest.ok ? `${group.apis.length} apis` : 'missing',
 		})),
 		{
 			area: 'template',
@@ -187,6 +203,30 @@ export function formatDoctorDiagnosticsTable(diagnostics: DoctorDiagnostics): st
 				? `${diagnostics.bunInit.domainCount} packages`
 				: `${diagnostics.bunInit.validation.findings.length} findings`,
 		},
+		...diagnostics.loops.seeds.map(seed => ({
+			area: 'loop',
+			api: `DD-Loop ${seed.kind}:${seed.startId}`,
+			value: seed.ok
+				? `${seed.count} steps · ${seed.benchmarkNs ?? 0}ns`
+				: `${seed.findings.length} findings`,
+		})),
+		{
+			area: 'ground',
+			api: 'repo refs',
+			value: diagnostics.groundTruth.ok
+				? `${diagnostics.groundTruth.entryCount} xrefs · ${diagnostics.groundTruth.refCount} refs`
+				: `${diagnostics.groundTruth.validation.findings.length} findings`,
+		},
+		{
+			area: 'goal',
+			api: 'ground-truth',
+			value: diagnostics.groundTruthGoal.ok ? 'met' : diagnostics.groundTruthGoal.summary,
+		},
+		...diagnostics.groundTruth.localModules.unlinkedModules.slice(0, 3).map(finding => ({
+			area: 'ground',
+			api: `unlinked ${finding.module}`,
+			value: finding.xrefId,
+		})),
 	];
 
 	const colWidths = {

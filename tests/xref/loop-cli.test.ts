@@ -1,6 +1,11 @@
 import path from 'path';
 import {expect, test} from 'bun:test';
-import {executeLoopCli} from '../../src/xref/loop-cli.ts';
+import {
+	auditDoctorLoops,
+	DOCTOR_LOOP_SEEDS,
+	executeLoopCli,
+	executeLoopCliAsync,
+} from '../../src/xref/loop-cli.ts';
 
 const ROOT = path.join(import.meta.dir, '../..');
 
@@ -48,6 +53,47 @@ test('executeLoopCli benchmark attaches nanosecond timing', () => {
 		benchmark: true,
 	});
 	expect(result.benchmarkNs).toBeGreaterThan(0);
+});
+
+test('executeLoopCliAsync domain-init lists all domain packages', async () => {
+	const result = await executeLoopCliAsync({
+		id: '*',
+		kind: 'domain-init',
+		validate: true,
+		root: ROOT,
+	});
+	expect(result.kind).toBe('domain-init');
+	expect(result.count).toBeGreaterThan(0);
+	expect(result.validation?.ok).toBe(true);
+});
+
+test('auditDoctorLoops runs DD-Loop canonical seeds', async () => {
+	const audit = await auditDoctorLoops(ROOT, {dryRun: true});
+	expect(audit.seeds.length).toBe(DOCTOR_LOOP_SEEDS.length);
+	expect(audit.ok).toBe(true);
+	expect(audit.totalNs).toBeGreaterThan(0);
+});
+
+test('executeLoopCliAsync ground-truth kind plans workflow.loop refs', async () => {
+	const result = await executeLoopCliAsync({
+		id: 'workflow.loop',
+		kind: 'ground-truth',
+		validate: true,
+	});
+	expect(result.kind).toBe('ground-truth');
+	expect(result.steps.some(step => step.id.startsWith('bun:'))).toBe(true);
+	expect(result.steps.some(step => step.id.startsWith('effect:'))).toBe(true);
+});
+
+test('executeLoopCli walks workflow.loop xref graph', () => {
+	const result = executeLoopCli({
+		id: 'workflow.loop',
+		kind: 'xref',
+		maxDepth: 1,
+		includeStart: true,
+	});
+	expect(result.steps.map(step => step.id)).toContain('workflow.loop');
+	expect(result.steps.map(step => step.id)).toContain('service.network');
 });
 
 test('executeLoopCli no-include-start omits depth-0 step', () => {

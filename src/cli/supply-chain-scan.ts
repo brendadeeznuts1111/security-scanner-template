@@ -5,9 +5,7 @@ import type {DomainRegistry} from '../config/registry.ts';
 import {domainRegistry} from '../config/registry.ts';
 import {DEFAULT_POLICY_FILE, loadPolicy, loadProjectPolicies} from '../policy/loader.ts';
 import {scanPolicyConstraints} from '../intel/constraint-checks.ts';
-import {
-	readProjectDependencyVersions,
-} from '../intel/semver-checks.ts';
+import {readProjectDependencyVersions} from '../intel/semver-checks.ts';
 import {scanPackageSemverViolations} from '../intel/semver-scan.ts';
 import {benchmark} from '../utils/benchmark.ts';
 import {scanDirectory} from '../scan/transpiler/bundle-scanner.ts';
@@ -18,10 +16,7 @@ import {
 	supplyChainScanHasBlockingFindings,
 	type SupplyChainDeepScanReport,
 } from '../report/supply-chain-report.ts';
-import {
-	resolveProjectRootFromPath,
-	resolveSupplyChainScanPath,
-} from './supply-chain-path.ts';
+import {resolveProjectRootFromPath, resolveSupplyChainScanPath} from './supply-chain-path.ts';
 import {
 	resolveSupplyChainProfile,
 	type SupplyChainScanProfile,
@@ -90,7 +85,11 @@ async function runPolicyLayers(
 	projectRoot: string,
 	profile: SupplyChainScanProfileSpec,
 	options: SupplyChainDeepScanOptions,
-): Promise<{packages?: SupplyChainDeepScanReport['packages']; constraints?: SupplyChainDeepScanReport['constraints']; policyPresent: boolean}> {
+): Promise<{
+	packages?: SupplyChainDeepScanReport['packages'];
+	constraints?: SupplyChainDeepScanReport['constraints'];
+	policyPresent: boolean;
+}> {
 	const policyPath = options.policyPath ?? path.join(projectRoot, DEFAULT_POLICY_FILE);
 	if (!existsSync(policyPath)) {
 		return {policyPresent: false, packages: undefined, constraints: undefined};
@@ -123,9 +122,7 @@ async function runPolicyLayers(
 			deepConstraints: profile.includeConstraints,
 			transitive: options.transitive,
 			threatEntries:
-				options.threatFeed || options.feedUrl
-					? options.registry?.getLoadedThreats()
-					: undefined,
+				options.threatFeed || options.feedUrl ? options.registry?.getLoadedThreats() : undefined,
 		});
 	}
 
@@ -160,10 +157,7 @@ export async function collectSupplyChainDeepScanReport(
 
 	const profile = resolveSupplyChainProfile(options.profile);
 	const registry = options.registry ?? domainRegistry;
-	const projectRoot =
-		options.projectRoot ??
-		resolveProjectRootFromPath(scanPath) ??
-		undefined;
+	const projectRoot = options.projectRoot ?? resolveProjectRootFromPath(scanPath) ?? undefined;
 
 	const capturedAt = new Date().toISOString();
 	const [bundleLayer, policyLayers, identity] = await Promise.all([
@@ -246,9 +240,7 @@ export async function emitSupplyChainDeepScanReport(
 	}
 }
 
-export async function runSupplyChainDeepScan(
-	options: SupplyChainDeepScanOptions,
-): Promise<number> {
+export async function runSupplyChainDeepScan(options: SupplyChainDeepScanOptions): Promise<number> {
 	const report = await collectSupplyChainDeepScanReport(options);
 	await emitSupplyChainDeepScanReport(report, options);
 	return supplyChainScanHasBlockingFindings(report) ? 1 : 0;

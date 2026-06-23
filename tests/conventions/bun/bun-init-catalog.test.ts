@@ -15,7 +15,9 @@ import {
 const ROOT = path.join(import.meta.dir, '../../..');
 
 test('domainIdToPackageName maps reverse-DNS to scoped package name', () => {
-	expect(domainIdToPackageName('com.factory-wager.shadow')).toBe('@com-factory-wager/shadow-security');
+	expect(domainIdToPackageName('com.factory-wager.shadow')).toBe(
+		'@com-factory-wager/shadow-security',
+	);
 	expect(domainConfigBasename('com.example.service')).toBe('com.example.service.security.json5');
 	expect(domainPackageDir('com.example.service')).toBe('packages/service-security');
 });
@@ -27,13 +29,16 @@ test('planDomainPackageInit lists config and security artifacts', () => {
 	);
 	expect(plan.packageName).toBe('@com-example/service-security');
 	expect(plan.artifacts.some(artifact => artifact.relativePath === plan.configPath)).toBe(true);
-	expect(plan.artifacts.some(artifact => artifact.relativePath === '.security/com.example.service')).toBe(
-		true,
-	);
+	expect(
+		plan.artifacts.some(artifact => artifact.relativePath === '.security/com.example.service'),
+	).toBe(true);
 });
 
 test('buildDomainPackageJson includes doctor and network scripts', () => {
-	const plan = planDomainPackageInit('com.example.service', 'domains/com.example.service.security.json5');
+	const plan = planDomainPackageInit(
+		'com.example.service',
+		'domains/com.example.service.security.json5',
+	);
 	const pkg = buildDomainPackageJson(plan);
 	expect(pkg.name).toBe('@com-example/service-security');
 	expect((pkg.scripts as Record<string, string>).doctor).toContain('bun sp doctor');

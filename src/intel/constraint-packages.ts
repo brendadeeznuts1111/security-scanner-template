@@ -74,7 +74,11 @@ export async function readWorkspaceGlobPatterns(root: string): Promise<string[]>
 		if (Array.isArray(workspaces)) {
 			return workspaces;
 		}
-		if (typeof workspaces === 'object' && workspaces !== null && Array.isArray(workspaces.packages)) {
+		if (
+			typeof workspaces === 'object' &&
+			workspaces !== null &&
+			Array.isArray(workspaces.packages)
+		) {
 			return workspaces.packages;
 		}
 	} catch {
@@ -92,7 +96,9 @@ export async function discoverWorkspacePackageRoots(root: string): Promise<strin
 
 	const roots = new Set<string>();
 	for (const pattern of patterns) {
-		const glob = new Bun.Glob(pattern.endsWith('/package.json') ? pattern : `${pattern}/package.json`);
+		const glob = new Bun.Glob(
+			pattern.endsWith('/package.json') ? pattern : `${pattern}/package.json`,
+		);
 		for await (const match of glob.scan({cwd: root, onlyFiles: true})) {
 			roots.add(path.dirname(match));
 		}
@@ -101,7 +107,9 @@ export async function discoverWorkspacePackageRoots(root: string): Promise<strin
 }
 
 /** Read dependency specifiers from root and every workspace package.json. */
-export async function readAllProjectDependencySpecifiers(root: string): Promise<DependencySpecifier[]> {
+export async function readAllProjectDependencySpecifiers(
+	root: string,
+): Promise<DependencySpecifier[]> {
 	const merged = await readProjectDependencySpecifiers(root);
 	const seen = new Set(merged.map(spec => `${spec.workspace ?? ''}:${spec.kind}:${spec.name}`));
 
@@ -131,7 +139,9 @@ export async function readInstalledPackageLicense(
 		return null;
 	}
 	try {
-		const meta = (await file.json()) as {license?: string | {type?: string} | Array<{type?: string}>};
+		const meta = (await file.json()) as {
+			license?: string | {type?: string} | Array<{type?: string}>;
+		};
 		const license = meta.license;
 		if (typeof license === 'string') {
 			return license;

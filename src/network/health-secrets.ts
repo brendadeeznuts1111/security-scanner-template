@@ -32,10 +32,7 @@ export function formatSecretLogLabel(secretName: string): string {
  * Resolve health URL secret name for a domain.
  * CLI `--health-url-secret health/prod` → service `supply-chain-{domain}`, name `health/prod`.
  */
-export function resolveHealthSecretRef(
-	domain: string,
-	secretSpec: string,
-): HealthUrlSecretRef {
+export function resolveHealthSecretRef(domain: string, secretSpec: string): HealthUrlSecretRef {
 	const trimmed = secretSpec.trim();
 	return {
 		service: networkHealthSecretService(domain),
@@ -78,8 +75,7 @@ export async function resolveHealthUrl(options: {
 			service: secretRef.service,
 			name: secretRef.name,
 		});
-		const isolation =
-			backend.platform === 'win32' ? ' enterprise-credential-isolation' : '';
+		const isolation = backend.platform === 'win32' ? ' enterprise-credential-isolation' : '';
 		logSecretChannel(
 			`[secrets] resolved ${formatSecretLogLabel(secretRef.name)} via ${backend.backend}${isolation}`,
 			backend.platform,

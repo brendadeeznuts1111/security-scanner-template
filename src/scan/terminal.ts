@@ -2,8 +2,7 @@ import {DEFAULT_TERM_NAME, spawnEnvWithTerm} from '../utils/process.ts';
 import {isPagerFriendlyPipeline, WINDOWS_CONPTY_NOTES} from '../utils/terminal-io.ts';
 
 /** Official Bun PTY spawn documentation. */
-export const BUN_PTY_DOCS_URL =
-	'https://bun.com/docs/runtime/child-process#terminal-pty-support';
+export const BUN_PTY_DOCS_URL = 'https://bun.com/docs/runtime/child-process#terminal-pty-support';
 
 /** Official Bun `TerminalOptions` shape (PTY on POSIX, ConPTY on Windows). */
 export type BunTerminalOptions = Bun.TerminalOptions;

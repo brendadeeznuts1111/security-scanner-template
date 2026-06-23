@@ -4,9 +4,7 @@ import path from 'path';
 import {tmpdir} from 'os';
 import {createDomainRegistry} from '../../src/config/registry.ts';
 
-async function withRegistryFixture(
-	run: (root: string) => Promise<void>,
-): Promise<void> {
+async function withRegistryFixture(run: (root: string) => Promise<void>): Promise<void> {
 	const root = await mkdtemp(path.join(tmpdir(), 'registry-watch-'));
 	try {
 		await mkdir(path.join(root, 'domains'), {recursive: true});

@@ -31,10 +31,7 @@ test('FeedParser.matchThreats skips non-matching versions', () => {
 
 test('FeedParser.getActiveThreats filters by package', () => {
 	const parser = new FeedParser();
-	parser.setThreats([
-		lodashThreat,
-		{...lodashThreat, id: 'CVE-2', package: 'express'},
-	]);
+	parser.setThreats([lodashThreat, {...lodashThreat, id: 'CVE-2', package: 'express'}]);
 
 	expect(parser.getActiveThreats()).toHaveLength(2);
 	expect(parser.getActiveThreats('lodash')).toHaveLength(1);

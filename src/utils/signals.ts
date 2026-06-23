@@ -3,14 +3,15 @@
  *
  * @see https://bun.com/docs/guides/process/os-signals
  * @see https://bun.com/docs/guides/process/ctrl-c
+ * @see https://github.com/oven-sh/bun/blob/main/docs/guides/process/os-signals.mdx
+ * @see https://github.com/oven-sh/bun/blob/main/docs/guides/process/ctrl-c.mdx
  */
 
 export const BUN_OS_SIGNALS_GUIDE_URL = 'https://bun.com/docs/guides/process/os-signals';
 export const BUN_CTRL_C_GUIDE_URL = 'https://bun.com/docs/guides/process/ctrl-c';
 export const BUN_OS_SIGNALS_DOCS_URL =
 	'https://bun.com/docs/guides/process/os-signals#listen-to-os-signals';
-export const BUN_CTRL_C_DOCS_URL =
-	'https://bun.com/docs/guides/process/ctrl-c#listen-for-ctrl-c';
+export const BUN_CTRL_C_DOCS_URL = 'https://bun.com/docs/guides/process/ctrl-c#listen-for-ctrl-c';
 
 export function isSignalHandlingAvailable(): boolean {
 	return typeof process.on === 'function' && typeof process.once === 'function';

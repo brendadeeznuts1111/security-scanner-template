@@ -20,11 +20,7 @@ import {
 	isNanosecondsAvailable,
 } from './nanoseconds.ts';
 import {BUN_PEEK_DOCS_URL, isPeekAvailable} from './peek.ts';
-import {
-	BUN_SPAWN_DOCS_URL,
-	BUN_SPAWN_GUIDE_URL,
-	isSpawnAvailable,
-} from './process.ts';
+import {BUN_SPAWN_DOCS_URL, BUN_SPAWN_GUIDE_URL, isSpawnAvailable} from './process.ts';
 import {
 	BUN_CTRL_C_GUIDE_URL,
 	BUN_OS_SIGNALS_GUIDE_URL,

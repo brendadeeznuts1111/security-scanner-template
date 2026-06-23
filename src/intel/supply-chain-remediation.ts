@@ -211,18 +211,20 @@ export async function applySupplyChainRemediationPlan(
 	};
 }
 
-function mapTranspilerSeverity(
-	severity: string,
-): {doctorSeverity: DoctorIssue['severity']; code: string} {
+function mapTranspilerSeverity(severity: string): {
+	doctorSeverity: DoctorIssue['severity'];
+	code: string;
+} {
 	if (severity === 'critical' || severity === 'high') {
 		return {doctorSeverity: 'error', code: 'SUPPLY_CHAIN_FATAL'};
 	}
 	return {doctorSeverity: 'warning', code: 'SUPPLY_CHAIN_WARN'};
 }
 
-function mapSemverSeverity(
-	severity: string,
-): {doctorSeverity: DoctorIssue['severity']; code: string} {
+function mapSemverSeverity(severity: string): {
+	doctorSeverity: DoctorIssue['severity'];
+	code: string;
+} {
 	if (severity === 'critical' || severity === 'high') {
 		return {doctorSeverity: 'error', code: 'SUPPLY_CHAIN_FATAL'};
 	}
@@ -311,4 +313,3 @@ export function formatRemediationQueueMarkdown(plan: SupplyChainRemediationPlan)
 	}
 	return lines.join('\n');
 }
-

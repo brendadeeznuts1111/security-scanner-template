@@ -13,8 +13,9 @@ import {runScanPackagesCli} from './scan-packages.ts';
 import {runScanPatternsCli} from './scan-patterns.ts';
 import {runScanConstraintsCli} from './scan-constraints.ts';
 import {runNetworkCli} from './network.ts';
+import {runWorkflowCli} from './workflow.ts';
 import {SecurityShell} from '../interactive/index.ts';
-import {runCliIfMain} from '../utils/cli.ts';
+import {cliBoolean, cliString, runCliIfMain} from '../utils/cli.ts';
 import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
 import {waitForInterruptSignal} from '../utils/signals.ts';
 
@@ -28,7 +29,7 @@ const HELP = `Usage:
   bun sp tls --domain <name> --host <hostname> [--use-system-ca|--no-use-system-ca] [--deep] [--port 443] [--json]
   bun sp doctor [--snapshot] [--update-snapshots|-u] [--fail-on-drift] [--sections vault,policy,concerns,templateDrift,bundles] [--workers <n>] [--baseline-dir <path>] [--matrix] [--branding] [--matrix-section <name>] [--json] [--benchmark] [--install-cpu <arch>] [--install-os <os>] [--root <path>]
   bun sp doctor --json | fx    # piped pagers work on Bun >= 1.3.14
-  bun sp bench [--suite doctor|field-matrix|domain-load|artifact-spec|all] [--json] [--root <path>]
+  bun sp bench [--suite doctor|field-matrix|domain-load|artifact-spec|ground-truth|all] [--json] [--root <path>]
   bun sp scan --domain <name> [--tool trivy] [--json] [-- <scanner-args...>]
   bun sp scan packages --domain <name> [--root <path>] [--deep] [--probe] [--transitive] [--path src/] [--threat-feed] [--feed-url <url>] [--fix] [--json]
   bun sp scan source --domain <name> [--path src/] [--root <path>] [--fix] [--json]
@@ -38,6 +39,9 @@ const HELP = `Usage:
   bun sp network start --all
   bun sp network stop --domain <name>
   bun sp network status --domain <name> [--json]
+  bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output json|ndjson|herdr|table] [--dry-run] [--fail-on-issue] [--seed <path>] [--seed-write <path>] [--fail-on-drift]
+  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--output ndjson] [--seed <path>] [--fail-on-drift]
+  bun sp workflow status --domain <name> [--json]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
 
@@ -176,6 +180,16 @@ async function main(): Promise<void> {
 			'host': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
 			'deep': {type: 'boolean'},
+			'scanners': {type: 'string'},
+			'interval': {type: 'string'},
+			'dry-run': {type: 'boolean'},
+			'fail-on-issue': {type: 'boolean'},
+			'seed': {type: 'string'},
+			'seed-write': {type: 'string'},
+			'fail-on-severity': {type: 'string'},
+			'tls-host': {type: 'string'},
+			'tls-port': {type: 'string'},
+			'tls-deep': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
@@ -392,13 +406,67 @@ async function main(): Promise<void> {
 			await runBenchCli({
 				suite:
 					typeof values.suite === 'string' &&
-					['doctor', 'field-matrix', 'domain-load', 'artifact-spec', 'all'].includes(values.suite)
+					[
+						'doctor',
+						'field-matrix',
+						'domain-load',
+						'artifact-spec',
+						'ground-truth',
+						'all',
+					].includes(values.suite)
 						? (values.suite as import('./bench.ts').BenchSuite)
 						: 'all',
 				json: values.json === true,
 				root: values.root,
 			});
 			return;
+		}
+		case 'workflow': {
+			const subcommand = (positionals[1] ?? 'run') as 'run' | 'start' | 'status';
+			if (subcommand !== 'run' && subcommand !== 'start' && subcommand !== 'status') {
+				console.error(
+					colorize(
+						TERMINAL.scannerFatal,
+						`[sp] workflow requires run|start|status (got ${positionals[1] ?? '(none)'})`,
+					),
+				);
+				process.exit(1);
+			}
+			const domain = values.domain;
+			if (!domain) {
+				console.error(colorize(TERMINAL.scannerFatal, '[sp] workflow requires --domain <name>'));
+				process.exit(1);
+			}
+			const scanners = cliString(values.scanners)
+				?.split(',')
+				.map(entry => entry.trim())
+				.filter(entry => entry.length > 0);
+			const intervalRaw = cliString(values.interval);
+			const tlsPortRaw = cliString(values['tls-port']);
+			const exitCode = await runWorkflowCli({
+				command: subcommand,
+				domain,
+				scanners,
+				interval: intervalRaw ? Number.parseInt(intervalRaw, 10) : undefined,
+				watch: cliBoolean(values.watch),
+				output: cliString(values.output) as
+					| import('../workflow/types.ts').WorkflowOutputFormat
+					| undefined,
+				dryRun: cliBoolean(values['dry-run']),
+				failOnIssue: cliBoolean(values['fail-on-issue']),
+				failOnDrift: cliBoolean(values['fail-on-drift']),
+				seedPath: cliString(values.seed),
+				seedWritePath: cliString(values['seed-write']),
+				failOnSeverity: cliString(values['fail-on-severity']) as
+					| import('../workflow/types.ts').WorkflowLoopOptions['failOnSeverity']
+					| undefined,
+				tlsHost: cliString(values['tls-host']),
+				tlsPort: tlsPortRaw ? Number.parseInt(tlsPortRaw, 10) : undefined,
+				tlsDeep: cliBoolean(values['tls-deep']) ?? cliBoolean(values.deep),
+				json: values.json === true,
+				registry: domainRegistry,
+			});
+			process.exit(exitCode);
 		}
 		case 'network': {
 			const subcommand = positionals[1];

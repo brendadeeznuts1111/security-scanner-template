@@ -2,10 +2,7 @@ import {afterEach, beforeEach, describe, expect, test} from 'bun:test';
 import {mkdirSync, mkdtempSync, rmSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
-import {
-	formatPackageAuthor,
-	parsePackageAuthor,
-} from '../../src/config/package-metadata.ts';
+import {formatPackageAuthor, parsePackageAuthor} from '../../src/config/package-metadata.ts';
 import {resolveSupplyChainScanIdentity} from '../../src/intel/scanner-identity.ts';
 
 test('parsePackageAuthor normalizes string and object forms', () => {

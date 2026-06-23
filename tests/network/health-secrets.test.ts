@@ -6,9 +6,7 @@ import {
 } from '../../src/network/health-secrets.ts';
 
 test('network health secret service is scoped per domain', () => {
-	expect(networkHealthSecretService('com.example.app')).toBe(
-		'supply-chain-com.example.app',
-	);
+	expect(networkHealthSecretService('com.example.app')).toBe('supply-chain-com.example.app');
 });
 
 test('health secret ref uses domain service and full secret name', () => {

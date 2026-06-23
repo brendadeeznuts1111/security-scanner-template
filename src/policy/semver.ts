@@ -78,7 +78,9 @@ export function semverConstraintsFromDocument(
 }
 
 /** Extract `[semver.packages]`, `[semver.blocked]`, and `[[semver.rule]]` from TOML. */
-export function extractSemverConfigFromToml(parsed: unknown): import('./types.ts').PolicySemverConfig {
+export function extractSemverConfigFromToml(
+	parsed: unknown,
+): import('./types.ts').PolicySemverConfig {
 	const rules = extractSemverRulesFromToml(parsed);
 	if (typeof parsed !== 'object' || parsed === null) {
 		return {rules};

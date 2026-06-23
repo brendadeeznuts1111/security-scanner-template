@@ -113,10 +113,7 @@ export function formatNetworkLoopStatusLine(
 	);
 	const endpoints = paint(matrix.endpoints, ` endpoints=${input.endpoints}`);
 	const routes = paint(matrix.routes, ` health_routes=${input.healthRoutes}`);
-	const health = paint(
-		healthStatusColor(input.health, matrix),
-		` health=${input.health}`,
-	);
+	const health = paint(healthStatusColor(input.health, matrix), ` health=${input.health}`);
 	const probes = paint(matrix.network, ` probes=${input.probesOk}/${input.probesTotal}`);
 	const latency = paint(matrix.latency, ` latency=${input.latencyMs}ms`);
 	const delta = input.deltaLine ? ` ${paint(matrix.delta, input.deltaLine)}` : '';

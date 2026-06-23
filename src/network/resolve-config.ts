@@ -122,9 +122,7 @@ export function resolveNetworkConfig(input: {
 }
 
 /** Map resolved config to NetworkLoop constructor options. */
-export function resolvedNetworkToLoopOptions(
-	resolved: ResolvedNetworkConfig,
-): Pick<
+export function resolvedNetworkToLoopOptions(resolved: ResolvedNetworkConfig): Pick<
 	ResolvedNetworkConfig,
 	| 'healthUrl'
 	| 'healthUrlSecret'

@@ -79,9 +79,9 @@ test('remediation plan queues upgrades, constraints, and bundle hints', () => {
 	expect(plan.queue.some(action => action.layer === 'packages' && action.kind === 'upgrade')).toBe(
 		true,
 	);
-	expect(plan.queue.some(action => action.layer === 'constraints' && action.kind === 'remove')).toBe(
-		true,
-	);
+	expect(
+		plan.queue.some(action => action.layer === 'constraints' && action.kind === 'remove'),
+	).toBe(true);
 	expect(plan.queue.some(action => action.layer === 'bundle' && action.kind === 'manual')).toBe(
 		true,
 	);

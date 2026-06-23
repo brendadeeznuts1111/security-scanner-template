@@ -13,7 +13,10 @@ beforeEach(() => {
 	writeFileSync(path.join(testRoot, 'package.json'), '{"name":"fixture","dependencies":{}}\n');
 	writeFileSync(path.join(testRoot, 'bun.lock'), '{"lockfileVersion":1}\n');
 	writeFileSync(path.join(distDir, 'index.js'), 'export {};\n');
-	writeFileSync(path.join(testRoot, 'security.policy.toml'), '[policy.default]\nfatal = ["malware"]\n');
+	writeFileSync(
+		path.join(testRoot, 'security.policy.toml'),
+		'[policy.default]\nfatal = ["malware"]\n',
+	);
 });
 
 afterEach(() => {

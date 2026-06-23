@@ -5,10 +5,7 @@ import {resolveInstallWatchPaths} from '../utils/install-runtime.ts';
 import {createAsyncDebouncer} from '../utils/debounce.ts';
 import {onInterruptSignals, waitForInterruptSignal} from '../utils/signals.ts';
 import {resolveProjectRootFromPath, resolveSupplyChainScanPath} from './supply-chain-path.ts';
-import {
-	runSupplyChainDeepScanLoop,
-	type SupplyChainLoopOptions,
-} from './supply-chain-loop.ts';
+import {runSupplyChainDeepScanLoop, type SupplyChainLoopOptions} from './supply-chain-loop.ts';
 
 export interface SupplyChainWatchOptions extends SupplyChainLoopOptions {
 	debounceMs?: number;
@@ -57,8 +54,7 @@ function resolveBundleWatchPaths(scanPath: string): string[] {
 
 export function resolveSupplyChainWatchPaths(options: SupplyChainWatchOptions): string[] {
 	const scanPath = resolveSupplyChainScanPath(options.path);
-	const projectRoot =
-		options.projectRoot ?? resolveProjectRootFromPath(scanPath) ?? process.cwd();
+	const projectRoot = options.projectRoot ?? resolveProjectRootFromPath(scanPath) ?? process.cwd();
 	const paths = new Set<string>([
 		...resolveBundleWatchPaths(scanPath),
 		...resolveInstallWatchPaths(projectRoot),
@@ -108,9 +104,7 @@ export function startSupplyChainWatch(options: SupplyChainWatchOptions): SupplyC
 		}
 	}
 
-	console.error(
-		`[supply-chain watch] watching ${watchers.length} file(s). Press Ctrl+C to stop.`,
-	);
+	console.error(`[supply-chain watch] watching ${watchers.length} file(s). Press Ctrl+C to stop.`);
 
 	const shutdown = () => {
 		for (const w of watchers) {
@@ -127,9 +121,7 @@ export function startSupplyChainWatch(options: SupplyChainWatchOptions): SupplyC
 	return {watchers, abort: shutdown, disposeSignals};
 }
 
-export async function watchSupplyChainDeepScan(
-	options: SupplyChainWatchOptions,
-): Promise<void> {
+export async function watchSupplyChainDeepScan(options: SupplyChainWatchOptions): Promise<void> {
 	await runSupplyChainDeepScanLoop({...options, fix: options.fix ?? false});
 	const session = startSupplyChainWatch(options);
 	try {

@@ -89,17 +89,11 @@ export function supplyChainScanHasBlockingFindings(report: SupplyChainDeepScanRe
 	if (report.bundle.findings.some(f => f.severity === 'critical' || f.severity === 'high')) {
 		return true;
 	}
-	if (
-		report.packages?.violations.some(
-			v => v.severity === 'critical' || v.severity === 'high',
-		)
-	) {
+	if (report.packages?.violations.some(v => v.severity === 'critical' || v.severity === 'high')) {
 		return true;
 	}
 	if (
-		report.constraints?.violations.some(
-			v => v.severity === 'critical' || v.severity === 'high',
-		)
+		report.constraints?.violations.some(v => v.severity === 'critical' || v.severity === 'high')
 	) {
 		return true;
 	}

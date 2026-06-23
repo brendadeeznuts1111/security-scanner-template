@@ -7,7 +7,7 @@ import {describe, expect, test} from 'bun:test';
 
 const sample = {a: 'hello', b: 'world'};
 // Numeric object literals stringify keys at runtime ("1", not 1).
-const numbered = {'1': 'hello', b: 'world'};
+const numbered = {'1': 'hello', 'b': 'world'};
 const values = {a: 'foo', b: 'bar', c: 'baz'};
 const nested = {message: {hello: 'world'}};
 const nestedArray = {message: [{hello: 'world'}]};

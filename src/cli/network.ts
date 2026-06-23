@@ -1,13 +1,16 @@
+/**
+ * Network monitor CLI (`sp network start|stop|status`).
+ *
+ * @see https://github.com/oven-sh/bun/blob/main/docs/runtime/watch.mdx
+ * @see https://github.com/Effect-TS/effect/blob/main/packages/effect/src/Schedule.ts
+ */
 import {parseArgs} from 'util';
 import {colorize, TERMINAL} from '../color/index.ts';
 import type {DomainRegistry} from '../config/registry.ts';
 import {domainRegistry} from '../config/registry.ts';
 import {defaultNetworkBaselinePath} from '../intel/network-baseline.ts';
 import {NetworkDriftFailure, NetworkHealthFailure} from '../network/loop.ts';
-import {
-	resolveNetworkConfig,
-	type NetworkConfigOverrides,
-} from '../network/resolve-config.ts';
+import {resolveNetworkConfig, type NetworkConfigOverrides} from '../network/resolve-config.ts';
 import {Service} from '../service/index.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 import {waitForInterruptSignal} from '../utils/signals.ts';
@@ -37,10 +40,7 @@ function networkOverridesFromCli(options: NetworkCliOptions): NetworkConfigOverr
 	};
 }
 
-async function resolveService(
-	domain: string,
-	registry: DomainRegistry,
-): Promise<Service> {
+async function resolveService(domain: string, registry: DomainRegistry): Promise<Service> {
 	await registry.ensureDomain(domain);
 	if (!registry.has(domain)) {
 		throw new Error(`Unknown domain: ${domain}`);
@@ -76,7 +76,10 @@ export async function runNetworkCli(options: NetworkCliOptions): Promise<number>
 					const domains = listNetworkDomains(registry);
 					if (domains.length === 0) {
 						console.error(
-							colorize(TERMINAL.scannerWarn, '[sp network] no domains with service.network.enabled'),
+							colorize(
+								TERMINAL.scannerWarn,
+								'[sp network] no domains with service.network.enabled',
+							),
 						);
 						return 1;
 					}
@@ -94,9 +97,7 @@ export async function runNetworkCli(options: NetworkCliOptions): Promise<number>
 							},
 						});
 						services.push(service);
-						console.error(
-							colorize(TERMINAL.scannerOk, `[sp network] started ${domain}`),
-						);
+						console.error(colorize(TERMINAL.scannerOk, `[sp network] started ${domain}`));
 					}
 					console.error(colorize(TERMINAL.scannerDim, '[sp network] press Ctrl+C to stop'));
 					await waitForInterruptSignal();
@@ -175,8 +176,7 @@ export async function runNetworkCli(options: NetworkCliOptions): Promise<number>
 				await service.initialize();
 				const status = service.networkMonitorStatus();
 				const baseline =
-					status.baselinePath ??
-					defaultNetworkBaselinePath(options.domain, registry.root);
+					status.baselinePath ?? defaultNetworkBaselinePath(options.domain, registry.root);
 				if (options.json) {
 					writeJsonStdout({...status, baselinePath: baseline});
 				} else {
@@ -238,18 +238,18 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			domain: {type: 'string'},
+			'domain': {type: 'string'},
 			'health-url': {type: 'string'},
 			'health-url-secret': {type: 'string'},
-			baseline: {type: 'string'},
+			'baseline': {type: 'string'},
 			'update-baseline': {type: 'boolean'},
 			'fail-on-health': {type: 'boolean'},
 			'fail-on-drift': {type: 'boolean'},
-			json: {type: 'boolean'},
+			'json': {type: 'boolean'},
 			'herdr-tab': {type: 'boolean'},
 			'no-color': {type: 'boolean'},
-			all: {type: 'boolean'},
-			help: {type: 'boolean', short: 'h'},
+			'all': {type: 'boolean'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});

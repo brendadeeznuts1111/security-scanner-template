@@ -124,10 +124,7 @@ export async function runScanPackagesCli(options: ScanPackagesCliOptions): Promi
 			const applied = await applyPlannedUpgrades(root, plans);
 			for (const result of applied.results) {
 				console.error(
-					colorize(
-						result.ok ? TERMINAL.scannerOk : TERMINAL.scannerFatal,
-						`    ${result.message}`,
-					),
+					colorize(result.ok ? TERMINAL.scannerOk : TERMINAL.scannerFatal, `    ${result.message}`),
 				);
 			}
 		}

@@ -76,13 +76,12 @@ test('probe api catalog lists merged endpoint targets', async () => {
 
 	server = Bun.serve({
 		port: 0,
-		fetch: async req => (await handleEndpointProbeApi(req, ctx)) ?? new Response('nope', {status: 404}),
+		fetch: async req =>
+			(await handleEndpointProbeApi(req, ctx)) ?? new Response('nope', {status: 404}),
 	});
 
 	try {
-		const catalog = await fetch(
-			`http://127.0.0.1:${server.port}${ENDPOINT_PROBE_CATALOG_PATH}`,
-		);
+		const catalog = await fetch(`http://127.0.0.1:${server.port}${ENDPOINT_PROBE_CATALOG_PATH}`);
 		expect(catalog.status).toBe(200);
 		const body = (await catalog.json()) as {count: number; targets: {url: string}[]};
 		expect(body.count).toBeGreaterThanOrEqual(2);

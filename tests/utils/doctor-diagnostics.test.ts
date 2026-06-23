@@ -30,6 +30,18 @@ test('formatDoctorDiagnosticsTable includes nanoseconds and stringWidth rows', a
 	expect(table).toContain('bun:test Core expect matchers');
 	expect(table).toContain('bun create artifacts');
 	expect(table).toContain('bun init domains');
+	expect(table).toContain('DD-Loop');
+	expect(table).toContain('repo refs');
+	expect(table).toContain('ground-truth');
+});
+
+test('collectDoctorDiagnostics includes ground truth repo audit and goal', async () => {
+	const diagnostics = await collectDoctorDiagnostics();
+	expect(diagnostics.groundTruth.ok).toBe(true);
+	expect(diagnostics.groundTruth.entryCount).toBeGreaterThan(0);
+	expect(diagnostics.groundTruth.refCount).toBeGreaterThan(0);
+	expect(diagnostics.groundTruthGoal.ok).toBe(true);
+	expect(diagnostics.groundTruthGoal.targets.length).toBeGreaterThan(3);
 });
 
 test('collectDoctorDiagnostics includes bun wrapper and test catalog audits', async () => {
@@ -39,6 +51,8 @@ test('collectDoctorDiagnostics includes bun wrapper and test catalog audits', as
 	expect(diagnostics.bunTest.groups.length).toBeGreaterThan(3);
 	expect(diagnostics.bunCreate.ok).toBe(true);
 	expect(diagnostics.bunInit.ok).toBe(true);
+	expect(diagnostics.loops.ok).toBe(true);
+	expect(diagnostics.loops.seeds.length).toBeGreaterThan(0);
 	expect(diagnostics.utilities.deepEqualsAvailable).toBe(true);
 	expect(diagnostics.utilities.peekAvailable).toBe(true);
 	expect(diagnostics.utilities.escapeHtmlAvailable).toBe(true);

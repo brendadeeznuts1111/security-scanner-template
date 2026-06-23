@@ -88,10 +88,22 @@ export async function loadProjectPolicies(root: string): Promise<PolicyDocument>
 			allow: [...(acc.constraints?.allow ?? []), ...(doc.constraints?.allow ?? [])],
 			block: [...(acc.constraints?.block ?? []), ...(doc.constraints?.block ?? [])],
 			require: [...(acc.constraints?.require ?? []), ...(doc.constraints?.require ?? [])],
-			blockImport: [...(acc.constraints?.blockImport ?? []), ...(doc.constraints?.blockImport ?? [])],
-			blockLicense: [...(acc.constraints?.blockLicense ?? []), ...(doc.constraints?.blockLicense ?? [])],
-			allowLicense: [...(acc.constraints?.allowLicense ?? []), ...(doc.constraints?.allowLicense ?? [])],
-			blockSource: [...(acc.constraints?.blockSource ?? []), ...(doc.constraints?.blockSource ?? [])],
+			blockImport: [
+				...(acc.constraints?.blockImport ?? []),
+				...(doc.constraints?.blockImport ?? []),
+			],
+			blockLicense: [
+				...(acc.constraints?.blockLicense ?? []),
+				...(doc.constraints?.blockLicense ?? []),
+			],
+			allowLicense: [
+				...(acc.constraints?.allowLicense ?? []),
+				...(doc.constraints?.allowLicense ?? []),
+			],
+			blockSource: [
+				...(acc.constraints?.blockSource ?? []),
+				...(doc.constraints?.blockSource ?? []),
+			],
 		};
 		return {
 			default: {...acc.default, ...doc.default},

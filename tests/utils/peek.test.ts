@@ -2,12 +2,7 @@
  * @see https://bun.com/docs/runtime/utils#bun-peek
  */
 import {expect, test} from 'bun:test';
-import {
-	BUN_PEEK_DOCS_URL,
-	isPeekAvailable,
-	peekStatus,
-	peekValue,
-} from '../../src/utils/peek.ts';
+import {BUN_PEEK_DOCS_URL, isPeekAvailable, peekStatus, peekValue} from '../../src/utils/peek.ts';
 
 test('peek reads fulfilled promises without await', () => {
 	const promise = Promise.resolve(true);

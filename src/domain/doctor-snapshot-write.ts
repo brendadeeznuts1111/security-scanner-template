@@ -3,10 +3,7 @@ import {rename} from 'fs/promises';
 const domainLocks = new Map<string, Promise<void>>();
 
 /** Per-domain write lock for parallel snapshot updates (spec §14.3). */
-export async function withDomainWriteLock<T>(
-	domainId: string,
-	fn: () => Promise<T>,
-): Promise<T> {
+export async function withDomainWriteLock<T>(domainId: string, fn: () => Promise<T>): Promise<T> {
 	const previous = domainLocks.get(domainId) ?? Promise.resolve();
 	let release!: () => void;
 	const gate = new Promise<void>(resolve => {

@@ -4,10 +4,7 @@
  * @see https://bun.com/docs/runtime/utils
  * Source: `oven-sh/bun` → `docs/runtime/utils.mdx`
  */
-import {
-	auditBunRuntimeCatalog,
-	type BunRuntimeCatalogAudit,
-} from './bun-runtime-catalog.ts';
+import {auditBunRuntimeCatalog, type BunRuntimeCatalogAudit} from './bun-runtime-catalog.ts';
 
 export const BUN_UTILS_DOCS_URL = 'https://bun.com/docs/runtime/utils';
 

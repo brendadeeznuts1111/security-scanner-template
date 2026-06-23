@@ -3,13 +3,13 @@ import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
 import {auditBundleNetwork} from '../../src/intel/network-audit.ts';
-import {
-	diffNetworkBaseline,
-	NETWORK_BASELINE_VERSION,
-} from '../../src/intel/network-baseline.ts';
+import {diffNetworkBaseline, NETWORK_BASELINE_VERSION} from '../../src/intel/network-baseline.ts';
 import {resolveHealthSecretRef} from '../../src/network/health-secrets.ts';
 import {formatNetworkLoopStatusLine} from '../../src/cli/supply-chain-network-colors.ts';
-import {buildHerdrDoctorTabDocument, formatHerdrDoctorTabText} from '../../src/cli/supply-chain-network-herdr.ts';
+import {
+	buildHerdrDoctorTabDocument,
+	formatHerdrDoctorTabText,
+} from '../../src/cli/supply-chain-network-herdr.ts';
 
 test('auditBundleNetwork extracts unique urls and health routes', async () => {
 	const root = mkdtempSync(path.join(tmpdir(), 'net-audit-'));
