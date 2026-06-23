@@ -121,7 +121,7 @@ test('--healthcheck reports unreachable threat feed as unhealthy', async () => {
 	expect(result.exitCode).not.toBe(0);
 });
 
-test('--healthcheck shows live spinner progress when stdout is a TTY', async () => {
+test('--healthcheck shows live spinner progress when stderr is a TTY', async () => {
 	const {server: registryServer, url: registryUrl} = startRegistryServer(200, 'OK');
 	const scriptPath = `/tmp/scanner-healthcheck-tty-${crypto.randomUUID()}.ts`;
 	const errPath = `/tmp/scanner-healthcheck-tty-err-${crypto.randomUUID()}.txt`;
@@ -129,7 +129,7 @@ test('--healthcheck shows live spinner progress when stdout is a TTY', async () 
 	await Bun.write(
 		scriptPath,
 		`
-		(process.stdout as unknown as {isTTY: boolean}).isTTY = true;
+		(process.stderr as unknown as {isTTY: boolean}).isTTY = true;
 		await import('${srcIndexPath}');
 		`,
 	);

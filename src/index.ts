@@ -4,6 +4,10 @@ import {mkdir} from 'fs/promises';
 import path from 'path';
 import {isOsCredentialStoreAvailable, detectSecretsBackend} from './secrets-backend.ts';
 import {isJSONLSource, parseJSONLFeed, streamJSONLFeed} from './provider/feed-jsonl.ts';
+import {colorize, TERMINAL} from './color/index.ts';
+import {sleep} from './utils/rate-limit.ts';
+import {filePathFromModuleUrl} from './utils/runtime.ts';
+import {createTimer} from './utils/timing.ts';
 
 const ThreatCategorySchema = z.enum([
 	'protestware',
@@ -64,7 +68,9 @@ const LOCAL_THREAT_FEED: ThreatFeedItem[] = [
 	// ...
 ];
 
-const DEFAULT_RULES_PATH = new URL('../rules/security-rules.json', import.meta.url).pathname;
+const DEFAULT_RULES_PATH = filePathFromModuleUrl(
+	new URL('../rules/security-rules.json', import.meta.url),
+);
 
 let defaultRulesCache: Promise<{rules: ThreatFeedItem[]; allowlist: AllowlistItem[]}> | null = null;
 
@@ -182,7 +188,7 @@ function getTokenProvider(): TokenProvider {
 	if (raw && raw !== 'bun-secrets') {
 		console.error(
 			colorize(
-				COLOR_WARN,
+				TERMINAL.scannerWarn,
 				`[scanner] unknown token provider "${raw}", falling back to bun-secrets`,
 			),
 		);
@@ -223,7 +229,7 @@ async function getThreatFeedToken(): Promise<string | null> {
 		if (!token) {
 			console.error(
 				colorize(
-					COLOR_WARN,
+					TERMINAL.scannerWarn,
 					'[scanner] THREAT_FEED_TOKEN_PROVIDER=env but THREAT_FEED_TOKEN is not set; sending unauthenticated request',
 				),
 			);
@@ -238,7 +244,7 @@ async function getThreatFeedToken(): Promise<string | null> {
 	if (!(await isOsCredentialStoreAvailable())) {
 		console.error(
 			colorize(
-				COLOR_ERROR,
+				TERMINAL.scannerFatal,
 				'[scanner] bun-secrets provider is selected but the OS credential store is unreachable. Set THREAT_FEED_TOKEN_PROVIDER=env and provide THREAT_FEED_TOKEN.',
 			),
 		);
@@ -251,7 +257,7 @@ async function getThreatFeedToken(): Promise<string | null> {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
 			colorize(
-				COLOR_WARN,
+				TERMINAL.scannerWarn,
 				`[scanner] could not read threat-feed token from Bun.secrets (${service}/${name}): ${message}`,
 			),
 		);
@@ -271,40 +277,17 @@ function getLogPath(): string | null {
 	return path ? path : null;
 }
 
-// --- Colorized stderr output via Bun.color (auto-detects terminal support) ---
-// Bun.color(input, "ansi") returns "" when stdout has no color support, so
-// piping to a file produces plain text with zero overhead.
-
-const ANSI_RESET = '\x1b[0m';
-
-function color(hex: string): string {
-	// Bun.color returns null on parse failure; coerce to "" for safety.
-	return Bun.color(hex, 'ansi') ?? '';
-}
-
-function colorize(hex: string, text: string): string {
-	const code = color(hex);
-	return code ? `${code}${text}${ANSI_RESET}` : text;
-}
-
-const COLOR_FATAL = '#ff4444'; // red
-const COLOR_WARN = '#ffcc33'; // amber
-const COLOR_ALLOWED = '#33dd66'; // green
-const COLOR_INFO = '#33aaff'; // cyan
-const COLOR_DIM = '#888888'; // gray
-const COLOR_ERROR = '#ff4444'; // red
-
 function formatEventForStderr(event: ScannerEvent): string {
 	switch (event.type) {
 		case 'scan.start':
-			return colorize(COLOR_INFO, `[scanner] scan started: ${event.packageCount} package(s)`);
+			return colorize(TERMINAL.scannerInfo, `[scanner] scan started: ${event.packageCount} package(s)`);
 		case 'feed.loaded':
 			return colorize(
-				COLOR_DIM,
+				TERMINAL.scannerDim,
 				`[scanner] feed loaded (${event.source}): ${event.ruleCount} rule(s), ${event.allowlistCount} allowlist entr${event.allowlistCount === 1 ? 'y' : 'ies'}`,
 			);
 		case 'threat.detected': {
-			const c = event.level === 'fatal' ? COLOR_FATAL : COLOR_WARN;
+			const c = event.level === 'fatal' ? TERMINAL.scannerFatal : TERMINAL.scannerWarn;
 			const label = event.level.toUpperCase();
 			const pkg = event.version ? `${event.package}@${event.version}` : event.package;
 			const cats = event.categories.join(', ');
@@ -314,12 +297,12 @@ function formatEventForStderr(event: ScannerEvent): string {
 		case 'threat.allowed': {
 			const pkg = event.version ? `${event.package}@${event.version}` : event.package;
 			const reason = event.reason ? ` — ${event.reason}` : '';
-			return colorize(COLOR_ALLOWED, `[scanner] ALLOWED ${pkg}${reason}`);
+			return colorize(TERMINAL.scannerOk, `[scanner] ALLOWED ${pkg}${reason}`);
 		}
 		case 'scan.complete': {
 			const dryRunNote = event.dryRun ? ' (dry run)' : '';
 			return colorize(
-				COLOR_INFO,
+				TERMINAL.scannerInfo,
 				`[scanner] scan complete${dryRunNote}: ${event.advisoryCount} advisory(ies), ${event.allowedCount} allowed (${event.durationMs}ms)`,
 			);
 		}
@@ -417,7 +400,7 @@ async function emitEvent(event: ScannerEvent): Promise<void> {
 			await writer.flush();
 		} catch (error) {
 			// Never let a logging failure crash the scan / block installation.
-			console.error(colorize(COLOR_ERROR, `[scanner] failed to write event log: ${error}`));
+			console.error(colorize(TERMINAL.scannerFatal, `[scanner] failed to write event log: ${error}`));
 		}
 	}
 }
@@ -442,7 +425,7 @@ async function fetchWithTimeoutAndRetry(
 			clearTimeout(timeoutId);
 			lastError = error instanceof Error ? error : new Error(String(error));
 			if (attempt < retries) {
-				await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+				await sleep(250 * (attempt + 1));
 			}
 		}
 	}
@@ -558,7 +541,7 @@ async function fetchRemoteThreatFeed(
 	if (cached) {
 		const ageMs = Date.now() - cached.fetchedAt;
 		console.error(
-			colorize(COLOR_INFO, `[scanner] using cached threat feed (${Math.round(ageMs / 1000)}s old)`),
+			colorize(TERMINAL.scannerInfo, `[scanner] using cached threat feed (${Math.round(ageMs / 1000)}s old)`),
 		);
 		// Refresh the cache in the background so the next scan has fresh data.
 		fetchRemoteThreatFeedDirect(url)
@@ -664,7 +647,7 @@ async function loadDefaultRulesInternal(): Promise<{
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
 			colorize(
-				COLOR_ERROR,
+				TERMINAL.scannerFatal,
 				`[scanner] failed to load default rules from ${DEFAULT_RULES_PATH}: ${message}`,
 			),
 		);
@@ -858,7 +841,7 @@ export const scannerCapabilities = {
 export const scanner: Bun.Security.Scanner = {
 	version: '1',
 	async scan({packages}) {
-		const start = performance.now();
+		const timer = createTimer();
 		const {rules, allowlist} = await fetchThreatFeed();
 
 		await emitEvent({
@@ -931,7 +914,7 @@ export const scanner: Bun.Security.Scanner = {
 			type: 'scan.complete',
 			advisoryCount: results.length,
 			allowedCount: allowedPackages.length,
-			durationMs: Math.round(performance.now() - start),
+			durationMs: timer.elapsedMs(),
 			timestamp: new Date().toISOString(),
 			dryRun,
 		});
@@ -959,7 +942,7 @@ export const scanner: Bun.Security.Scanner = {
 
 type RegistryAuthType = 'bearer' | 'basic';
 
-const PACKAGE_JSON_PATH = new URL('../package.json', import.meta.url).pathname;
+const PACKAGE_JSON_PATH = filePathFromModuleUrl(new URL('../package.json', import.meta.url));
 
 async function getPublishRegistry(): Promise<string | null> {
 	try {
@@ -1025,7 +1008,7 @@ async function runRegistryCheck(): Promise<void> {
 	if (!registryUrl) {
 		console.error(
 			colorize(
-				COLOR_ERROR,
+				TERMINAL.scannerFatal,
 				'[scanner] no registry URL configured. Set --registry-url, REGISTRY_URL, or publishConfig.registry in package.json',
 			),
 		);
@@ -1037,34 +1020,34 @@ async function runRegistryCheck(): Promise<void> {
 	const headers = buildRegistryAuthHeaders(authType, credentials);
 	const hasCredentials = Object.keys(headers).length > 0;
 
-	console.error(colorize(COLOR_INFO, `[scanner] checking registry: ${registryUrl}`));
+	console.error(colorize(TERMINAL.scannerInfo, `[scanner] checking registry: ${registryUrl}`));
 
 	try {
 		const response = await fetchWithTimeoutAndRetry(registryUrl, 5000, 1, headers);
 		if (response.ok) {
-			console.error(colorize(COLOR_ALLOWED, `[scanner] registry reachable (${response.status})`));
+			console.error(colorize(TERMINAL.scannerOk, `[scanner] registry reachable (${response.status})`));
 			if (hasCredentials) {
 				console.error(
 					colorize(
-						COLOR_ALLOWED,
+						TERMINAL.scannerOk,
 						`[scanner] registry ${formatRegistryAuthMethod(authType)} accepted`,
 					),
 				);
 			} else {
 				console.error(
-					colorize(COLOR_WARN, '[scanner] no registry credentials set; publish will fail in CI'),
+					colorize(TERMINAL.scannerWarn, '[scanner] no registry credentials set; publish will fail in CI'),
 				);
 			}
 			process.exit(0);
 		}
 		if (response.status === 401) {
-			console.error(colorize(COLOR_ERROR, '[scanner] registry returned 401 Unauthorized'));
+			console.error(colorize(TERMINAL.scannerFatal, '[scanner] registry returned 401 Unauthorized'));
 			if (!hasCredentials) {
-				console.error(colorize(COLOR_WARN, '[scanner] no registry credentials set'));
+				console.error(colorize(TERMINAL.scannerWarn, '[scanner] no registry credentials set'));
 			} else {
 				console.error(
 					colorize(
-						COLOR_WARN,
+						TERMINAL.scannerWarn,
 						`[scanner] provided ${formatRegistryAuthMethod(authType)} was rejected`,
 					),
 				);
@@ -1073,14 +1056,14 @@ async function runRegistryCheck(): Promise<void> {
 		}
 		console.error(
 			colorize(
-				COLOR_ERROR,
+				TERMINAL.scannerFatal,
 				`[scanner] registry returned ${response.status} ${response.statusText}`,
 			),
 		);
 		process.exit(1);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		console.error(colorize(COLOR_ERROR, `[scanner] registry check failed: ${message}`));
+		console.error(colorize(TERMINAL.scannerFatal, `[scanner] registry check failed: ${message}`));
 		process.exit(1);
 	}
 }
@@ -1254,17 +1237,18 @@ async function getHealthStatus(): Promise<HealthStatus> {
 }
 
 async function withSpinner<T>(message: string, fn: () => Promise<T>): Promise<T> {
-	if (process.stdout.isTTY) {
+	const showProgress = Boolean(process.stderr.isTTY);
+	if (showProgress) {
 		process.stderr.write(`${message}… `);
 	}
 	try {
 		const result = await fn();
-		if (process.stdout.isTTY) {
+		if (showProgress) {
 			process.stderr.write('✅\n');
 		}
 		return result;
 	} catch (error) {
-		if (process.stdout.isTTY) {
+		if (showProgress) {
 			process.stderr.write('❌\n');
 		}
 		throw error;
@@ -1278,8 +1262,8 @@ async function runHealthCheck(): Promise<void> {
 	let secretsBackend: SecretsBackendHealth;
 	let registry: RegistryHealth;
 
-	if (process.stdout.isTTY) {
-		console.error(colorize(COLOR_INFO, 'Running health checks…'));
+	if (process.stderr.isTTY) {
+		console.error(colorize(TERMINAL.scannerInfo, 'Running health checks…'));
 		threatFeed = await withSpinner('🔍 Threat feed', getThreatFeedHealth);
 		secretsBackend = await withSpinner('🔐 Secrets backend', getSecretsBackendHealth);
 		registry = await withSpinner('📦 Registry', getRegistryHealth);
@@ -1337,7 +1321,7 @@ async function testKeychainWrite(
 		if (!deleted) {
 			console.error(
 				colorize(
-					COLOR_WARN,
+					TERMINAL.scannerWarn,
 					`[scanner] keychain write probe cleanup returned false (${service}/${STORE_TEST_TOKEN_NAME}); the probe entry may remain in the keychain`,
 				),
 			);
@@ -1346,7 +1330,7 @@ async function testKeychainWrite(
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
 			colorize(
-				COLOR_WARN,
+				TERMINAL.scannerWarn,
 				`[scanner] keychain write probe cleanup failed (${service}/${STORE_TEST_TOKEN_NAME}): ${message}`,
 			),
 		);
@@ -1370,7 +1354,7 @@ async function runTokenCli(): Promise<void> {
 		if (provider !== 'bun-secrets') {
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					`[scanner] token CLI commands only support the bun-secrets provider (got ${provider}). Switch provider or omit the token CLI flag.`,
 				),
 			);
@@ -1384,7 +1368,7 @@ async function runTokenCli(): Promise<void> {
 	if (typeof Bun.secrets === 'undefined') {
 		console.error(
 			colorize(
-				COLOR_ERROR,
+				TERMINAL.scannerFatal,
 				'[scanner] Bun.secrets is not available in this Bun runtime; upgrade to a version that supports it (see https://bun.com/docs/runtime/secrets).',
 			),
 		);
@@ -1395,7 +1379,7 @@ async function runTokenCli(): Promise<void> {
 		if (!name) {
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					'[scanner] --store-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
 				),
 			);
@@ -1409,13 +1393,13 @@ async function runTokenCli(): Promise<void> {
 		if (!probe.ok) {
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					`[scanner] keychain write probe failed (${service}/${STORE_TEST_TOKEN_NAME}): ${probe.error}`,
 				),
 			);
 			console.error(
 				colorize(
-					COLOR_WARN,
+					TERMINAL.scannerWarn,
 					'[scanner] Check that your keychain/keyring is unlocked and the scanner has permission to write credentials.',
 				),
 			);
@@ -1438,7 +1422,7 @@ async function runTokenCli(): Promise<void> {
 			// interactive paste, and it doesn't block until EOF like Bun.stdin.text().
 			console.error(
 				colorize(
-					COLOR_INFO,
+					TERMINAL.scannerInfo,
 					`Enter token for ${service}/${name} (paste, then press Enter on a blank line or Ctrl+D to finish):`,
 				),
 			);
@@ -1457,7 +1441,7 @@ async function runTokenCli(): Promise<void> {
 		}
 
 		if (!value || value.length === 0) {
-			console.error(colorize(COLOR_ERROR, '[scanner] no token provided, aborting.'));
+			console.error(colorize(TERMINAL.scannerFatal, '[scanner] no token provided, aborting.'));
 			process.exit(1);
 		}
 
@@ -1467,14 +1451,14 @@ async function runTokenCli(): Promise<void> {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					`[scanner] could not store token in keychain (${service}/${name}): ${message}`,
 				),
 			);
 			process.exit(1);
 		}
 		console.error(
-			colorize(COLOR_ALLOWED, `[scanner] token stored in keychain (${service}/${name})`),
+			colorize(TERMINAL.scannerOk, `[scanner] token stored in keychain (${service}/${name})`),
 		);
 		process.exit(0);
 	}
@@ -1483,7 +1467,7 @@ async function runTokenCli(): Promise<void> {
 		if (!name) {
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					'[scanner] --clear-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
 				),
 			);
@@ -1497,7 +1481,7 @@ async function runTokenCli(): Promise<void> {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					`[scanner] could not delete token from keychain (${service}/${name}): ${message}`,
 				),
 			);
@@ -1505,10 +1489,10 @@ async function runTokenCli(): Promise<void> {
 		}
 		if (deleted) {
 			console.error(
-				colorize(COLOR_ALLOWED, `[scanner] token removed from keychain (${service}/${name})`),
+				colorize(TERMINAL.scannerOk, `[scanner] token removed from keychain (${service}/${name})`),
 			);
 		} else {
-			console.error(colorize(COLOR_WARN, `[scanner] no token found for ${service}/${name}`));
+			console.error(colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`));
 		}
 		process.exit(0);
 	}
@@ -1517,7 +1501,7 @@ async function runTokenCli(): Promise<void> {
 		if (!name) {
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					'[scanner] --list-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
 				),
 			);
@@ -1534,7 +1518,7 @@ async function runTokenCli(): Promise<void> {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(
 				colorize(
-					COLOR_ERROR,
+					TERMINAL.scannerFatal,
 					`[scanner] could not query keychain for ${service}/${name}: ${message}`,
 				),
 			);
@@ -1543,10 +1527,10 @@ async function runTokenCli(): Promise<void> {
 
 		if (exists) {
 			console.error(
-				colorize(COLOR_ALLOWED, `[scanner] token present in keychain (${service}/${name})`),
+				colorize(TERMINAL.scannerOk, `[scanner] token present in keychain (${service}/${name})`),
 			);
 		} else {
-			console.error(colorize(COLOR_WARN, `[scanner] no token found for ${service}/${name}`));
+			console.error(colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`));
 		}
 		process.exit(0);
 	}

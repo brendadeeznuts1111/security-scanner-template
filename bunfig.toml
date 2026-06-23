@@ -1,2 +1,11 @@
 [test]
 root = "tests"
+
+# Prevent orphaned scanner processes when the parent exits (CI / daemon use).
+[run]
+no_orphans = true
+
+# Optional: shared global virtual store for --linker=isolated (Bun >=1.3.14).
+# Warm CI installs symlink from <cache>/links/ instead of clonefileat per file.
+# [install]
+# globalStore = true
