@@ -27,6 +27,7 @@ import {Service} from '../service/index.ts';
 
 import {ToolRunner} from '../scan/tools.ts';
 import {spawnInherit} from '../utils/process.ts';
+import {onInterruptSignals} from '../utils/signals.ts';
 import {createLineReader, type LineReader} from './readline.ts';
 import {parseCommandLine} from './parse.ts';
 import {ShellTerminal} from './terminal.ts';
@@ -639,9 +640,7 @@ export class SecurityShell {
 
 		this.terminal.writeln(colorize(TERMINAL.scannerDim, 'Following audit log (Ctrl+C to stop)…'));
 
-		const onSigint = () => this.stopTail();
-		process.on('SIGINT', onSigint);
-		process.on('SIGTERM', onSigint);
+		const disposeSignals = onInterruptSignals(() => this.stopTail());
 
 		try {
 			await new Promise<void>(resolve => {
@@ -669,8 +668,7 @@ export class SecurityShell {
 				);
 			});
 		} finally {
-			process.off('SIGINT', onSigint);
-			process.off('SIGTERM', onSigint);
+			disposeSignals();
 		}
 
 		this.terminal.writeln(colorize(TERMINAL.scannerDim, 'Stopped following audit log.'));

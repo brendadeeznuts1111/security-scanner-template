@@ -132,6 +132,22 @@ export {
 	type SpawnWritable,
 } from './process.ts';
 export {
+	BUN_CTRL_C_DOCS_URL,
+	BUN_OS_SIGNALS_DOCS_URL,
+	INTERRUPT_SIGNALS,
+	SIGNAL_BEHAVIOR,
+	formatSignalBehaviorTable,
+	interruptAbortController,
+	onCtrlC,
+	onInterruptSignals,
+	onProcessExit,
+	waitForInterruptSignal,
+	type InterruptSignal,
+	type ProcessExitHandlers,
+	type SignalHandler,
+	type SignalListenerOptions,
+} from './signals.ts';
+export {
 	EVAL_TOP_LEVEL_AWAIT_NOTE,
 	getTerminalIORuntimeInfo,
 	isPagerFriendlyPipeline,
