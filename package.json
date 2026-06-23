@@ -73,6 +73,7 @@
 		"build:bundle": "bun run src/cli/build.ts",
 		"xref": "bun run src/cli/xref.ts",
 		"matrix": "bun run src/cli/matrix.ts",
+		"bench": "bun run src/cli/bench.ts",
 		"visual": "bun run src/cli/visual.ts",
 		"migrate-vault": "bun run scripts/migrate-vault.ts",
 		"detect-secrets-backend": "bun run scripts/detect-secrets-backend.ts",

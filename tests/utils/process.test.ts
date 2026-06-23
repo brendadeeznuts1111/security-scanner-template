@@ -1,16 +1,22 @@
 import {expect, test} from 'bun:test';
 import {
 	BUN_SPAWN_DOCS_URL,
+	DEFAULT_COLORTERM,
 	DEFAULT_TERM_NAME,
+	FORCE_COLOR_ENV,
 	INTERACTIVE_FORCE_ENV,
+	NO_COLOR_ENV,
 	exitIfNotInteractive,
+	formatRuntimeInfoTable,
 	getProcessRuntimeInfo,
 	isInteractiveForced,
 	isInteractiveSession,
 	requireInteractiveSession,
 	resolveHumanStdout,
-	spawnEnvWithTerm,
+	resolveSpawnStdout,
+	shouldColorize,
 	spawnCaptured,
+	spawnEnvWithTerm,
 	spawnInherit,
 	writeJsonStdout,
 } from '../../src/utils/process.ts';
@@ -22,26 +28,80 @@ test('getProcessRuntimeInfo reports Bun spawn and terminal APIs', () => {
 	expect(info.platform).toBe(process.platform);
 	expect(info.docsUrl).toBe(BUN_SPAWN_DOCS_URL);
 	expect(info.interactiveSession).toBe(isInteractiveSession());
+	expect(info.bunVersion).toBe(Bun.version);
+	expect(info.bunRevision).toBe(Bun.revision);
+	expect(info.stdinIsTTY).toBe(Boolean(process.stdin.isTTY));
+	expect(info.stdoutIsTTY).toBe(Boolean(process.stdout.isTTY));
 });
 
-test('spawnEnvWithTerm sets TERM when missing', () => {
-	const original = process.env.TERM;
+test('spawnEnvWithTerm sets TERM and COLORTERM when missing', () => {
+	const originalTerm = process.env.TERM;
+	const originalColorterm = process.env.COLORTERM;
 	try {
 		delete process.env.TERM;
+		delete process.env.COLORTERM;
 		const env = spawnEnvWithTerm({FOO: 'bar'});
 		expect(env.TERM).toBe(DEFAULT_TERM_NAME);
+		expect(env.COLORTERM).toBe(DEFAULT_COLORTERM);
 		expect(env.FOO).toBe('bar');
 	} finally {
-		if (original === undefined) {
+		if (originalTerm === undefined) {
 			delete process.env.TERM;
 		} else {
-			process.env.TERM = original;
+			process.env.TERM = originalTerm;
+		}
+		if (originalColorterm === undefined) {
+			delete process.env.COLORTERM;
+		} else {
+			process.env.COLORTERM = originalColorterm;
 		}
 	}
 });
 
-test('resolveHumanStdout matches stdout TTY state', () => {
-	expect(resolveHumanStdout()).toBe(process.stdout.isTTY ? 'inherit' : 'pipe');
+test('resolveHumanStdout prefers stderr when stdout is piped', () => {
+	const stream = resolveHumanStdout();
+	if (process.stdout.isTTY) {
+		expect(stream).toBe(process.stdout);
+	} else {
+		expect(stream).toBe(process.stderr);
+	}
+});
+
+test('resolveSpawnStdout matches stdout TTY state', () => {
+	expect(resolveSpawnStdout()).toBe(process.stdout.isTTY ? 'inherit' : 'pipe');
+});
+
+test('shouldColorize honors FORCE_COLOR and NO_COLOR', () => {
+	const prevForce = process.env[FORCE_COLOR_ENV];
+	const prevNo = process.env[NO_COLOR_ENV];
+	try {
+		delete process.env[FORCE_COLOR_ENV];
+		delete process.env[NO_COLOR_ENV];
+		expect(shouldColorize(process.stderr)).toBe(Boolean(process.stderr.isTTY));
+
+		process.env[FORCE_COLOR_ENV] = '1';
+		expect(shouldColorize({isTTY: false} as NodeJS.WriteStream)).toBe(true);
+
+		process.env[NO_COLOR_ENV] = '1';
+		expect(shouldColorize({isTTY: true} as NodeJS.WriteStream)).toBe(false);
+	} finally {
+		if (prevForce === undefined) {
+			delete process.env[FORCE_COLOR_ENV];
+		} else {
+			process.env[FORCE_COLOR_ENV] = prevForce;
+		}
+		if (prevNo === undefined) {
+			delete process.env[NO_COLOR_ENV];
+		} else {
+			process.env[NO_COLOR_ENV] = prevNo;
+		}
+	}
+});
+
+test('formatRuntimeInfoTable includes bun version row', () => {
+	const table = formatRuntimeInfoTable();
+	expect(table).toContain('Bun.spawn');
+	expect(table).toContain(Bun.version);
 });
 
 test('exitIfNotInteractive terminates when session is not interactive', () => {
@@ -115,6 +175,7 @@ test('spawnCaptured pipes stdout/stderr and honors timeout', async () => {
 		expect(result.timedOut).toBe(false);
 		expect(spawnOptions?.timeout).toBe(5_000);
 		expect(spawnOptions?.stdout).toBe('pipe');
+		expect((spawnOptions?.env as Record<string, string>).COLORTERM).toBeTruthy();
 	} finally {
 		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
 	}
@@ -160,6 +221,7 @@ test('spawnInherit configures inherited stdio and returns exit metadata', async 
 		expect(spawnOptions?.stderr).toBe('inherit');
 		expect((spawnOptions?.env as Record<string, string>).SCANNER_TEST).toBe('1');
 		expect((spawnOptions?.env as Record<string, string>).TERM).toBeTruthy();
+		expect((spawnOptions?.env as Record<string, string>).COLORTERM).toBeTruthy();
 	} finally {
 		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
 	}

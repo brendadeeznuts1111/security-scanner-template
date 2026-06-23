@@ -1,15 +1,20 @@
 /**
  * Bun.spawn / stdio helpers aligned with
- * https://bun.com/docs/runtime/child-process
+ * https://bun.sh/docs/runtime/child-process#terminal-pty-support
  */
 
 /** Default PTY `name` (set `TERM` separately via spawn `env`). */
 export const DEFAULT_TERM_NAME = 'xterm-256color';
 
+/** Default `COLORTERM` for truecolor PTY children (Bun `terminal.name` does not set env). */
+export const DEFAULT_COLORTERM = 'truecolor';
+
 export const BUN_SPAWN_DOCS_URL = 'https://bun.com/docs/runtime/child-process';
 export const BUN_TERMINAL_DOCS_URL = 'https://bun.com/reference/bun/Terminal';
 
 export const INTERACTIVE_FORCE_ENV = 'SP_FORCE_SHELL';
+export const FORCE_COLOR_ENV = 'FORCE_COLOR';
+export const NO_COLOR_ENV = 'NO_COLOR';
 
 export type SpawnReadable = 'pipe' | 'inherit' | 'ignore';
 export type SpawnWritable = 'pipe' | 'inherit' | 'ignore';
@@ -48,22 +53,47 @@ export function isInteractiveSession(): boolean {
 	return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
-/** True when ANSI/color output is appropriate for the given stream (default: stderr). */
+function parseForceColor(value: string | undefined): boolean | undefined {
+	if (value === undefined || value === '') {
+		return undefined;
+	}
+	if (value === '0' || value === 'false') {
+		return false;
+	}
+	return true;
+}
+
+/** True when ANSI/color output is appropriate (TTY, `FORCE_COLOR`, or `NO_COLOR`). */
 export function shouldColorize(stream: NodeJS.WriteStream = process.stderr): boolean {
+	const force = parseForceColor(process.env[FORCE_COLOR_ENV]);
+	if (force === false || process.env[NO_COLOR_ENV] !== undefined) {
+		return false;
+	}
+	if (force === true) {
+		return true;
+	}
 	return Boolean(stream.isTTY);
 }
 
 /**
- * Resolve stdout for human-oriented child output: inherit on TTY, pipe in CI/pipelines.
+ * Stream for human-oriented parent output: stdout on TTY, stderr when stdout is piped.
+ * Keeps JSON on stdout pipe-safe (`bun sp doctor --json | fx`).
+ */
+export function resolveHumanStdout(): NodeJS.WriteStream {
+	return process.stdout.isTTY ? process.stdout : process.stderr;
+}
+
+/**
+ * Resolve stdout mode for Bun.spawn children: inherit on TTY, pipe in CI/pipelines.
  * @see Bun.spawn stdout option
  */
-export function resolveHumanStdout(): SpawnReadable {
+export function resolveSpawnStdout(): SpawnReadable {
 	return process.stdout.isTTY ? 'inherit' : 'pipe';
 }
 
 /**
- * Merge process env with a PTY-friendly `TERM` for Bun.spawn `terminal` children.
- * The `terminal.name` option does not set `TERM`; set it explicitly in `env`.
+ * Merge process env with PTY-friendly `TERM` + `COLORTERM` for Bun.spawn `terminal` children.
+ * Bun's `terminal.name` does not set `TERM`; set both explicitly in `env`.
  */
 export function spawnEnvWithTerm(
 	extra: Record<string, string | undefined> = {},
@@ -71,6 +101,7 @@ export function spawnEnvWithTerm(
 	return {
 		...process.env,
 		TERM: process.env.TERM ?? DEFAULT_TERM_NAME,
+		COLORTERM: process.env.COLORTERM ?? DEFAULT_COLORTERM,
 		...extra,
 	};
 }
@@ -212,19 +243,107 @@ export async function spawnInheritAndExit(
 	process.exit(result.exitCode);
 }
 
-/** Snapshot Bun process/spawn capabilities for doctor diagnostics. */
-export function getProcessRuntimeInfo(): {
+export interface ProcessRuntimeInfo {
 	spawnAvailable: boolean;
 	terminalAvailable: boolean;
 	interactiveSession: boolean;
 	platform: NodeJS.Platform;
+	bunVersion: string;
+	bunRevision: string;
+	stdinIsTTY: boolean;
+	stdoutIsTTY: boolean;
+	stderrIsTTY: boolean;
+	colorize: boolean;
+	forceColor: boolean;
+	noColor: boolean;
+	term: string | undefined;
+	colorterm: string | undefined;
 	docsUrl: string;
-} {
+}
+
+/** Snapshot Bun process/spawn capabilities for doctor diagnostics. */
+export function getProcessRuntimeInfo(): ProcessRuntimeInfo {
+	const force = parseForceColor(process.env[FORCE_COLOR_ENV]);
 	return {
 		spawnAvailable: typeof Bun.spawn === 'function',
 		terminalAvailable: typeof Bun.Terminal === 'function',
 		interactiveSession: isInteractiveSession(),
 		platform: process.platform,
+		bunVersion: Bun.version,
+		bunRevision: Bun.revision,
+		stdinIsTTY: Boolean(process.stdin.isTTY),
+		stdoutIsTTY: Boolean(process.stdout.isTTY),
+		stderrIsTTY: Boolean(process.stderr.isTTY),
+		colorize: shouldColorize(process.stderr),
+		forceColor: force === true,
+		noColor: process.env[NO_COLOR_ENV] !== undefined,
+		term: process.env.TERM,
+		colorterm: process.env.COLORTERM,
 		docsUrl: BUN_SPAWN_DOCS_URL,
 	};
+}
+
+/** Terminal table of process runtime detection (Bun.inspect.table). */
+export function formatRuntimeInfoTable(info: ProcessRuntimeInfo = getProcessRuntimeInfo()): string {
+	return Bun.inspect.table(
+		[
+			{
+				signal: 'stdin TTY',
+				value: info.stdinIsTTY ? 'yes' : 'no',
+				api: 'process.stdin.isTTY',
+			},
+			{
+				signal: 'stdout TTY',
+				value: info.stdoutIsTTY ? 'yes' : 'no',
+				api: 'process.stdout.isTTY',
+			},
+			{
+				signal: 'stderr TTY',
+				value: info.stderrIsTTY ? 'yes' : 'no',
+				api: 'process.stderr.isTTY',
+			},
+			{
+				signal: 'interactive',
+				value: info.interactiveSession ? 'yes' : 'no',
+				api: 'stdin+stdout TTY',
+			},
+			{
+				signal: 'colorize',
+				value: info.colorize ? 'yes' : 'no',
+				api: `${FORCE_COLOR_ENV} / ${NO_COLOR_ENV}`,
+			},
+			{
+				signal: 'Bun.spawn',
+				value: info.spawnAvailable ? 'yes' : 'no',
+				api: 'Bun.spawn',
+			},
+			{
+				signal: 'Bun.Terminal',
+				value: info.terminalAvailable ? 'yes' : 'no',
+				api: 'Bun.Terminal',
+			},
+			{
+				signal: 'platform',
+				value: info.platform,
+				api: 'process.platform',
+			},
+			{
+				signal: 'bun',
+				value: `${info.bunVersion} (${info.bunRevision.slice(0, 8)})`,
+				api: 'process.versions.bun / Bun.revision',
+			},
+			{
+				signal: 'TERM',
+				value: info.term ?? '(unset)',
+				api: 'spawnEnvWithTerm',
+			},
+			{
+				signal: 'COLORTERM',
+				value: info.colorterm ?? '(unset)',
+				api: 'spawnEnvWithTerm',
+			},
+		],
+		['signal', 'value', 'api'],
+		{colors: shouldColorize(process.stderr)},
+	);
 }

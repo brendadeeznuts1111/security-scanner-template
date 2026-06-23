@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "security-scanner-bench",
+      "dependencies": {
+        "mitata": "1.0.20",
+      },
+    },
+  },
+  "packages": {
+    "mitata": ["mitata@1.0.20", "", {}, "sha512-oHWYGX5bi4wGT/1zrhiZAEzqTV14Vq6/PUTW8WK0b3YHBBQcZz2QFm+InHhjnD0I7B6CMtwdGt2K0938r7YTdQ=="],
+  }
+}
