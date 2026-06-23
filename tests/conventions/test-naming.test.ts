@@ -12,7 +12,9 @@ test('test files use the .test.ts suffix under tests/', async () => {
 	for (const relative of glob.scanSync({cwd: TESTS_ROOT})) {
 		if (!relative.endsWith('.ts') || relative.endsWith('.test.ts')) continue;
 		if (relative.includes('/')) continue;
-		if (relative === 'helpers.ts' || relative.endsWith('.helper.ts')) continue;
+		if (relative === 'helpers.ts' || relative === 'setup.ts' || relative.endsWith('.helper.ts')) {
+			continue;
+		}
 		violations.push(relative);
 	}
 	expect(violations).toEqual([]);

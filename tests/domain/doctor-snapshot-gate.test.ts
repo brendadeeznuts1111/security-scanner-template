@@ -23,7 +23,8 @@ function domainResult(
 test('evaluateSnapshotCompatibilityGate fails when snapshot version warning is present', () => {
 	const gate = evaluateSnapshotCompatibilityGate([
 		domainResult({
-			snapshotVersionWarning: 'Scanner 3.0.0 is not compatible with snapshot policy range >=1.0.0 <3.0.0',
+			snapshotVersionWarning:
+				'Scanner 3.0.0 is not compatible with snapshot policy range >=1.0.0 <3.0.0',
 			scannerVersion: '3.0.0',
 			snapshotVersion: '2.0.0',
 		}),
@@ -36,6 +37,15 @@ test('evaluateSnapshotCompatibilityGate fails when snapshot version warning is p
 test('evaluateSnapshotCompatibilityGate passes when baselines are compatible', () => {
 	const gate = evaluateSnapshotCompatibilityGate([domainResult()]);
 	expect(gate.ok).toBe(true);
+});
+
+test('evaluateSnapshotDriftGate fails on network section drift', () => {
+	const gate = evaluateSnapshotDriftGate(
+		[domainResult({changed: true, changedSections: ['network']})],
+		['network'],
+	);
+	expect(gate.ok).toBe(false);
+	expect(gate.violations[0]?.changedSections).toContain('network');
 });
 
 test('evaluateSnapshotDriftGate and compatibility gate are independent', () => {

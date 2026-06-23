@@ -14,9 +14,11 @@ import {
 	type DoctorSnapshotFilenameMeta,
 	type DoctorSnapshotIssueDelta,
 	type DoctorSnapshotPolicyMeta,
+	type DoctorSnapshotNetworkMeta,
 	type DoctorSnapshotTemplateDrift,
 	type DoctorSnapshotVaultMeta,
 } from './doctor-snapshot-deep.ts';
+import {EMPTY_NETWORK_SNAPSHOT} from './doctor-snapshot-network.ts';
 import {withDomainWriteLock, writeSnapshotAtomically} from './doctor-snapshot-write.ts';
 import type {PolicySnapshotConfig} from '../policy/types.ts';
 import {matrixLayerCounts, type DomainFieldValueRow} from './field-matrix.ts';
@@ -24,10 +26,7 @@ import {reverseDnsPathSegment} from './branding.ts';
 import {getRuntimeInfo} from '../utils/runtime.ts';
 import type {BunSnapshotRuntimeInfo} from '../utils/snapshot-runtime.ts';
 import {SemverMatcher} from '../provider/semver-matcher.ts';
-import {
-	DOCTOR_SNAPSHOT_COMPAT_RANGE,
-	DOCTOR_SNAPSHOT_SEMVER,
-} from './snapshot-types.ts';
+import {DOCTOR_SNAPSHOT_COMPAT_RANGE, DOCTOR_SNAPSHOT_SEMVER} from './snapshot-types.ts';
 import {DoctorSnapshotV2Schema} from './snapshot-schema.ts';
 import {validateSnapshotCompatibility} from './snapshot-compatibility.ts';
 
@@ -65,6 +64,8 @@ export interface DoctorSnapshotDomain {
 	templateDrift: DoctorSnapshotTemplateDrift[];
 	/** Layer 4.5 bundle aggregate hash (spec §16). */
 	bundles?: BundleSnapshot | null;
+	/** Dist endpoint inventory and health probe summary. */
+	network?: DoctorSnapshotNetworkMeta | null;
 	fingerprint: string;
 }
 
@@ -196,6 +197,7 @@ export function buildDoctorSnapshotDocument(
 			includeMatrix: options.includeMatrix === true,
 			enrichment: domain.snapshotEnrichment,
 			bundles: domain.bundleSnapshot ?? null,
+			network: domain.networkSnapshot ?? null,
 		}),
 	);
 
@@ -238,6 +240,7 @@ export function buildDomainSnapshot(
 		includeMatrix?: boolean;
 		enrichment?: DoctorSnapshotEnrichment;
 		bundles?: BundleSnapshot | null;
+		network?: DoctorSnapshotNetworkMeta | null;
 	} = {},
 ): DoctorSnapshotDomain {
 	const enrichment = options.enrichment ?? EMPTY_ENRICHMENT;
@@ -268,6 +271,7 @@ export function buildDomainSnapshot(
 		concerns: enrichment.concerns,
 		templateDrift: enrichment.templateDrift,
 		bundles: options.bundles ?? null,
+		network: options.network ?? EMPTY_NETWORK_SNAPSHOT,
 		fingerprint: '',
 	};
 	entry.fingerprint = computeDomainFingerprint(entry);
@@ -329,9 +333,7 @@ export function validateSnapshotSemverVersion(
 	}
 
 	const snapshotVersion =
-		typeof payload.snapshotVersion === 'string'
-			? payload.snapshotVersion
-			: DOCTOR_SNAPSHOT_SEMVER;
+		typeof payload.snapshotVersion === 'string' ? payload.snapshotVersion : DOCTOR_SNAPSHOT_SEMVER;
 
 	const range = options.snapshotPolicy?.snapshotVersionRange ?? requiredRange;
 	if (!SemverMatcher.snapshotCompatible(snapshotVersion, range)) {
@@ -380,7 +382,11 @@ export function validateSnapshotSemverVersion(
 
 function migrateLegacySnapshotDomain(entry: DoctorSnapshotDomain): DoctorSnapshotDomain {
 	if (entry.fingerprint && entry.policy && entry.vault && entry.filename) {
-		return {...entry, bundles: entry.bundles ?? null};
+		return {
+			...entry,
+			bundles: entry.bundles ?? null,
+			network: entry.network ?? EMPTY_NETWORK_SNAPSHOT,
+		};
 	}
 	const migrated = buildDomainSnapshot(
 		{
@@ -437,9 +443,7 @@ export function normalizeDoctorSnapshotDomainPayload(
 		Array.isArray((payload as DoctorSnapshotDocument).domains)
 	) {
 		const entry = (payload as DoctorSnapshotDocument).domains[0];
-		return entry
-			? {domain: migrateLegacySnapshotDomain(entry), migratedFromV1}
-			: null;
+		return entry ? {domain: migrateLegacySnapshotDomain(entry), migratedFromV1} : null;
 	}
 	return null;
 }
@@ -551,10 +555,7 @@ export async function compareDoctorSnapshotsPerDomain(
 		results.push({
 			domain: domain.id,
 			path: domainSnapshotPath(snapshotRoot, domain.id),
-			ok:
-				comparison.ok &&
-				missingRequiredSections.length === 0 &&
-				!loaded.versionWarning,
+			ok: comparison.ok && missingRequiredSections.length === 0 && !loaded.versionWarning,
 			missing: comparison.missing,
 			changed: comparison.changed,
 			fingerprint: comparison.fingerprint,

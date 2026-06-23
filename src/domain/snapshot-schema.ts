@@ -63,6 +63,18 @@ export const DomainSnapshotSchema = z.object({
 		}),
 	),
 	bundles: BundleSnapshotSchema,
+	network: z
+		.object({
+			enabled: z.boolean(),
+			distPath: z.string().optional(),
+			baselinePresent: z.boolean(),
+			endpoints: z.array(z.string()),
+			healthRoutes: z.array(z.string()),
+			health: z.enum(['healthy', 'degraded', 'unhealthy', 'unknown']),
+			scanned: z.boolean(),
+		})
+		.nullable()
+		.optional(),
 	fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 	branding: z.record(z.string(), z.unknown()).optional(),
 	matrix: z

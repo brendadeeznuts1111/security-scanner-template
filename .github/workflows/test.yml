@@ -9,6 +9,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: full
+            script: check
+          - name: network
+            script: test:network
+          - name: intel
+            script: test:intel
+          - name: domain
+            script: test:domain
+
+    name: ${{ matrix.name }}
 
     steps:
       - name: Checkout code
@@ -23,4 +37,16 @@ jobs:
         run: bun install
 
       - name: Run quality checks
-        run: bun run check
+        if: matrix.script == 'check'
+        run: bun run lint && bun run typecheck && bun run test:junit
+
+      - name: Upload JUnit report
+        if: matrix.script == 'check'
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit
+          path: test-results/junit.xml
+
+      - name: Run test slice
+        if: matrix.script != 'check'
+        run: bun run lint && bun run typecheck && bun run ${{ matrix.script }}

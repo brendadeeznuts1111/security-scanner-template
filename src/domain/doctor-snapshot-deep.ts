@@ -58,6 +58,8 @@ export interface DoctorSnapshotEnrichment {
 	templateDrift: DoctorSnapshotTemplateDrift[];
 }
 
+export type {DoctorSnapshotNetworkMeta} from './doctor-snapshot-network.ts';
+
 export interface DoctorSnapshotIssueDelta {
 	added: number;
 	removed: number;
@@ -82,6 +84,7 @@ const DIFF_SECTIONS = [
 	'vault',
 	'concerns',
 	'bundles',
+	'network',
 	'secretInventoryNames',
 	'templateDrift',
 	'matrix',
@@ -132,7 +135,7 @@ function vaultFingerprintSection(
 export function computeDomainFingerprint(
 	domain: Pick<
 		DoctorSnapshotDomain,
-		'policy' | 'vault' | 'concerns' | 'templateDrift' | 'bundles'
+		'policy' | 'vault' | 'concerns' | 'templateDrift' | 'bundles' | 'network'
 	>,
 ): string {
 	return fingerprintFromSections([
@@ -141,12 +144,13 @@ export function computeDomainFingerprint(
 		domain.concerns,
 		domain.templateDrift.length > 0 ? domain.templateDrift : '',
 		domain.bundles ?? null,
+		domain.network ?? null,
 	]);
 }
 
 /** Sections required by policy but absent from a domain snapshot (spec §17). */
 export function missingRequiredSnapshotSections(
-	domain: Pick<DoctorSnapshotDomain, 'vault' | 'policy' | 'bundles'>,
+	domain: Pick<DoctorSnapshotDomain, 'vault' | 'policy' | 'bundles' | 'network'>,
 	required: readonly string[],
 ): string[] {
 	const missing: string[] = [];
@@ -160,6 +164,9 @@ export function missingRequiredSnapshotSections(
 				break;
 			case 'bundles':
 				if (!domain.bundles) missing.push('bundles');
+				break;
+			case 'network':
+				if (!domain.network?.enabled || !domain.network.scanned) missing.push('network');
 				break;
 			case 'concerns':
 				break;

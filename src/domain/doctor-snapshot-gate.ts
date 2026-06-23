@@ -1,7 +1,6 @@
 import type {PolicySnapshotConfig} from '../policy/types.ts';
 import type {DoctorSnapshotPerDomainResult} from './doctor-snapshot.ts';
 
-
 /** Critical sections eligible for CI drift gates (v2 spec §4). */
 export const SNAPSHOT_DRIFT_SECTIONS = [
 	'vault',
@@ -9,6 +8,7 @@ export const SNAPSHOT_DRIFT_SECTIONS = [
 	'concerns',
 	'templateDrift',
 	'bundles',
+	'network',
 ] as const;
 
 export type SnapshotDriftSection = (typeof SNAPSHOT_DRIFT_SECTIONS)[number];

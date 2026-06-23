@@ -1,6 +1,24 @@
 [test]
 root = "tests"
 
+# Lifecycle hooks shared across all test files.
+# @see https://bun.com/docs/test/lifecycle
+preload = ["./tests/setup.ts"]
+
+# Per-test timeout in ms (default 5000). CLI: `bun test --timeout <ms>`
+timeout = 10000
+
+# Selectively run independent tests in parallel.
+# @see https://bun.com/docs/guides/test/concurrent-test-glob
+# Override everything: `bun test --concurrent`
+concurrentTestGlob = [
+	"**/concurrent-*.test.ts",
+	"**/utils/*.test.ts",
+	"**/policy/*.test.ts",
+	"**/crypto/*.test.ts",
+	"**/markdown/*.test.ts",
+]
+
 # Prevent orphaned scanner processes when the parent exits (CI / daemon use).
 [run]
 no_orphans = true

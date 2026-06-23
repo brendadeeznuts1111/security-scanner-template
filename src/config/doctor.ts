@@ -86,6 +86,7 @@ import {
 	type SnapshotDriftGateResult,
 } from '../domain/doctor-snapshot-gate.ts';
 import {collectDoctorSnapshotEnrichment} from '../domain/doctor-snapshot-deep.ts';
+import {collectDoctorNetworkSnapshot} from '../domain/doctor-snapshot-network.ts';
 import {loadRootProjectPolicy} from '../domain/policy-bridge.ts';
 import {computeBundleSnapshotsParallel} from '../domain/doctor-snapshot-parallel.ts';
 import type {DoctorSnapshotEnrichment} from '../domain/doctor-snapshot-deep.ts';
@@ -153,6 +154,8 @@ export interface DoctorDomainReport {
 	snapshotEnrichment?: DoctorSnapshotEnrichment;
 	/** Layer 4.5 bundle aggregate snapshot (spec §16). */
 	bundleSnapshot?: import('../domain/doctor-snapshot-bundles.ts').BundleSnapshot | null;
+	/** Dist endpoint inventory for network drift gates. */
+	networkSnapshot?: import('../domain/doctor-snapshot-network.ts').DoctorSnapshotNetworkMeta | null;
 }
 
 export interface DoctorMatrixReport {
@@ -840,6 +843,7 @@ export async function checkAllDomains(
 		let secretInventoryNames: string[] | undefined;
 		let snapshotEnrichment: DoctorSnapshotEnrichment | undefined;
 		let bundleSnapshot: DoctorDomainReport['bundleSnapshot'];
+		let networkSnapshot: DoctorDomainReport['networkSnapshot'];
 		if (loaded) {
 			branding = domainBrandingProfile(loaded.config);
 			secretInventoryNames = loaded.config.secrets.inventory
@@ -857,6 +861,7 @@ export async function checkAllDomains(
 					loaded.config,
 					{privateExists, policyDocument: rootPolicyDocument},
 				);
+				networkSnapshot = await collectDoctorNetworkSnapshot(root, domainName, loaded.config);
 				bundleSnapshotJobs.push({domain: domainName, config: loaded.config});
 			}
 			for (const semverIssue of await collectSemverDoctorIssues(
@@ -882,6 +887,7 @@ export async function checkAllDomains(
 			secretInventoryNames,
 			snapshotEnrichment,
 			bundleSnapshot,
+			networkSnapshot,
 		});
 	}
 
