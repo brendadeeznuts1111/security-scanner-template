@@ -53,7 +53,8 @@ test('generateMarkdownReport includes summary and advisories', () => {
 	expect(md).toContain('bad-pkg');
 	expect(md).toContain('old-pkg');
 	expect(md).toContain('Internal');
-	expect(md).toContain('| Fatal | 1 |');
+	expect(md).toContain('| Fatal');
+	expect(md).toContain('| 1      |');
 });
 
 test('generateMarkdownReport shows clean state when no advisories', () => {

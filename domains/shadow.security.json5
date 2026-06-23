@@ -1,0 +1,19 @@
+{
+	domain: 'com.factory-wager.shadow',
+	displayName: 'Shadow',
+	secrets: {
+		service: 'com.factory-wager.shadow',
+		inventory: [{name: 'csrf-secret', required: false, description: 'CSRF signing secret'}],
+	},
+	colors: {
+		primary: '#2C3E50',
+		secondary: '#95A5A6',
+		fatal: '#C0392B',
+		warn: '#E67E22',
+		info: '#3498DB',
+		success: '#2ECC71',
+	},
+	channels: {
+		vault: '#3498DB',
+	},
+}

@@ -1,16 +1,17 @@
 // Golden template for bun-security-planner domains.
 // Copy this file to domains/<domain>.security.json5 and edit only the fields
 // that differ. Every field shown here is optional except `domain`.
+// Field matrix: `bun run matrix` or `matrix` inside `bun sp shell`.
 
 {
-	// Required. Reverse-DNS domain identifier.
+	// Required. Reverse-DNS domain identifier (also Bun.secrets service namespace).
 	domain: 'com.example.service',
 
-	// Display metadata.
+	// Display metadata (branding).
 	displayName: 'Example Service',
 	description: 'One-line description of the domain.',
 
-	// Brand / terminal colors.
+	// Brand / terminal colors (Bun.color).
 	colors: {
 		primary: '#0A84FF',
 		secondary: '#30D158',
@@ -21,6 +22,9 @@
 	},
 
 	// Channel color overrides for audit/log output.
+	// Concern map (ast-grep-style tags → channels): `bun run matrix --concerns --template`
+	// Tags: security, vault, identity, token, csrf, supply-chain, ops, severity, branding, terminal, doctor
+	// Each channel resolves base + bright tints for doctor/REPL output (see src/domain/concern-colors.ts).
 	channels: {
 		vault: '#0A84FF',
 		identity: '#30D158',
@@ -30,20 +34,23 @@
 		ops: '#8E8E93',
 	},
 
-	// Vault / secrets configuration.
+	// Vault / secrets configuration (Bun.secrets).
 	secrets: {
+		// Always synced to `domain` on load — do not override.
 		service: 'com.example.service',
 		allowUnrestrictedAccess: false,
 		inventory: [
 			// { name: "api-key", required: true, description: "Production API key" },
 		],
+		// inventoryFile: '.vault/inventory.enc',
 	},
 
-	// Identity / password policy.
+	// Identity / password policy (Bun.password).
 	identity: {
 		algorithm: 'bcrypt',
 		minLength: 12,
 		requireSpecialChar: true,
+		cost: 10,
 	},
 
 	// Token / signing policy.
@@ -53,10 +60,18 @@
 		issuer: 'com.example.service',
 	},
 
-	// CSRF protection.
+	// CSRF protection (Bun.CSRF).
 	csrf: {
 		enabled: true,
 		tokenLength: 32,
+		mode: 'session-bound',
+		encoding: 'base64url',
+		algorithm: 'sha256',
+		cookieName: '_csrf',
+		headerName: 'X-CSRF-Token',
+		sessionCookieName: '_session',
+		// expiresIn: 86400000,
+		// maxAge: 86400000,
 	},
 
 	// Supply-chain security.
@@ -64,13 +79,34 @@
 		enabled: true,
 		feed: {
 			remote: 'https://threats.factory-wager.com/v1/bun-feed',
+			// local: './rules/security-rules.json',
 			apiKeyVault: 'threat-feed-api-key',
+			// apiKeyService defaults to `domain` when apiKeyVault is set.
+			apiKeyService: 'com.example.service',
 			cachePath: './.security/threat-cache.json',
 			cacheTtl: 3600,
+			// protocol: 'http3',
 		},
 		policy: {
 			fatal: ['backdoor', 'botnet', 'token-stealer', 'malware'],
 			warn: ['protestware', 'adware', 'deprecated', 'unmaintained'],
+		},
+	},
+
+	// Service runtime (Bun.serve + external scanner orchestration).
+	service: {
+		interactive: false,
+		// port: 443,
+		// hostname: '0.0.0.0',
+		http3: false,
+		http1: true,
+		// tls: { cert: './certs/server.pem', key: './certs/server-key.pem', ca: './certs/ca.pem' },
+	},
+
+	// Visual artifacts (Bun.Image, operator QR).
+	visual: {
+		qr: {
+			enabled: true,
 		},
 	},
 
@@ -82,9 +118,46 @@
 			output: null,
 		},
 		report: {
-			format: 'markdown',
+			format: 'html',
 			output: './.security/reports',
+			operatorQr: {
+				enabled: true,
+				size: 180,
+				// dark: '#FF453A',
+				// light: '#0A0A0F',
+			},
 		},
+	},
+
+	// Audit persistence (per-domain JSONL preferred; SQLite optional fallback).
+	audit: {
+		jsonl: {
+			// Defaults to ./.security/<reverse-dns-segment>/audit.jsonl.enc on load.
+			path: './.security/com.example.service/audit.jsonl.enc',
+			masterKey: null,
+			compress: false,
+			compressionFormat: 'gzip',
+		},
+		// sqlite: {
+		// 	path: './.security/com.example.service/audit.sqlite',
+		// 	masterKey: null,
+		// 	compress: true,
+		// 	compressionFormat: 'zstd',
+		// },
+	},
+
+	// Threat intelligence.
+	intel: {
+		dns: {
+			blocklist: [],
+			requireResolution: true,
+			suspiciousTtlThreshold: 60,
+		},
+	},
+
+	// Remote TLS inspection (`bun sp tls`, `bun scan tls`).
+	tls: {
+		// useSystemCA: false,
 	},
 
 	// Universal error code overrides.

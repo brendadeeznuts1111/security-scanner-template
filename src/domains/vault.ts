@@ -1,6 +1,9 @@
 import {getDomainSecrets, getSecretSpec, type DomainSecret} from './registry.ts';
+import {secretsServiceForDomain} from '../domain/secrets-service.ts';
 
 export interface VaultStatusEntry {
+	/** Bun.secrets service namespace (reverse-DNS domain). */
+	service: string;
 	name: string;
 	exists: boolean;
 	required: boolean;
@@ -13,6 +16,10 @@ export interface VaultStatusEntry {
  */
 export class VaultDomain {
 	constructor(private readonly domain: string) {}
+
+	get serviceName(): string {
+		return secretsServiceForDomain(this.domain);
+	}
 
 	private spec(name: string): DomainSecret {
 		return getSecretSpec(this.domain, name);
@@ -83,6 +90,7 @@ export class VaultDomain {
 			secrets.map(async spec => {
 				const value = await Bun.secrets.get({service: spec.service, name: spec.name});
 				return {
+					service: spec.service,
 					name: spec.name,
 					exists: value !== null,
 					required: spec.required,

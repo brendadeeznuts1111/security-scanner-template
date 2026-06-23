@@ -81,5 +81,10 @@ test('delete returns false for missing secret', async () => {
 test('status reports all registered secrets', async () => {
 	state.store[`${SCANNER_DOMAIN}/threat-feed-token`] = 'my-token';
 	const status = await vault.status();
-	expect(status).toContainEqual({name: 'threat-feed-token', exists: true, required: false});
+	expect(status).toContainEqual({
+		service: SCANNER_DOMAIN,
+		name: 'threat-feed-token',
+		exists: true,
+		required: false,
+	});
 });

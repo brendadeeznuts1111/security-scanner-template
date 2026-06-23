@@ -1,8 +1,12 @@
 import {watch, type FSWatcher} from 'fs';
 import path from 'path';
+import {loadDomainReportContext} from '../config/resolve-domain.ts';
+import {supplyChainConfigFromDomain} from '../domain/supply-chain-config.ts';
 import {loadPackageSnapshot, toSecurityPackage} from '../domains/snapshot.ts';
 import * as supplyChain from '../domains/supply-chain.ts';
 import type {ReportFormat} from '../report/index.ts';
+import {createAsyncDebouncer} from '../utils/debounce.ts';
+import {createTimer} from '../utils/timing.ts';
 
 export interface WatchOptions {
 	report?: ReportFormat;
@@ -16,36 +20,39 @@ interface WatchSession {
 	abort: () => void;
 }
 
-export function createDebouncer(fn: () => void, ms: number): () => void {
-	let timeout: ReturnType<typeof setTimeout> | undefined;
-	return () => {
-		clearTimeout(timeout);
-		timeout = setTimeout(fn, ms);
-	};
-}
+export {createDebouncer, createAsyncDebouncer} from '../utils/debounce.ts';
 
 /**
  * Run a single scan of the current project dependencies.
  */
 export async function performScan(options: WatchOptions): Promise<void> {
-	const start = performance.now();
+	const timer = createTimer();
 	const snapshots = await loadPackageSnapshot();
 	if (snapshots.length === 0) {
 		console.error('[watch] no packages found in package.json — skipping scan');
 		return;
 	}
 
+	const domainCtx = await loadDomainReportContext();
+	if (domainCtx?.config.supplyChain.enabled) {
+		supplyChain.activate(supplyChainConfigFromDomain(domainCtx.config));
+	}
+
 	const packages = snapshots.map(toSecurityPackage);
 	const advisories = await supplyChain.scanAll(packages);
 
 	const fatalCount = advisories.filter(a => a.level === 'fatal').length;
-	const durationMs = Math.round(performance.now() - start);
+	const durationMs = timer.elapsedMs();
 	console.error(
 		`[watch] scan complete: ${advisories.length} advisory(ies), ${fatalCount} fatal (${durationMs}ms)`,
 	);
 
 	if (options.report) {
-		const report = await supplyChain.report(options.report);
+		const report = await supplyChain.report(options.report, undefined, {
+			domain: domainCtx?.domain,
+			colors: domainCtx?.config.colors,
+			operatorQr: domainCtx ? undefined : false,
+		});
 		if (options.output) {
 			const ext = options.report === 'html' ? 'html' : options.report === 'json' ? 'json' : 'md';
 			const filename = `scan-${Date.now()}.${ext}`;
@@ -77,7 +84,7 @@ export function startWatch(options: WatchOptions = {}): WatchSession {
 	const ac = new AbortController();
 	let scanning = false;
 
-	const onChange = createDebouncer(async () => {
+	const onChange = createAsyncDebouncer(async () => {
 		if (scanning) return;
 		scanning = true;
 		try {

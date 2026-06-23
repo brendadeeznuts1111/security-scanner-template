@@ -35,6 +35,8 @@ export interface DomainIdentity {
 	algorithm: string;
 	minLength: number;
 	requireSpecialChar: boolean;
+	/** Optional bcrypt cost (4-31). Ignored for argon2 algorithms. */
+	cost?: number;
 }
 
 export interface DomainToken {
@@ -43,10 +45,42 @@ export interface DomainToken {
 	issuer: string;
 }
 
+export type CsrfMode = 'stateless' | 'session-bound';
+
+export type CsrfEncoding = 'base64' | 'base64url' | 'hex';
+
+export type CsrfAlgorithm =
+	| 'blake2b256'
+	| 'blake2b512'
+	| 'sha256'
+	| 'sha384'
+	| 'sha512'
+	| 'sha512-256';
+
 export interface DomainCsrf {
 	enabled: boolean;
 	tokenLength: number;
+	/** Stateless or session-bound tokens via Bun.CSRF. */
+	mode?: CsrfMode;
+	cookieName?: string;
+	headerName?: string;
+	sessionCookieName?: string;
+	/** Token encoding passed to Bun.CSRF.generate / verify. */
+	encoding?: CsrfEncoding;
+	/** Hash algorithm passed to Bun.CSRF.generate / verify. */
+	algorithm?: CsrfAlgorithm;
+	/** Token TTL in ms (Bun.CSRF expiresIn). Default: 24 hours. */
+	expiresIn?: number;
+	/** Max token age in ms for verify (Bun.CSRF maxAge). Defaults to expiresIn. */
+	maxAge?: number;
+	/** Set Secure on CSRF session cookies (recommended in production HTTPS). */
+	cookieSecure?: boolean;
+	/** Set HttpOnly on CSRF cookies (default: true). */
+	cookieHttpOnly?: boolean;
 }
+
+/** HTTP client protocol for threat-feed downloads (Bun fetch experimental). */
+export type FeedFetchProtocol = 'http2' | 'http3';
 
 export interface DomainFeed {
 	remote?: string;
@@ -55,6 +89,8 @@ export interface DomainFeed {
 	apiKeyService?: string;
 	cachePath?: string;
 	cacheTtl?: number;
+	/** Prefer HTTP/2 or HTTP/3 for remote feed fetches. */
+	protocol?: FeedFetchProtocol;
 }
 
 export interface DomainSupplyChain {
@@ -66,16 +102,88 @@ export interface DomainSupplyChain {
 	};
 }
 
+export interface DomainReportOperatorQr {
+	/** Embed domain vault QR in HTML reports (default: true). */
+	enabled?: boolean;
+	size?: number;
+	dark?: string;
+	light?: string;
+}
+
+export interface DomainOpsReport {
+	format: string;
+	output: string;
+	operatorQr?: DomainReportOperatorQr;
+}
+
+export interface DomainVisualQr {
+	/** Master-token QR generation via `bun sp qr` (default: true). */
+	enabled?: boolean;
+}
+
+export interface DomainVisual {
+	qr?: DomainVisualQr;
+}
+
 export interface DomainOps {
 	watch: {
 		debounceMs: number;
 		report?: string | null;
 		output?: string | null;
 	};
-	report: {
-		format: string;
-		output: string;
+	report: DomainOpsReport;
+}
+
+export interface DomainServiceTls {
+	cert: string;
+	key: string;
+	ca?: string;
+}
+
+export interface DomainService {
+	/**
+	 * Enable Bun.Terminal PTY for external scanner orchestration (`scan interactive`, REPL `scan`).
+	 * Requires stdin and stdout TTYs; use JSON CLIs when piping output.
+	 */
+	interactive?: boolean;
+	/** Listen port for `bun sp start` / Service.start(). */
+	port?: number;
+	hostname?: string;
+	/** Enable QUIC / HTTP/3 via Bun.serve({ http3: true }). Requires TLS. */
+	http3?: boolean;
+	/** Serve HTTP/1.1 alongside HTTP/3 (default true). */
+	http1?: boolean;
+	tls?: DomainServiceTls;
+}
+
+export interface DomainAuditBackendConfig {
+	path: string;
+	masterKey?: string | null;
+	compress?: boolean;
+	compressionFormat?: 'gzip' | 'zstd';
+}
+
+export interface DomainAuditConfig {
+	jsonl?: DomainAuditBackendConfig;
+	sqlite?: DomainAuditBackendConfig;
+}
+
+export interface DomainIntelConfig {
+	dns?: {
+		blocklist?: string[];
+		requireResolution?: boolean;
+		suspiciousTtlThreshold?: number;
 	};
+}
+
+/** Client-side TLS inspection settings (remote endpoint scans). */
+export interface DomainTlsConfig {
+	/**
+	 * Validate remote TLS against the OS trust store (`tls.getCACertificates('system')`).
+	 * Omit to auto-enable when the runtime exposes system CAs (Bun >= 1.3.14).
+	 * Set `false` to skip; set `true` to force validation.
+	 */
+	useSystemCA?: boolean;
 }
 
 export interface ErrorOverride {
@@ -95,6 +203,13 @@ export interface DomainConfig {
 	csrf: DomainCsrf;
 	supplyChain: DomainSupplyChain;
 	ops: DomainOps;
+	/** Visual artifacts (QR, report thumbnails). */
+	visual?: DomainVisual;
+	service?: DomainService;
+	audit?: DomainAuditConfig;
+	intel?: DomainIntelConfig;
+	/** Remote TLS inspection defaults for \`bun sp tls\` / \`bun scan tls\`. */
+	tls?: DomainTlsConfig;
 	errorOverrides: Record<string, ErrorOverride>;
 }
 

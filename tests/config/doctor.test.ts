@@ -1,6 +1,7 @@
 import {expect, test, beforeEach, afterEach} from 'bun:test';
-import {checkAllDomains, checkDomain} from '../../src/config/doctor.ts';
+import {checkAllDomains, checkDomain, domainReportOk} from '../../src/config/doctor.ts';
 import {applyDefaults} from '../../src/config/defaults.ts';
+import {clearSystemCACache, seedSystemCACacheForTests} from '../../src/intel/tls/system-ca.ts';
 
 const TEST_DIR = `/tmp/config-doctor-test-${Date.now()}`;
 
@@ -30,9 +31,15 @@ function loadedFixture(config: Record<string, unknown>) {
 }
 
 test('checkDomain passes for valid default config', () => {
-	const result = checkDomain(loadedFixture({domain: 'com.example.valid'}));
-	expect(result.ok).toBe(true);
-	expect(result.issues.length).toBe(0);
+	const original = process.env.AUDIT_MASTER_KEY;
+	process.env.AUDIT_MASTER_KEY = 'doctor-test-key';
+	try {
+		const result = checkDomain(loadedFixture({domain: 'com.example.valid'}));
+		expect(result.ok).toBe(true);
+		expect(result.issues.length).toBe(0);
+	} finally {
+		process.env.AUDIT_MASTER_KEY = original;
+	}
 });
 
 test('checkDomain reports invalid hex color', () => {
@@ -49,6 +56,101 @@ test('checkDomain reports invalid domain name', () => {
 	expect(result.issues.some(i => i.field === 'domain')).toBe(true);
 });
 
+test('checkDomain reports secrets.service drift after defaults merge', () => {
+	const config = applyDefaults({
+		domain: 'com.example.secrets',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	config.secrets.service = 'com.other.service';
+	const result = checkDomain({
+		domain: config.domain,
+		path: '/tmp/test.security.json5',
+		config,
+	});
+	expect(result.ok).toBe(false);
+	expect(
+		result.issues.some(i => i.field === 'secrets.service' && i.code === 'SECRETS_SERVICE_MISMATCH'),
+	).toBe(true);
+});
+
+test('checkDomain warns when audit path is set without master key', () => {
+	const config = applyDefaults({
+		domain: 'com.example.audit-warn',
+		audit: {jsonl: {path: './.security/audit.jsonl.enc', masterKey: null}},
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const original = process.env.AUDIT_MASTER_KEY;
+	delete process.env.AUDIT_MASTER_KEY;
+	try {
+		const result = checkDomain({
+			domain: config.domain,
+			path: '/tmp/test.security.json5',
+			config,
+		});
+		expect(
+			result.issues.some(
+				i => i.field === 'audit.jsonl.masterKey' && i.code === 'AUDIT_MASTER_KEY_MISSING',
+			),
+		).toBe(true);
+	} finally {
+		process.env.AUDIT_MASTER_KEY = original;
+	}
+});
+
+test('checkDomain reports token.issuer drift after defaults merge', () => {
+	const config = applyDefaults({
+		domain: 'com.example.issuer',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	config.token.issuer = 'com.other.issuer';
+	const result = checkDomain({
+		domain: config.domain,
+		path: '/tmp/test.security.json5',
+		config,
+	});
+	expect(result.ok).toBe(true);
+	expect(
+		result.issues.some(i => i.field === 'token.issuer' && i.code === 'TOKEN_ISSUER_MISMATCH'),
+	).toBe(true);
+});
+
+test('checkAllDomains reports public token.issuer override mismatch', async () => {
+	await writeDomain(
+		'issuer',
+		`{
+			domain: "com.example.issuer-public",
+			token: { issuer: "com.other.issuer" },
+			csrf: { enabled: false, tokenLength: 32 },
+		}`,
+	);
+
+	const result = await checkAllDomains(TEST_DIR);
+	const issues = result.domains.flatMap(domain => domain.issues);
+	expect(
+		issues.some(i => i.field === 'token.issuer' && i.domain === 'com.example.issuer-public'),
+	).toBe(true);
+});
+
+test('checkAllDomains reports public secrets.service override mismatch', async () => {
+	await writeDomain(
+		'mismatch',
+		`{
+			domain: "com.example.mismatch",
+			secrets: { service: "com.other.override", inventory: [] },
+			csrf: { enabled: false, tokenLength: 32 },
+		}`,
+	);
+
+	const result = await checkAllDomains(TEST_DIR);
+	const domain = result.domains.find(d => d.domain === 'com.example.mismatch');
+	expect(domain?.ok).toBe(false);
+	expect(
+		domain?.issues.some(
+			i => i.field === 'secrets.service' && i.message.includes('com.other.override'),
+		),
+	).toBe(true);
+});
+
 test('checkDomain reports unknown error code as warning', () => {
 	const result = checkDomain(
 		loadedFixture({
@@ -61,6 +163,28 @@ test('checkDomain reports unknown error code as warning', () => {
 	).toBe(true);
 });
 
+test('checkDomain reports unsupported password algorithm', () => {
+	const result = checkDomain(
+		loadedFixture({
+			domain: 'com.example.password',
+			identity: {algorithm: 'md5', minLength: 8, requireSpecialChar: true},
+		}),
+	);
+	expect(result.ok).toBe(false);
+	expect(result.issues.some(i => i.field === 'identity.algorithm')).toBe(true);
+});
+
+test('checkDomain reports invalid bcrypt cost', () => {
+	const result = checkDomain(
+		loadedFixture({
+			domain: 'com.example.password',
+			identity: {algorithm: 'bcrypt', minLength: 8, requireSpecialChar: true, cost: 50},
+		}),
+	);
+	expect(result.ok).toBe(false);
+	expect(result.issues.some(i => i.field === 'identity.cost')).toBe(true);
+});
+
 test('checkAllDomains validates discovered domain files', async () => {
 	await writeDomain('good', '{ domain: "com.example.good" }');
 	await writeDomain('bad', '{ domain: "bad domain", colors: { primary: "red" } }');
@@ -69,6 +193,114 @@ test('checkAllDomains validates discovered domain files', async () => {
 	expect(result.domains.length).toBe(2);
 	expect(result.ok).toBe(false);
 	expect(result.errors).toBeGreaterThan(0);
+	expect(result.runtime.apisOk).toBe(true);
+	expect(result.runtime.crossRef.ok).toBe(true);
+	expect(result.runtime.version).toBe(Bun.version);
+	expect(result.runtime.systemCA.platform).toBe(process.platform);
+	expect(result.runtime.terminalIO.bunVersion).toBe(Bun.version);
+	expect(result.runtime.platform.bunVersion).toBe(Bun.version);
+	expect(typeof result.runtime.platform.bunTypesTsgoCompatible).toBe('boolean');
+	expect(Array.isArray(result.peerMetaIssues)).toBe(true);
+});
+
+test('checkDomain warns when system CA is available but tls.useSystemCA is explicitly false', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(
+		loadedFixture({domain: 'com.example.tls-doctor', tls: {useSystemCA: false}}),
+	);
+	expect(
+		result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE' && i.field === 'tls.useSystemCA'),
+	).toBe(true);
+
+	clearSystemCACache();
+});
+
+test('checkDomain does not warn when system CA auto-validation applies', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(loadedFixture({domain: 'com.example.tls-auto'}));
+	expect(result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE')).toBe(false);
+
+	clearSystemCACache();
+});
+
+test('checkDomain does not warn when tls.useSystemCA is enabled', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(
+		loadedFixture({domain: 'com.example.tls-enabled', tls: {useSystemCA: true}}),
+	);
+	expect(result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE')).toBe(false);
+
+	clearSystemCACache();
+});
+
+test('checkAllDomains includes template coverage and branding profiles', async () => {
+	await writeDomain('profiled', '{ domain: "com.example.profiled", displayName: "Profiled App" }');
+
+	const result = await checkAllDomains(TEST_DIR);
+	expect(result.templateCoverage.ok).toBe(true);
+	expect(result.templateCoverage.catalogFields).toBeGreaterThanOrEqual(60);
+	const domain = result.domains.find(d => d.domain === 'com.example.profiled');
+	expect(domain?.branding?.displayName).toBe('Profiled App');
+	expect(domain?.branding?.service).toBe('com.example.profiled');
+});
+
+test('checkAllDomains writes doctor snapshots with --update-snapshots semantics', async () => {
+	await writeDomain('snap', '{ domain: "com.example.snap", displayName: "Snap" }');
+	await Bun.write(
+		`${TEST_DIR}/package.json`,
+		JSON.stringify({name: 'doctor-snapshot-test', version: '1.0.0'}),
+	);
+
+	const result = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		updateSnapshots: true,
+		argv: ['bun', 'doctor', '--update-snapshots'],
+	});
+	expect(result.snapshot?.updateRequested).toBe(true);
+	expect(result.snapshot?.written.length).toBeGreaterThan(0);
+	expect(result.packageMetadata?.name).toBeTruthy();
+});
+
+test('checkAllDomains collects matrix rows when matrix option is enabled', async () => {
+	await writeDomain('matrix', '{ domain: "com.example.matrix" }');
+
+	const result = await checkAllDomains(TEST_DIR, {matrix: true, matrixSection: 'branding'});
+	expect(result.matrix?.template.length).toBeGreaterThan(0);
+	expect(result.matrix?.domains['com.example.matrix']?.length).toBeGreaterThan(0);
+	expect(
+		result.domains.find(d => d.domain === 'com.example.matrix')?.matrix?.length,
+	).toBeGreaterThan(0);
+});
+
+test('domainReportOk allows warnings but rejects errors', () => {
+	expect(
+		domainReportOk([
+			{
+				domain: 'com.example.warn',
+				path: '/tmp/x.security.json5',
+				field: 'tls.useSystemCA',
+				message: 'warning only',
+				severity: 'warning',
+			},
+		]),
+	).toBe(true);
+	expect(
+		domainReportOk([
+			{
+				domain: 'com.example.bad',
+				path: '/tmp/x.security.json5',
+				field: 'domain',
+				message: 'error',
+				severity: 'error',
+			},
+		]),
+	).toBe(false);
 });
 
 test('checkAllDomains is ok when no domains are present', async () => {

@@ -1,16 +1,8 @@
+import {colorize, TERMINAL} from '../color/index.ts';
+import {formatTable} from '../utils/inspect.ts';
 import {createVaultDomain, VaultDomain, type VaultStatusEntry} from '../domains/vault.ts';
 import {DOMAIN_SECRETS, listDomains, SCANNER_DOMAIN} from '../domains/registry.ts';
 import {isOsCredentialStoreAvailable} from '../secrets-backend.ts';
-
-function colorize(hex: string, text: string): string {
-	const code = Bun.color(hex, 'ansi') ?? '';
-	return code ? `${code}${text}\x1b[0m` : text;
-}
-
-const COLOR_OK = '#33dd66';
-const COLOR_WARN = '#ffcc33';
-const COLOR_ERROR = '#ff4444';
-const COLOR_INFO = '#33aaff';
 
 export interface VaultCliOptions {
 	domain?: string;
@@ -30,7 +22,7 @@ function resolveDomainVault(options: VaultCliOptions): VaultDomain {
 
 function requireName(options: VaultCliOptions): string {
 	if (!options.name || options.name.length === 0) {
-		console.error(colorize(COLOR_ERROR, '[vault] --name is required'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] --name is required'));
 		process.exit(1);
 	}
 	return options.name;
@@ -41,7 +33,7 @@ async function readSecretValue(options: VaultCliOptions, promptText: string): Pr
 		return options.value;
 	}
 
-	if (typeof process.stdout.isTTY === 'boolean' && process.stdout.isTTY) {
+	if (typeof process.stdin.isTTY === 'boolean' && process.stdin.isTTY) {
 		const value = prompt(promptText);
 		if (value && value.length > 0) return value;
 	}
@@ -49,7 +41,7 @@ async function readSecretValue(options: VaultCliOptions, promptText: string): Pr
 	// Non-TTY: read from stdin so `echo $TOKEN | bun run ... --set` works.
 	console.error(
 		colorize(
-			COLOR_INFO,
+			TERMINAL.scannerInfo,
 			`${promptText} (paste, then press Enter on a blank line or Ctrl+D to finish):`,
 		),
 	);
@@ -64,7 +56,7 @@ async function readSecretValue(options: VaultCliOptions, promptText: string): Pr
 	}
 
 	if (stdinValue.length === 0) {
-		console.error(colorize(COLOR_ERROR, '[vault] no value provided, aborting'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] no value provided, aborting'));
 		process.exit(1);
 	}
 
@@ -77,7 +69,7 @@ export async function runVaultStatus(options: VaultCliOptions = {}): Promise<voi
 
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(COLOR_ERROR, '[vault] OS credential store is not available'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] OS credential store is not available'));
 		process.exit(1);
 	}
 
@@ -90,14 +82,15 @@ export async function runVaultStatus(options: VaultCliOptions = {}): Promise<voi
 
 	console.error(`[vault] secrets for ${domain}`);
 	console.error(
-		Bun.inspect.table(
+		formatTable(
 			status.map(s => ({
 				name: s.name,
-				status: s.exists ? colorize(COLOR_OK, 'present') : colorize(COLOR_WARN, 'missing'),
+				status: s.exists
+					? colorize(TERMINAL.scannerOk, 'present')
+					: colorize(TERMINAL.scannerWarn, 'missing'),
 				required: s.required ? 'yes' : 'no',
 			})),
 			['name', 'status', 'required'],
-			{colors: true},
 		),
 	);
 }
@@ -109,7 +102,7 @@ export async function runVaultSet(options: VaultCliOptions = {}): Promise<void> 
 
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(COLOR_ERROR, '[vault] OS credential store is not available'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] OS credential store is not available'));
 		process.exit(1);
 	}
 
@@ -120,12 +113,15 @@ export async function runVaultSet(options: VaultCliOptions = {}): Promise<void> 
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(COLOR_ERROR, `[vault] could not store secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not store secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
 
-	console.error(colorize(COLOR_OK, `[vault] secret stored (${domain}/${name})`));
+	console.error(colorize(TERMINAL.scannerOk, `[vault] secret stored (${domain}/${name})`));
 }
 
 export async function runVaultGet(options: VaultCliOptions = {}): Promise<void> {
@@ -135,7 +131,7 @@ export async function runVaultGet(options: VaultCliOptions = {}): Promise<void> 
 
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(COLOR_ERROR, '[vault] OS credential store is not available'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] OS credential store is not available'));
 		process.exit(1);
 	}
 
@@ -145,7 +141,10 @@ export async function runVaultGet(options: VaultCliOptions = {}): Promise<void> 
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(COLOR_ERROR, `[vault] could not read secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not read secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
@@ -165,7 +164,7 @@ export async function runVaultDelete(options: VaultCliOptions = {}): Promise<voi
 
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(COLOR_ERROR, '[vault] OS credential store is not available'));
+		console.error(colorize(TERMINAL.scannerFatal, '[vault] OS credential store is not available'));
 		process.exit(1);
 	}
 
@@ -175,15 +174,18 @@ export async function runVaultDelete(options: VaultCliOptions = {}): Promise<voi
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(COLOR_ERROR, `[vault] could not delete secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not delete secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
 
 	if (deleted) {
-		console.error(colorize(COLOR_OK, `[vault] secret removed (${domain}/${name})`));
+		console.error(colorize(TERMINAL.scannerOk, `[vault] secret removed (${domain}/${name})`));
 	} else {
-		console.error(colorize(COLOR_WARN, `[vault] no secret found for ${domain}/${name}`));
+		console.error(colorize(TERMINAL.scannerWarn, `[vault] no secret found for ${domain}/${name}`));
 	}
 }
 
@@ -198,7 +200,9 @@ export interface DoctorRow {
 export async function runVaultDoctor(options: VaultCliOptions = {}): Promise<void> {
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(COLOR_ERROR, '[vault doctor] OS credential store is not available'));
+		console.error(
+			colorize(TERMINAL.scannerFatal, '[vault doctor] OS credential store is not available'),
+		);
 		process.exit(1);
 	}
 
@@ -226,7 +230,7 @@ export async function runVaultDoctor(options: VaultCliOptions = {}): Promise<voi
 	}
 
 	console.error(
-		`[vault doctor] ${ok ? colorize(COLOR_OK, 'all required secrets present') : colorize(COLOR_ERROR, `${missingRequired.length} required secret(s) missing`)}`,
+		`[vault doctor] ${ok ? colorize(TERMINAL.scannerOk, 'all required secrets present') : colorize(TERMINAL.scannerFatal, `${missingRequired.length} required secret(s) missing`)}`,
 	);
 
 	const headers =
@@ -234,16 +238,17 @@ export async function runVaultDoctor(options: VaultCliOptions = {}): Promise<voi
 			? ['domain', 'name', 'status', 'required', 'winPersist']
 			: ['domain', 'name', 'status', 'required'];
 	console.error(
-		Bun.inspect.table(
+		formatTable(
 			rows.map(r => ({
 				domain: r.domain,
 				name: r.name,
-				status: r.exists ? colorize(COLOR_OK, 'present') : colorize(COLOR_WARN, 'missing'),
+				status: r.exists
+					? colorize(TERMINAL.scannerOk, 'present')
+					: colorize(TERMINAL.scannerWarn, 'missing'),
 				required: r.required ? 'yes' : 'no',
 				winPersist: r.winPersist ?? '',
 			})),
 			headers,
-			{colors: true},
 		),
 	);
 

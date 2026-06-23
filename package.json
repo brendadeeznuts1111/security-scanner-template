@@ -1,5 +1,6 @@
 {
 	"name": "@acme/bun-security-scanner",
+	"private": true,
 	"description": "Bun security scanner for Acme Corp — supply chain protection with local rules + remote threat intelligence",
 	"version": "1.0.0",
 	"type": "module",
@@ -24,12 +25,23 @@
 		"src",
 		"scripts",
 		"rules",
+		"templates",
+		"domains",
+		"README.md",
+		"LICENSE",
+		"CONTRIBUTING.md",
 		"CHANGELOG.md",
 		"SECURITY.md"
 	],
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"homepage": "https://github.com/brendadeeznuts1111/security-scanner-template#readme",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/oven-sh/security-scanner-template"
+		"url": "https://github.com/brendadeeznuts1111/security-scanner-template.git"
+	},
+	"bugs": {
+		"url": "https://github.com/brendadeeznuts1111/security-scanner-template/issues"
 	},
 	"keywords": [
 		"bun",
@@ -42,7 +54,7 @@
 		"security-governance"
 	],
 	"scripts": {
-		"test": "bun test",
+		"test": "bun test --feature=AUDIT_SQLITE --feature=AUDIT_JSONL --feature=INTEL_DNS --feature=REPORT_MARKDOWN --feature=REPORT_HTML --feature=CACHE_REDIS --feature=FEED_WEBSOCKET --feature=SCAN_EXTERNAL --feature=DEBUG --feature=MOCK_API",
 		"lint": "bunx prettier --check .",
 		"typecheck": "bunx tsc --noEmit",
 		"format": "bunx prettier --write .",
@@ -50,25 +62,38 @@
 		"check:registry": "bun run src/index.ts --check-registry",
 		"healthcheck": "bun run src/index.ts --healthcheck",
 		"vault": "bun run src/cli/vault.ts",
+		"doctor": "bun run src/cli/doctor.ts",
+		"master-key": "bun run src/cli/master-key.ts",
+		"csrf": "bun run src/cli/csrf.ts",
+		"scan": "bun run src/cli/scan.ts",
+		"report": "bun run src/cli/report.ts",
+		"sp": "bun run src/cli/sp.ts",
+		"qr": "bun run src/cli/qr.ts",
+		"tls": "bun run src/cli/tls.ts",
+		"build:bundle": "bun run src/cli/build.ts",
+		"xref": "bun run src/cli/xref.ts",
+		"matrix": "bun run src/cli/matrix.ts",
+		"visual": "bun run src/cli/visual.ts",
+		"migrate-vault": "bun run scripts/migrate-vault.ts",
 		"detect-secrets-backend": "bun run scripts/detect-secrets-backend.ts",
 		"prepublishOnly": "bun run check"
 	},
 	"dependencies": {
-		"smol-toml": "^1.6.1",
+		"qrcode": "^1.5.4",
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.2.20",
+		"@types/bun": "^1.3.14",
 		"@types/node": "^26.0.0",
-		"bun-types": "1.2.20",
+		"@types/qrcode": "^1.5.6",
+		"bun-types": "1.3.14",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.2"
 	},
 	"engines": {
-		"bun": ">=1.2.0"
+		"bun": ">=1.3.14"
 	},
 	"publishConfig": {
-		"access": "restricted",
-		"registry": "https://registry.mycompany.com"
+		"access": "restricted"
 	}
 }

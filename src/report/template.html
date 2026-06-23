@@ -10,10 +10,7 @@
 				--panel: #1e293b;
 				--text: #e2e8f0;
 				--muted: #94a3b8;
-				--fatal: #ef4444;
-				--warn: #f59e0b;
-				--info: #3b82f6;
-				--ok: #22c55e;
+				{{THEME_VARS}}
 			}
 			body {
 				font-family:
@@ -109,10 +106,69 @@
 			a {
 				color: var(--info);
 			}
+			.visual-gallery {
+				margin-bottom: 2rem;
+			}
+			.visual-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+				gap: 1rem;
+			}
+			.visual-item {
+				margin: 0;
+				background: var(--panel);
+				border-radius: 0.5rem;
+				overflow: hidden;
+			}
+			.visual-item img {
+				display: block;
+				width: 100%;
+				height: auto;
+				object-fit: cover;
+			}
+			.visual-item figcaption {
+				padding: 0.5rem 0.75rem;
+				color: var(--muted);
+				font-size: 0.875rem;
+			}
+			.operator-qr {
+				margin-bottom: 2rem;
+				background: var(--panel);
+				border-radius: 0.5rem;
+				padding: 1.25rem;
+				border: 1px solid #334155;
+			}
+			.operator-qr-warning {
+				color: var(--warn);
+				font-size: 0.875rem;
+				margin-top: 0;
+			}
+			.operator-qr-figure {
+				margin: 1rem 0 0;
+				text-align: center;
+			}
+			.operator-qr-figure img {
+				background: #fff;
+				border-radius: 0.375rem;
+				padding: 0.5rem;
+			}
+			.operator-qr-figure figcaption {
+				color: var(--muted);
+				font-size: 0.875rem;
+				margin-top: 0.5rem;
+			}
+			.operator-qr-meta {
+				color: var(--muted);
+				font-size: 0.75rem;
+				margin-bottom: 0;
+			}
+			.operator-qr-meta code {
+				color: var(--text);
+			}
 		</style>
 	</head>
 	<body>
-		<h1>Security Report</h1>
+		<div id="summary">{{SUMMARY_HTML}}</div>
 		<div class="meta">
 			<div id="project"></div>
 			<div id="generatedAt"></div>
@@ -139,6 +195,8 @@
 			</div>
 		</div>
 
+		{{OPERATOR_QR}} {{VISUAL_GALLERY}}
+
 		<h2>Advisories</h2>
 		<table id="advisories">
 			<thead>
@@ -150,7 +208,9 @@
 					<th>Description</th>
 				</tr>
 			</thead>
-			<tbody id="advisoriesBody"></tbody>
+			<tbody id="advisoriesBody">
+				{{ADVISORY_ROWS}}
+			</tbody>
 		</table>
 		<div id="emptyState" class="empty" style="display: none">No advisories detected.</div>
 
@@ -163,7 +223,9 @@
 					<th>Reason</th>
 				</tr>
 			</thead>
-			<tbody id="overridesBody"></tbody>
+			<tbody id="overridesBody">
+				{{OVERRIDE_ROWS}}
+			</tbody>
 		</table>
 
 		<script>
@@ -179,34 +241,13 @@
 			document.getElementById('infoCount').textContent = data.infoCount;
 			document.getElementById('riskScore').textContent = data.riskScore;
 
-			const tbody = document.getElementById('advisoriesBody');
 			if (data.advisories.length === 0) {
 				document.getElementById('advisories').style.display = 'none';
 				document.getElementById('emptyState').style.display = 'block';
-			} else {
-				for (const a of data.advisories) {
-					const row = document.createElement('tr');
-					row.innerHTML = `
-						<td class="level ${a.level}">${a.level}</td>
-						<td>${a.package}</td>
-						<td>${a.version ?? '-'}</td>
-						<td>${(a.categories ?? []).join(', ') || '-'}</td>
-						<td>${a.description ? (a.url ? '<a href="' + a.url + '" target="_blank">' + a.description + '</a>' : a.description) : '-'}</td>
-					`;
-					tbody.appendChild(row);
-				}
 			}
 
-			const overridesBody = document.getElementById('overridesBody');
 			if (data.overrides.length === 0) {
 				document.getElementById('overrides').style.display = 'none';
-			} else {
-				for (const o of data.overrides) {
-					const row = document.createElement('tr');
-					const target = o.package ?? o.category ?? o.cve ?? '*';
-					row.innerHTML = `<td>${o.action}</td><td>${target}</td><td>${o.reason}</td>`;
-					overridesBody.appendChild(row);
-				}
 			}
 		</script>
 	</body>

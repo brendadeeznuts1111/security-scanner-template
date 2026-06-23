@@ -145,6 +145,43 @@ test('activate dryRun option applies to scanPackage', async () => {
 	expect(advisories[0]?.level).toBe('warn');
 });
 
+test('report generates HTML with operator QR when domain is configured', async () => {
+	const originalSecrets = Bun.secrets;
+	const store: Record<string, string> = {};
+	(Bun as unknown as {secrets: unknown}).secrets = {
+		get: async (opts: {service: string; name: string}) =>
+			store[`${opts.service}/${opts.name}`] ?? null,
+		set: async (opts: {service: string; name: string; value: string}) => {
+			store[`${opts.service}/${opts.name}`] = opts.value;
+		},
+		delete: async () => false,
+	};
+
+	const {mkdir, rm} = await import('fs/promises');
+	const root = `/tmp/sc-report-${Date.now()}`;
+	try {
+		await mkdir(`${root}/domains`, {recursive: true});
+		await Bun.write(
+			`${root}/domains/test.security.json5`,
+			'{ domain: "com.example.sc-report", ops: { report: { operatorQr: { enabled: true } } } }',
+		);
+		await Bun.secrets.set({
+			service: 'com.example.sc-report',
+			name: 'vault-master-key',
+			value: 'sc-report-token',
+		});
+
+		supplyChain.activate({domain: 'com.example.sc-report'});
+		const html = await supplyChain.report('html', undefined, {root});
+		expect(html).toContain('operator-qr');
+		expect(html).toContain('com.example.sc-report');
+	} finally {
+		(Bun as unknown as {secrets: unknown}).secrets = originalSecrets;
+		await rm(root, {recursive: true, force: true}).catch(() => {});
+		supplyChain.deactivate();
+	}
+});
+
 test('report generates JSON from audit buffer', async () => {
 	supplyChain.activate({});
 	await supplyChain.recordDecision({
@@ -169,6 +206,42 @@ test('report generates JSON from audit buffer', async () => {
 	const parsed = JSON.parse(json);
 	expect(parsed.fatalCount).toBe(1);
 	expect(parsed.advisories[0]?.package).toBe('event-stream');
+});
+
+test('sqlite audit sink persists decisions across reactivations', async () => {
+	const auditPath = `/tmp/scanner-audit-${crypto.randomUUID()}.sqlite`;
+	const masterKey = 'test-audit-key';
+
+	try {
+		supplyChain.activate({
+			auditLog: auditPath,
+			auditMasterKey: masterKey,
+		});
+
+		await supplyChain.recordDecision({
+			package: 'sqlite-audited-pkg',
+			version: '1.0.0',
+			requestedRange: '1.0.0',
+			advisories: [],
+			allowed: true,
+			decidedAt: new Date().toISOString(),
+		});
+
+		supplyChain.deactivate();
+		supplyChain.activate({
+			auditLog: auditPath,
+			auditMasterKey: masterKey,
+		});
+
+		const all = await supplyChain.audit();
+		expect(all.length).toBe(1);
+		expect(all[0]?.package).toBe('sqlite-audited-pkg');
+	} finally {
+		await Bun.file(auditPath)
+			.delete()
+			.catch(() => {});
+		supplyChain.deactivate();
+	}
 });
 
 test('encrypted audit sink persists decisions across reactivations', async () => {

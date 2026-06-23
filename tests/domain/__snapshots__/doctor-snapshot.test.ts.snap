@@ -1,0 +1,44 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`doctor snapshot document shape matches inline snapshot 1`] = `
+{
+  "domains": [],
+  "metadata": {
+    "bun": {
+      "revision": "test-revision",
+      "version": "1.3.14",
+    },
+    "capturedAt": "2020-01-01T00:00:00.000Z",
+    "package": null,
+    "snapshotRuntime": {
+      "matcherAvailable": false,
+      "nativeFlags": [
+        "--update-snapshots",
+        "-u",
+      ],
+      "updateRequested": false,
+    },
+    "templateCoverage": {
+      "catalogFields": 73,
+      "layerCounts": {
+        "branding": 23,
+        "domain": 73,
+        "field": 73,
+        "secrets": 9,
+        "service": 36,
+        "template": 73,
+      },
+      "missing": [],
+      "ok": true,
+      "path": "templates/domain.template.json5",
+    },
+  },
+  "summary": {
+    "domainCount": 0,
+    "errors": 0,
+    "ok": true,
+    "warnings": 0,
+  },
+  "version": 1,
+}
+`;

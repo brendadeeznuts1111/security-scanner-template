@@ -1,5 +1,5 @@
-import {parse} from 'smol-toml';
 import path from 'path';
+import {parseToml} from '../config/toml.ts';
 import type {PolicyDocument} from './types.ts';
 
 export const DEFAULT_POLICY_FILE = 'security.policy.toml';
@@ -18,7 +18,7 @@ export async function loadPolicy(filePath: string): Promise<PolicyDocument> {
 		return {};
 	}
 
-	const parsed = parse(text) as unknown as PolicyDocument;
+	const parsed = parseToml(text) as PolicyDocument;
 	return normalizePolicy(parsed);
 }
 

@@ -1,4 +1,6 @@
-import {EncryptedJSONLSink, type AuditEntry} from '../audit/encrypted-jsonl-sink.ts';
+import {createAuditEntry} from '../audit/entry.ts';
+import {createAuditSink} from '../audit/factory.ts';
+import type {AuditEntry, AuditSink} from '../audit/types.ts';
 import {severityPolicyFromDocument, type PolicyDocument} from '../policy/index.ts';
 import {
 	createProvider,
@@ -12,6 +14,7 @@ import {
 import {
 	computeRiskScore,
 	generateReport,
+	type GenerateReportOptions,
 	type ReportData,
 	type ReportFormat,
 } from '../report/index.ts';
@@ -35,14 +38,18 @@ export interface InstallDecision {
 }
 
 export interface SupplyChainConfig {
+	/** Reverse-DNS domain for report branding and operator QR enrichment. */
+	domain?: string;
 	feed?: FeedConfig;
 	policy?: SeverityPolicy;
 	dryRun?: boolean;
 	policyDocument?: PolicyDocument;
-	/** Path to an encrypted JSONL audit log. Requires AUDIT_MASTER_KEY or auditMasterKey. */
+	/** Path to an encrypted audit log (.jsonl.enc or .sqlite). Requires AUDIT_MASTER_KEY or auditMasterKey. */
 	auditLog?: string;
 	/** Master key for the encrypted audit log. Falls back to AUDIT_MASTER_KEY env var. */
 	auditMasterKey?: string;
+	/** Compress encrypted audit payloads on disk. Enabled by default for SQLite. */
+	auditCompress?: boolean;
 }
 
 interface ActiveState {
@@ -50,8 +57,9 @@ interface ActiveState {
 	config: FeedConfig;
 	policyDocument: PolicyDocument | null;
 	dryRun: boolean;
+	domain?: string;
 	decisions: InstallDecision[];
-	auditSink: EncryptedJSONLSink<AuditEntry> | null;
+	auditSink: AuditSink | null;
 }
 
 const state: ActiveState = {
@@ -107,10 +115,14 @@ export function activate(config: SupplyChainConfig = {}): SecurityScannerProvide
 	state.config = config.feed ?? {};
 	state.dryRun = config.dryRun ?? false;
 	state.policyDocument = config.policyDocument ?? null;
+	state.domain = config.domain;
 
 	const masterKey = config.auditMasterKey ?? process.env.AUDIT_MASTER_KEY;
 	if (config.auditLog && masterKey) {
-		state.auditSink = new EncryptedJSONLSink(config.auditLog, masterKey);
+		const sqlite = config.auditLog.toLowerCase().match(/\.(db|sqlite3?)$/) !== null;
+		state.auditSink = createAuditSink(config.auditLog, masterKey, {
+			compress: config.auditCompress ?? sqlite,
+		});
 	} else {
 		state.auditSink = null;
 	}
@@ -137,6 +149,7 @@ export function deactivate(): void {
 	state.config = {};
 	state.policyDocument = null;
 	state.dryRun = false;
+	state.domain = undefined;
 	state.auditSink = null;
 	resetPolicy();
 }
@@ -224,14 +237,14 @@ export async function scanAll(packages: Bun.Security.Package[]): Promise<Advisor
 }
 
 function decisionToAuditEntry(decision: InstallDecision): AuditEntry {
-	return {
+	return createAuditEntry({
 		package: decision.package,
 		version: decision.version,
 		requestedRange: decision.requestedRange,
 		advisories: decision.advisories as AuditEntry['advisories'],
 		allowed: decision.allowed,
 		decidedAt: decision.decidedAt,
-	};
+	});
 }
 
 /**
@@ -282,8 +295,9 @@ export async function audit(since?: Date | number): Promise<InstallDecision[]> {
 				? since.getTime()
 				: Date.now() - since * 60 * 60 * 1000;
 
-	const entries = state.auditSink ? await state.auditSink.readAll() : [...state.decisions];
-	const decisions = entries.map(auditEntryToDecision);
+	const decisions = state.auditSink
+		? (await state.auditSink.readAll()).map(auditEntryToDecision)
+		: [...state.decisions];
 
 	if (cutoff === null) {
 		return decisions;
@@ -345,10 +359,17 @@ function buildReportData(
 /**
  * Generate a security report from the recorded install decisions.
  */
-export async function report(format: ReportFormat, since?: Date | number): Promise<string> {
+export async function report(
+	format: ReportFormat,
+	since?: Date | number,
+	options: GenerateReportOptions = {},
+): Promise<string> {
 	const decisions = await audit(since);
 	const data = buildReportData(decisions, state.policyDocument?.override);
-	return generateReport(data, format);
+	return generateReport(data, format, {
+		...options,
+		domain: options.domain ?? state.domain,
+	});
 }
 
 /**
