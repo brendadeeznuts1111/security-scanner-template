@@ -72,7 +72,8 @@ export interface PtyRunResult {
 
 /**
  * Run an external security tool with Bun.spawn.
- * Uses native `timeout` / `killSignal` / `signal` per Bun child-process docs.
+ * Awaits `proc.exited` and captures stdout/stderr via {@link spawnCaptured}.
+ * @see https://bun.sh/docs/guides/process/spawn
  */
 export async function runTool(
 	command: string,

@@ -1,24 +1,33 @@
 import {expect, test} from 'bun:test';
 import {
 	BUN_SPAWN_DOCS_URL,
+	BUN_SPAWN_GUIDE_URL,
+	BUN_SPAWN_STDOUT_DOCS_URL,
 	DEFAULT_COLORTERM,
 	DEFAULT_TERM_NAME,
 	FORCE_COLOR_ENV,
 	INTERACTIVE_FORCE_ENV,
 	NO_COLOR_ENV,
+	SPAWN_STDIO_DEFAULTS,
 	exitIfNotInteractive,
 	formatRuntimeInfoTable,
 	getProcessRuntimeInfo,
 	isInteractiveForced,
 	isInteractiveSession,
+	readSpawnStdout,
 	requireInteractiveSession,
 	resolveHumanStdout,
 	resolveSpawnStdout,
 	shouldColorize,
+	spawnAndWait,
 	spawnCaptured,
+	spawnChild,
 	spawnEnvWithTerm,
 	spawnInherit,
+	spawnStdoutCaptured,
+	spawnStdoutText,
 	writeJsonStdout,
+	type SpawnOnExitHandler,
 } from '../../src/utils/process.ts';
 
 test('getProcessRuntimeInfo reports Bun spawn and terminal APIs', () => {
@@ -27,6 +36,7 @@ test('getProcessRuntimeInfo reports Bun spawn and terminal APIs', () => {
 	expect(info.terminalAvailable).toBe(typeof Bun.Terminal === 'function');
 	expect(info.platform).toBe(process.platform);
 	expect(info.docsUrl).toBe(BUN_SPAWN_DOCS_URL);
+	expect(info.spawnGuideUrl).toBe(BUN_SPAWN_GUIDE_URL);
 	expect(info.interactiveSession).toBe(isInteractiveSession());
 	expect(info.bunVersion).toBe(Bun.version);
 	expect(info.bunRevision).toBe(Bun.revision);
@@ -69,6 +79,13 @@ test('resolveHumanStdout prefers stderr when stdout is piped', () => {
 
 test('resolveSpawnStdout matches stdout TTY state', () => {
 	expect(resolveSpawnStdout()).toBe(process.stdout.isTTY ? 'inherit' : 'pipe');
+});
+
+test('SPAWN_STDIO_DEFAULTS matches Bun spawn guide', () => {
+	expect(SPAWN_STDIO_DEFAULTS.stdout).toBe('pipe');
+	expect(SPAWN_STDIO_DEFAULTS.stderr).toBe('inherit');
+	expect(BUN_SPAWN_GUIDE_URL).toContain('/guides/process/spawn');
+	expect(BUN_SPAWN_STDOUT_DOCS_URL).toContain('spawn-stdout');
 });
 
 test('shouldColorize honors FORCE_COLOR and NO_COLOR', () => {
@@ -193,6 +210,114 @@ test('writeJsonStdout emits JSON on stdout', () => {
 		expect(JSON.parse(lines[0]!)).toEqual({ok: true});
 	} finally {
 		console.log = original;
+	}
+});
+
+test('spawnChild uses guide defaults and spawnAndWait awaits exited', async () => {
+	const originalSpawn = Bun.spawn;
+	let spawnOptions: Record<string, unknown> | undefined;
+	let onExitCalled = false;
+
+	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = ((
+		_cmd: Parameters<typeof Bun.spawn>[0],
+		options?: Parameters<typeof Bun.spawn>[1],
+	) => {
+		spawnOptions = options as Record<string, unknown>;
+		const proc = {
+			exited: Promise.resolve(0),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode('hello\n'));
+					controller.close();
+				},
+			}),
+			killed: false,
+			signalCode: null,
+		} as unknown as ReturnType<typeof Bun.spawn>;
+		const onExit = options?.onExit as SpawnOnExitHandler | undefined;
+		onExit?.(proc, 0, null);
+		return proc;
+	}) as typeof Bun.spawn;
+
+	try {
+		spawnChild(['echo', 'warmup']);
+		const result = await spawnAndWait(['echo', 'hello'], {
+			cwd: '/tmp',
+			env: {FOO: 'bar'},
+			onExit: () => {
+				onExitCalled = true;
+			},
+		});
+		expect(result.exitCode).toBe(0);
+		expect(result.proc).toBeDefined();
+		expect(spawnOptions?.cwd).toBe('/tmp');
+		expect((spawnOptions?.env as Record<string, string>).FOO).toBe('bar');
+		expect(spawnOptions?.stdout).toBe('pipe');
+		expect(spawnOptions?.stderr).toBe('inherit');
+		expect(onExitCalled).toBe(true);
+	} finally {
+		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
+	}
+});
+
+test('spawnStdoutText reads piped stdout like proc.stdout.text()', async () => {
+	const originalSpawn = Bun.spawn;
+
+	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = ((
+		_cmd: Parameters<typeof Bun.spawn>[0],
+		_options?: Parameters<typeof Bun.spawn>[1],
+	) =>
+		({
+			exited: Promise.resolve(0),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode('hello\n'));
+					controller.close();
+				},
+			}),
+			killed: false,
+			signalCode: null,
+		}) as unknown as ReturnType<typeof Bun.spawn>) as typeof Bun.spawn;
+
+	try {
+		const result = await spawnStdoutText(['echo', 'hello']);
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe('hello\n');
+	} finally {
+		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
+	}
+});
+
+test('readSpawnStdout and spawnStdoutCaptured follow stdout guide', async () => {
+	const originalSpawn = Bun.spawn;
+	let spawnOptions: Record<string, unknown> | undefined;
+
+	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = ((
+		_cmd: Parameters<typeof Bun.spawn>[0],
+		options?: Parameters<typeof Bun.spawn>[1],
+	) => {
+		spawnOptions = options as Record<string, unknown>;
+		return {
+			exited: Promise.resolve(0),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode('hello'));
+					controller.close();
+				},
+			}),
+			killed: false,
+			signalCode: null,
+		} as unknown as ReturnType<typeof Bun.spawn>;
+	}) as typeof Bun.spawn;
+
+	try {
+		const proc = spawnStdoutCaptured(['echo', 'hello']);
+		expect(await readSpawnStdout(proc)).toBe('hello');
+		expect(spawnOptions?.stdout).toBe('pipe');
+		expect(spawnOptions?.stderr).toBe('inherit');
+		expect(spawnOptions?.stdin).toBeNull();
+	} finally {
+		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
 	}
 });
 
