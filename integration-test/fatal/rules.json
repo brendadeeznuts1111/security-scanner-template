@@ -1,0 +1,9 @@
+[
+	{
+		"package": "is-odd",
+		"range": "1.0.0",
+		"url": "https://example.com/is-odd-malware",
+		"description": "is-odd is marked as malware for this integration test",
+		"categories": ["malware"]
+	}
+]

@@ -1,0 +1,16 @@
+[
+	{
+		"package": "event-stream",
+		"range": ">=3.3.6 <4.0.0",
+		"url": "https://blog.npmjs.org/post/180565383195/details-about-the-event-stream-incident",
+		"description": "Compromised event-stream release shipped a malicious dependency.",
+		"categories": ["malware"]
+	},
+	{
+		"package": "deprecated-example",
+		"range": "<=1.0.0",
+		"url": "https://example.com/deprecated-example",
+		"description": "Example of a deprecated package warning.",
+		"categories": ["deprecated"]
+	}
+]

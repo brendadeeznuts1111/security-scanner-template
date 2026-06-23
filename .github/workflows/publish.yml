@@ -1,13 +1,12 @@
-name: Test
+name: Publish
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags:
+      - 'v*'
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,3 +23,8 @@ jobs:
 
       - name: Run quality checks
         run: bun run check
+
+      - name: Publish to internal registry
+        run: bun publish --tolerate-republish
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_CONFIG_TOKEN }}

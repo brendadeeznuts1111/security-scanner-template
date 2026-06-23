@@ -1,0 +1,8 @@
+{
+	"name": "@acme/bun-security-scanner-integration-test-fatal",
+	"private": true,
+	"version": "1.0.0",
+	"dependencies": {
+		"is-odd": "1.0.0"
+	}
+}

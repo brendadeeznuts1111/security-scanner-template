@@ -1,0 +1,9 @@
+[
+	{
+		"package": "is-even",
+		"range": "1.0.0",
+		"url": "https://example.com/is-even-deprecated",
+		"description": "is-even is used as a deprecation warning example",
+		"categories": ["deprecated"]
+	}
+]

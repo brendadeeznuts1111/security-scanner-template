@@ -1,2 +1,10 @@
 node_modules
 .DS_Store
+dist
+coverage
+.devin/config.local.json
+*.log
+.npmrc
+integration-test/**/node_modules
+integration-test/**/bun.lock
+integration-test/**/install.log

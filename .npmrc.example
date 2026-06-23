@@ -1,0 +1,5 @@
+# Copy this file to .npmrc and replace the registry URL + token.
+# Do not commit .npmrc — it is gitignored.
+
+@acme:registry=https://your-internal-registry.example.com
+//your-internal-registry.example.com/:_authToken=${NPM_CONFIG_TOKEN}
