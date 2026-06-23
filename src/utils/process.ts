@@ -1,5 +1,6 @@
 /**
  * Bun.spawn / stdio helpers aligned with
+ * https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn
  * https://bun.sh/docs/guides/process/spawn
  * https://bun.sh/docs/runtime/child-process#terminal-pty-support
  */
@@ -11,18 +12,37 @@ export const DEFAULT_TERM_NAME = 'xterm-256color';
 export const DEFAULT_COLORTERM = 'truecolor';
 
 export const BUN_SPAWN_GUIDE_URL = 'https://bun.sh/docs/guides/process/spawn';
-export const BUN_SPAWN_DOCS_URL = 'https://bun.com/docs/runtime/child-process';
+export const BUN_SPAWN_DOCS_URL =
+	'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn';
 export const BUN_SPAWN_STDOUT_DOCS_URL =
 	'https://bun.sh/docs/guides/process/spawn-stdout#read-stdout-from-a-child-process';
 export const BUN_SPAWN_STDERR_DOCS_URL =
 	'https://bun.sh/docs/guides/process/spawn-stderr#read-stderr-from-a-child-process';
 export const BUN_TERMINAL_DOCS_URL = 'https://bun.com/reference/bun/Terminal';
 
-/** Bun.spawn defaults: stdout piped (`proc.stdout`), stderr inherited by parent. */
+/**
+ * Bun.spawn stdio defaults per child-process API.
+ * @see {@link BUN_SPAWN_DOCS_URL}
+ */
 export const SPAWN_STDIO_DEFAULTS = {
+	stdin: null,
 	stdout: 'pipe' as const,
 	stderr: 'inherit' as const,
 };
+
+/** Operator notes for `Bun.spawn` / `Bun.Subprocess` (non-PTY). */
+export const SPAWN_BEHAVIOR = {
+	stdinDefault: 'null — provide no input to the subprocess',
+	stdoutDefault: 'pipe — ReadableStream on proc.stdout',
+	stderrDefault: 'inherit — parent stderr',
+	completion: 'await proc.exited',
+	exitMetadata: 'proc.killed, proc.exitCode, proc.signalCode',
+	kill: 'proc.kill(signal?)',
+	detach: 'proc.unref() — parent may exit before child',
+	resourceUsage: 'proc.resourceUsage() after proc.exited',
+	timeout: 'options.timeout (ms); default killSignal SIGTERM',
+	abort: 'options.signal (AbortSignal)',
+} as const;
 
 export const INTERACTIVE_FORCE_ENV = 'SP_FORCE_SHELL';
 export const FORCE_COLOR_ENV = 'FORCE_COLOR';
@@ -165,11 +185,30 @@ function baseSpawnOptions(options: SpawnInheritOptions = {}): SpawnInheritOption
 export function spawnChild(command: string[], options: SpawnChildOptions = {}): SpawnProc {
 	return Bun.spawn(command, {
 		...baseSpawnOptions(options),
-		stdin: options.stdin,
+		stdin: options.stdin ?? SPAWN_STDIO_DEFAULTS.stdin,
 		stdout: options.stdout ?? SPAWN_STDIO_DEFAULTS.stdout,
 		stderr: options.stderr ?? SPAWN_STDIO_DEFAULTS.stderr,
 		onExit: options.onExit,
 	});
+}
+
+/** Read `proc.killed` / `proc.exitCode` / `proc.signalCode` after spawn. */
+export function getSpawnExitState(proc: SpawnProc): SpawnWaitResult {
+	return {
+		exitCode: proc.exitCode ?? 0,
+		killed: proc.killed,
+		signalCode: proc.signalCode,
+	};
+}
+
+/** Kill a subprocess (`proc.kill(signal?)` per Bun.spawn API). */
+export function killSpawn(proc: SpawnProc, signal?: number | NodeJS.Signals): void {
+	proc.kill(signal);
+}
+
+/** Detach child from parent event loop (`proc.unref()`). */
+export function unrefSpawn(proc: SpawnProc): void {
+	proc.unref();
 }
 
 /** Spawn and await `proc.exited` (Bun spawn guide completion pattern). */
@@ -328,9 +367,53 @@ export function writeHumanStderr(message: string): void {
 	console.error(message);
 }
 
+export interface SpawnSyncCapturedOptions extends SpawnInheritOptions {
+	stdin?: SpawnWritable | null;
+	stdout?: SpawnReadable;
+	stderr?: SpawnReadable;
+	maxBuffer?: number;
+}
+
+export interface SpawnSyncCapturedResult {
+	exitCode: number;
+	signalCode: NodeJS.Signals | null;
+	stdout: string;
+	stderr: string;
+	success: boolean;
+}
+
+/**
+ * Blocking spawn for CLI probes (`Bun.spawnSync` — stdout/stderr as Buffer).
+ * @see {@link BUN_SPAWN_DOCS_URL}
+ */
+export function spawnSyncCaptured(
+	command: string[],
+	options: SpawnSyncCapturedOptions = {},
+): SpawnSyncCapturedResult {
+	const proc = Bun.spawnSync(command, {
+		cwd: options.cwd,
+		env: spawnEnvWithTerm(options.env),
+		stdin: options.stdin ?? SPAWN_STDIO_DEFAULTS.stdin,
+		stdout: options.stdout ?? 'pipe',
+		stderr: options.stderr ?? 'pipe',
+		signal: options.signal,
+		timeout: options.timeout,
+		killSignal: options.killSignal,
+		maxBuffer: options.maxBuffer,
+	});
+
+	return {
+		exitCode: proc.exitCode,
+		signalCode: (proc.signalCode ?? null) as NodeJS.Signals | null,
+		stdout: proc.stdout?.toString() ?? '',
+		stderr: proc.stderr?.toString() ?? '',
+		success: proc.success,
+	};
+}
+
 /**
  * Spawn with piped stdout/stderr and optional Bun `timeout` / `AbortSignal`.
- * @see https://bun.com/docs/runtime/child-process#using-timeout-and-killsignal
+ * @see {@link BUN_SPAWN_DOCS_URL}
  */
 export async function spawnCaptured(
 	command: string[],
@@ -376,6 +459,7 @@ export async function spawnInheritAndExit(
 
 export interface ProcessRuntimeInfo {
 	spawnAvailable: boolean;
+	spawnSyncAvailable: boolean;
 	terminalAvailable: boolean;
 	interactiveSession: boolean;
 	platform: NodeJS.Platform;
@@ -398,6 +482,7 @@ export function getProcessRuntimeInfo(): ProcessRuntimeInfo {
 	const force = parseForceColor(process.env[FORCE_COLOR_ENV]);
 	return {
 		spawnAvailable: typeof Bun.spawn === 'function',
+		spawnSyncAvailable: typeof Bun.spawnSync === 'function',
 		terminalAvailable: typeof Bun.Terminal === 'function',
 		interactiveSession: isInteractiveSession(),
 		platform: process.platform,
@@ -414,6 +499,33 @@ export function getProcessRuntimeInfo(): ProcessRuntimeInfo {
 		docsUrl: BUN_SPAWN_DOCS_URL,
 		spawnGuideUrl: BUN_SPAWN_GUIDE_URL,
 	};
+}
+
+/** Bun.spawn stdio defaults table (child-process API). */
+export function formatSpawnBehaviorTable(): string {
+	return Bun.inspect.table(
+		[
+			{
+				stream: 'stdin',
+				default: String(SPAWN_STDIO_DEFAULTS.stdin),
+				api: SPAWN_BEHAVIOR.stdinDefault,
+			},
+			{
+				stream: 'stdout',
+				default: SPAWN_STDIO_DEFAULTS.stdout,
+				api: SPAWN_BEHAVIOR.stdoutDefault,
+			},
+			{
+				stream: 'stderr',
+				default: SPAWN_STDIO_DEFAULTS.stderr,
+				api: SPAWN_BEHAVIOR.stderrDefault,
+			},
+			{stream: 'exit', default: 'proc.exited', api: SPAWN_BEHAVIOR.completion},
+			{stream: 'kill', default: 'proc.kill()', api: SPAWN_BEHAVIOR.kill},
+		],
+		['stream', 'default', 'api'],
+		{colors: shouldColorize(process.stderr)},
+	);
 }
 
 /** Terminal table of process runtime detection (Bun.inspect.table). */
@@ -449,6 +561,26 @@ export function formatRuntimeInfoTable(info: ProcessRuntimeInfo = getProcessRunt
 				signal: 'Bun.spawn',
 				value: info.spawnAvailable ? 'yes' : 'no',
 				api: 'Bun.spawn',
+			},
+			{
+				signal: 'Bun.spawnSync',
+				value: info.spawnSyncAvailable ? 'yes' : 'no',
+				api: 'Bun.spawnSync',
+			},
+			{
+				signal: 'spawn stdin',
+				value: String(SPAWN_STDIO_DEFAULTS.stdin),
+				api: 'Bun.spawn stdin default',
+			},
+			{
+				signal: 'spawn stdout',
+				value: SPAWN_STDIO_DEFAULTS.stdout,
+				api: 'Bun.spawn stdout default',
+			},
+			{
+				signal: 'spawn stderr',
+				value: SPAWN_STDIO_DEFAULTS.stderr,
+				api: 'Bun.spawn stderr default',
 			},
 			{
 				signal: 'Bun.Terminal',
