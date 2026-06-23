@@ -102,6 +102,8 @@ export interface WorkflowLoopOptions {
 	failOnDrift?: boolean;
 	/** Drift/issue reaction handlers (alert, fix, report). */
 	effects?: WorkflowEffectsConfig;
+	/** Directory containing custom `.ts` effect plugins to load at runtime. */
+	effectsDir?: string;
 	/** TLS material for outbound webhook alerts. */
 	tls?: WorkflowTlsConfig;
 	/** Include Bun runtime metadata in reports, alerts, and drift (default true). */

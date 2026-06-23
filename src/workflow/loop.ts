@@ -14,7 +14,12 @@ import type {DomainWorkflowConfig} from '../config/types.ts';
 import {createAsyncDebouncer} from '../utils/debounce.ts';
 import {onInterruptSignals, waitForInterruptSignal} from '../utils/signals.ts';
 import {runWorkflowEffects} from './effects/index.ts';
-import {aggregateWorkflowReport, formatWorkflowOutput, workflowExitCode} from './output.ts';
+import {
+	aggregateWorkflowReport,
+	formatWorkflowMarkdown,
+	formatWorkflowOutput,
+	workflowExitCode,
+} from './output.ts';
 import {collectWorkflowBunMetadata} from './runtime-context.ts';
 import {
 	createWorkflowScannerContext,
@@ -84,6 +89,7 @@ export class WorkflowLoop {
 			seedWritePath: options.seedWritePath,
 			failOnDrift: options.failOnDrift ?? false,
 			effects: options.effects,
+			effectsDir: options.effectsDir,
 			tls: options.tls,
 			includeBunVersion: options.includeBunVersion ?? true,
 		};
@@ -267,20 +273,24 @@ export class WorkflowLoop {
 			console.log(formatted.trimEnd());
 		}
 
-		const effectsPromise = runWorkflowEffects({
-			domain: this.domainName,
-			projectRoot: this.registry.root,
-			registry: this.registry,
-			report,
-			results,
-			drift,
-			effects: this.mergeEffectsTls(),
-			bun: bun ?? collectWorkflowBunMetadata(),
-			tls: this.resolveOutboundTls(),
-			dryRun: this.options.dryRun,
-			includeBunVersion: this.options.includeBunVersion,
-			seedState: this.seedDocument,
-		});
+		const effectsPromise = runWorkflowEffects(
+			{
+				domain: this.domainName,
+				projectRoot: this.registry.root,
+				registry: this.registry,
+				report,
+				results,
+				drift,
+				effects: this.mergeEffectsTls(),
+				bun: bun ?? collectWorkflowBunMetadata(),
+				tls: this.resolveOutboundTls(),
+				dryRun: this.options.dryRun,
+				includeBunVersion: this.options.includeBunVersion,
+				seedState: this.seedDocument,
+			},
+			{},
+			formatWorkflowMarkdown,
+		);
 		const awaitEffects = !this.running || this.options.dryRun === true;
 		if (awaitEffects) {
 			await effectsPromise;
