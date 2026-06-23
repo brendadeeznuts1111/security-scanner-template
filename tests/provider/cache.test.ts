@@ -69,9 +69,12 @@ test('refetches when TTL is expired', async () => {
 
 	// Manually age the cache beyond TTL.
 	const file = Bun.file(currentCachePath);
-	const entry = await file.json();
+	const {decompressText} = await import('../../src/crypto/compress.ts');
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	const entry = JSON.parse(decompressText(bytes)) as {fetchedAt: number};
 	entry.fetchedAt = Date.now() - 120_000;
-	await Bun.write(currentCachePath, JSON.stringify(entry));
+	const {compressText} = await import('../../src/crypto/compress.ts');
+	await Bun.write(currentCachePath, compressText(JSON.stringify(entry), 'zstd'));
 
 	await getCachedFeed(TEST_URL, {ttlMs: 60_000, cachePath: currentCachePath}, fetcher);
 	expect(calls).toBe(2);

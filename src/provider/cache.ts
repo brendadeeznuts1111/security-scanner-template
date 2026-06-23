@@ -1,5 +1,8 @@
 import path from 'path';
 import {mkdir} from 'fs/promises';
+import {compressText, decompressText} from '../crypto/compress.ts';
+import {FEATURE_CACHE_REDIS} from '../features/index.ts';
+import {readRedisCacheEntry, writeRedisCacheEntry} from './redis-cache.ts';
 
 export interface CacheEntry {
 	url: string;
@@ -11,6 +14,7 @@ export interface CacheEntry {
 export interface CachePathOptions {
 	domain?: string;
 	cachePath?: string;
+	redis?: boolean;
 }
 
 export interface CacheOptions extends CachePathOptions {
@@ -43,45 +47,80 @@ async function ensureDir(filePath: string): Promise<void> {
 	}
 }
 
-async function readCacheEntry(filePath: string): Promise<CacheEntry | null> {
+async function readFileCacheEntry(filePath: string): Promise<CacheEntry | null> {
 	const file = Bun.file(filePath);
 	if (!(await file.exists())) return null;
 
 	try {
-		return (await file.json()) as CacheEntry;
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		if (bytes.length >= 3 && bytes[0] === 0x42 && bytes[1] === 0x53 && bytes[2] === 0x43) {
+			return JSON.parse(decompressText(bytes)) as CacheEntry;
+		}
+
+		return JSON.parse(new TextDecoder().decode(bytes)) as CacheEntry;
 	} catch {
 		return null;
 	}
 }
 
-async function writeCacheEntry(filePath: string, entry: CacheEntry): Promise<void> {
+async function writeFileCacheEntry(filePath: string, entry: CacheEntry): Promise<void> {
 	await ensureDir(filePath);
 	try {
-		await Bun.write(filePath, JSON.stringify(entry));
+		const compressed = compressText(JSON.stringify(entry), 'zstd');
+		await Bun.write(filePath, compressed);
 	} catch {
 		// Ignore cache write failures.
 	}
 }
 
+async function readCacheEntry(
+	url: string,
+	options: CachePathOptions,
+): Promise<CacheEntry | null> {
+	if (FEATURE_CACHE_REDIS && options.redis !== false) {
+		const redisEntry = await readRedisCacheEntry(url, options);
+		if (redisEntry) return redisEntry;
+	}
+
+	return readFileCacheEntry(cachePathForUrl(url, options));
+}
+
+async function writeCacheEntry(
+	url: string,
+	entry: CacheEntry,
+	options: CacheOptions,
+): Promise<void> {
+	if (FEATURE_CACHE_REDIS && options.redis !== false) {
+		await writeRedisCacheEntry(url, entry, options);
+	}
+
+	await writeFileCacheEntry(cachePathForUrl(url, options), entry);
+}
+
 async function revalidateAsync(
 	url: string,
-	filePath: string,
+	options: CacheOptions,
 	fetcher: () => Promise<Response>,
 	etag?: string,
 ): Promise<void> {
+	const filePath = cachePathForUrl(url, options);
 	try {
 		const response = await fetcher();
 		if (response.status === 304) return;
 
 		const data = await response.json();
-		await writeCacheEntry(filePath, {
+		await writeCacheEntry(
 			url,
-			fetchedAt: Date.now(),
-			data,
-			etag: response.headers.get('etag') ?? undefined,
-		});
+			{
+				url,
+				fetchedAt: Date.now(),
+				data,
+				etag: response.headers.get('etag') ?? undefined,
+			},
+			options,
+		);
 	} catch {
-		// Silent fail: stale cache is acceptable.
+		void filePath;
 	}
 }
 
@@ -90,17 +129,9 @@ async function fetchWithConditionalGet(
 	etag?: string,
 ): Promise<Response> {
 	if (!etag) return fetcher();
-
 	return fetcher();
 }
 
-/**
- * Fetch a remote feed with stale-while-revalidate caching.
- *
- * - `ttlMs <= 0`: bypass cache entirely.
- * - Cache hit within TTL: return cached data and refresh in the background.
- * - Cache miss or expired: blocking fetch, then write to cache.
- */
 export async function getCachedFeed(
 	url: string,
 	options: CacheOptions,
@@ -112,34 +143,39 @@ export async function getCachedFeed(
 		return response.json();
 	}
 
-	const filePath = cachePathForUrl(url, options);
-	const entry = await readCacheEntry(filePath);
+	const entry = await readCacheEntry(url, options);
 	const now = Date.now();
 	const stale = !entry || now - entry.fetchedAt > ttlMs;
 
 	if (!stale && entry) {
-		revalidateAsync(url, filePath, () => fetchWithConditionalGet(fetcher, entry.etag), entry.etag);
+		revalidateAsync(url, options, () => fetchWithConditionalGet(fetcher, entry.etag), entry.etag);
 		return entry.data;
 	}
 
 	const response = await fetchWithConditionalGet(fetcher, entry?.etag);
 	const data = await response.json();
-	await writeCacheEntry(filePath, {
+	await writeCacheEntry(
 		url,
-		fetchedAt: now,
-		data,
-		etag: response.headers.get('etag') ?? undefined,
-	});
+		{
+			url,
+			fetchedAt: now,
+			data,
+			etag: response.headers.get('etag') ?? undefined,
+		},
+		options,
+	);
 	return data;
 }
 
-/**
- * Clear the cache for a given URL and domain.
- */
 export async function clearCache(url: string, options: CachePathOptions = {}): Promise<void> {
 	const filePath = cachePathForUrl(url, options);
 	const file = Bun.file(filePath);
 	if (await file.exists()) {
 		await file.delete().catch(() => {});
+	}
+
+	if (FEATURE_CACHE_REDIS && options.redis !== false) {
+		const {clearRedisCache} = await import('./redis-cache.ts');
+		await clearRedisCache(url, options);
 	}
 }

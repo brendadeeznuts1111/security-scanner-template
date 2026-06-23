@@ -1,53 +1,58 @@
+import type {FeedFetchProtocol} from '../config/types.ts';
+import {FEATURE_FEED_WEBSOCKET, FEATURE_INTEL_DNS} from '../features/index.ts';
 import {getCachedFeed, type CacheOptions} from './cache.ts';
+import {loadWebSocketFeed} from './feed-websocket.ts';
 import {isJSONLSource, parseJSONLFeed, streamJSONLFeed} from './feed-jsonl.ts';
+import {resolveFeedProtocol} from '../net/protocol.ts';
+import {fetchWithRetry} from '../net/retry.ts';
+import {scanHtmlResponse} from '../scan/html.ts';
+import {inspectFeedUrl, type DnsThreatConfig} from '../threat-intel/dns.ts';
 import {normalizeThreatFeed, type AllowlistItem, type ThreatFeedItem} from './validator.ts';
+import {createRateLimiter} from '../utils/rate-limit.ts';
+import {filePathFromModuleUrl} from '../utils/runtime.ts';
 
 export interface FeedConfig {
-	/** Local path to a JSON file containing the threat feed and allowlist. */
 	local?: string;
-	/** Remote URL to fetch the threat feed from. */
 	remote?: string;
-	/** Vault key name for the API key used to authenticate with the remote feed. */
 	apiKeyVault?: string;
-	/** Service name for the API key vault. */
 	apiKeyService?: string;
-	/** Local path to cache the downloaded feed. */
 	cachePath?: string;
 	cacheTtl?: number;
+	protocol?: FeedFetchProtocol;
+	dnsThreat?: DnsThreatConfig;
+	scanHtml?: boolean;
 }
 
 export interface LoadedFeed {
-	/** Normalized threat feed items. */
 	rules: ThreatFeedItem[];
-	/** Normalized allowlist items. */
 	allowlist: AllowlistItem[];
 }
 
-const DEFAULT_API_KEY_SERVICE = 'com.factory-wager.bun-security-planner';
-const DEFAULT_CACHE_TTL_SECONDS = 3600; // 1 hour
+/** Legacy fallback when feed config is built without a domain context. */
+const LEGACY_API_KEY_SERVICE = 'com.factory-wager.bun-security-planner';
+const DEFAULT_CACHE_TTL_SECONDS = 3600;
 
-/**
- * Get the cache TTL in seconds.
- * If a cache TTL is provided in the config, it will be used.
- * Otherwise, the default cache TTL will be used.
- */
+const FEED_RATE_LIMITER = createRateLimiter({
+	maxAttempts: 60,
+	windowMs: 60_000,
+});
+
+function isWebSocketUrl(url: string): boolean {
+	return url.startsWith('ws://') || url.startsWith('wss://');
+}
+
 export function getCacheTtlSeconds(config: FeedConfig): number {
 	if (config.cacheTtl === undefined) return DEFAULT_CACHE_TTL_SECONDS;
 	return Number.isFinite(config.cacheTtl) && config.cacheTtl >= 0 ? config.cacheTtl : 0;
 }
 
-/**
- * Read the API key from the secret store.
- * If no API key vault is configured, return null.
- * If the secret store is not available, return null.
- */
 async function readApiKey(config: FeedConfig): Promise<string | null> {
 	if (!config.apiKeyVault) return null;
 	if (typeof Bun.secrets === 'undefined') return null;
 
 	try {
 		return await Bun.secrets.get({
-			service: config.apiKeyService ?? DEFAULT_API_KEY_SERVICE,
+			service: config.apiKeyService ?? LEGACY_API_KEY_SERVICE,
 			name: config.apiKeyVault,
 		});
 	} catch {
@@ -55,64 +60,82 @@ async function readApiKey(config: FeedConfig): Promise<string | null> {
 	}
 }
 
-/**
- * Fetch a URL with a timeout and retry logic.
- * If the request fails, it will be retried up to the specified number of times.
- * If all retries fail, the last error will be thrown.
- */
-async function fetchWithTimeoutAndRetry(
-	url: string,
-	timeoutMs = 5000,
-	retries = 2,
-	headers: Record<string, string> = {},
-): Promise<Response> {
-	let lastError: Error | undefined;
-
-	for (let attempt = 0; attempt <= retries; attempt++) {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-		try {
-			const response = await fetch(url, {signal: controller.signal, headers});
-			clearTimeout(timeoutId);
-			return response;
-		} catch (error) {
-			clearTimeout(timeoutId);
-			lastError = error instanceof Error ? error : new Error(String(error));
-			if (attempt < retries) {
-				await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
-			}
-		}
+async function buildAuthHeaders(config: FeedConfig): Promise<Record<string, string>> {
+	const headers: Record<string, string> = {};
+	const apiKey = await readApiKey(config);
+	if (apiKey) {
+		headers['Authorization'] = `Bearer ${apiKey}`;
 	}
-
-	throw lastError;
+	return headers;
 }
 
 function buildRemoteFeedFetcher(config: FeedConfig): () => Promise<Response> {
 	return async () => {
-		const headers: Record<string, string> = {};
-		const apiKey = await readApiKey(config);
-		if (apiKey) {
-			headers['Authorization'] = `Bearer ${apiKey}`;
+		const limit = FEED_RATE_LIMITER.attempt();
+		if (!limit.allowed) {
+			throw new Error(`Threat feed rate limit exceeded; retry after ${limit.retryAfterMs}ms`);
 		}
-
-		return fetchWithTimeoutAndRetry(config.remote!, 5000, 2, headers);
+		const headers = await buildAuthHeaders(config);
+		const protocol = resolveFeedProtocol(config.protocol);
+		return fetchWithRetry(config.remote!, {headers, protocol});
 	};
 }
 
-/**
- * Load the remote feed from the configured URL.
- * Uses stale-while-revalidate caching when cacheTtl > 0.
- * JSONL feeds are streamed and processed line-by-line.
- */
+async function parseRemoteResponse(
+	response: Response,
+	url: string,
+	config: FeedConfig,
+): Promise<LoadedFeed> {
+	const contentType = response.headers.get('content-type') ?? '';
+
+	if (config.scanHtml || contentType.includes('text/html')) {
+		const html = await response.text();
+		const findings = await scanHtmlResponse(html);
+		if (findings.some(finding => finding.severity === 'fatal')) {
+			const summary = findings.map(finding => finding.description).join('; ');
+			throw new Error(`HTML threat feed blocked for ${url}: ${summary}`);
+		}
+
+		try {
+			return normalizeThreatFeed(JSON.parse(html));
+		} catch {
+			throw new Error(`HTML response from ${url} is not a valid threat feed document`);
+		}
+	}
+
+	if (isJSONLSource(url)) {
+		return streamJSONLFeed(response);
+	}
+
+	return normalizeThreatFeed(await response.json());
+}
+
 async function loadRemoteFeed(config: FeedConfig): Promise<LoadedFeed> {
 	if (!config.remote) {
 		throw new Error('No remote feed URL configured');
 	}
 
+	if (FEATURE_INTEL_DNS && config.dnsThreat && !isWebSocketUrl(config.remote)) {
+		const inspection = await inspectFeedUrl(config.remote, config.dnsThreat);
+		if (inspection?.suspicious) {
+			throw new Error(
+				`Remote feed DNS check failed for ${inspection.hostname}: ${inspection.reason}`,
+			);
+		}
+	}
+
+	if (isWebSocketUrl(config.remote)) {
+		if (!FEATURE_FEED_WEBSOCKET) {
+			throw new Error(
+				'WebSocket threat feeds are not included in this build (FEATURE_FEED_WEBSOCKET=false)',
+			);
+		}
+		return loadWebSocketFeed(config.remote);
+	}
+
 	if (isJSONLSource(config.remote)) {
 		const response = await buildRemoteFeedFetcher(config)();
-		return streamJSONLFeed(response);
+		return parseRemoteResponse(response, config.remote, config);
 	}
 
 	const ttlSeconds = getCacheTtlSeconds(config);
@@ -121,15 +144,15 @@ async function loadRemoteFeed(config: FeedConfig): Promise<LoadedFeed> {
 		cachePath: config.cachePath,
 	};
 
+	if (ttlSeconds <= 0) {
+		const response = await buildRemoteFeedFetcher(config)();
+		return parseRemoteResponse(response, config.remote, config);
+	}
+
 	const data = await getCachedFeed(config.remote, cacheOptions, buildRemoteFeedFetcher(config));
 	return normalizeThreatFeed(data);
 }
 
-/**
- * Load the local feed from the configured local path.
- * If a local feed path is not configured, throw an error.
- * Supports both plain JSON and JSONL formats.
- */
 async function loadLocalFeed(localPath: string): Promise<LoadedFeed> {
 	const file = Bun.file(localPath);
 	const text = await file.text();
@@ -141,23 +164,21 @@ async function loadLocalFeed(localPath: string): Promise<LoadedFeed> {
 	return normalizeThreatFeed(JSON.parse(text));
 }
 
-const DEFAULT_RULES_PATH = new URL('../../rules/security-rules.json', import.meta.url).pathname;
+const DEFAULT_RULES_PATH = filePathFromModuleUrl(
+	new URL('../../rules/security-rules.json', import.meta.url),
+);
 
 async function loadDefaultRules(): Promise<LoadedFeed> {
 	const file = Bun.file(DEFAULT_RULES_PATH);
 	if (!(await file.exists())) {
 		return {rules: [], allowlist: []};
 	}
-	const data = await file.json();
-	return normalizeThreatFeed(data);
+
+	const text = await file.text();
+	return normalizeThreatFeed(JSON.parse(text));
 }
 
-/**
- * Load the threat feed for a provider configuration.
- *
- * Precedence: local path → remote URL → bundled default rules.
- */
-export async function loadFeed(config: FeedConfig): Promise<LoadedFeed> {
+export async function loadThreatFeed(config: FeedConfig = {}): Promise<LoadedFeed> {
 	if (config.local) {
 		return loadLocalFeed(config.local);
 	}
@@ -167,11 +188,4 @@ export async function loadFeed(config: FeedConfig): Promise<LoadedFeed> {
 	}
 
 	return loadDefaultRules();
-}
-
-/**
- * Synchronously peek at the bundled default rules path.
- */
-export function getDefaultRulesPath(): string {
-	return DEFAULT_RULES_PATH;
 }

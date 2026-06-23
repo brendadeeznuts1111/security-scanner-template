@@ -1,4 +1,4 @@
-import {loadFeed, type FeedConfig} from './feed.ts';
+import {loadThreatFeed, type FeedConfig} from './feed.ts';
 import {applyDryRun, type DryRunOptions} from './dry-run.ts';
 import {applyPolicy, type PolicyDocument} from '../policy/index.ts';
 import {type AllowlistItem, type ThreatFeedItem} from './validator.ts';
@@ -10,6 +10,15 @@ import {
 	getPolicy,
 	resetPolicy,
 } from './policy.ts';
+import {
+	findingsToAdvisories,
+	matchThreatsParallel,
+	runAvailableTools,
+	scanBundle,
+	scanSource,
+	type ParallelScanOptions,
+	type ToolRunResult,
+} from '../scan/index.ts';
 
 export type {FeedConfig} from './feed.ts';
 export type {SeverityPolicy} from './policy.ts';
@@ -28,10 +37,26 @@ export {
 	type ThreatFeedDocument,
 } from './validator.ts';
 
+export interface ScanExtensions {
+	/** Optional package source code keyed by package name for transpiler scans. */
+	sources?: Record<string, string>;
+	/** Built bundle paths keyed by package name (bun build output). */
+	bundles?: Record<string, string>;
+	/** Fan out feed matching across Workers for large dependency trees. */
+	parallel?: ParallelScanOptions;
+	/** External tool names to detect with Bun.which. */
+	externalTools?: string[];
+	/** Run detected external tools with Bun.spawn during scan. */
+	runExternalTools?: boolean;
+}
+
 export interface SecurityScannerProvider {
 	version: '1';
 	config: FeedConfig;
-	scan(input: {packages: Bun.Security.Package[]}): Promise<Bun.Security.Advisory[]>;
+	scan(input: {
+		packages: Bun.Security.Package[];
+		extensions?: ScanExtensions;
+	}): Promise<Bun.Security.Advisory[]>;
 }
 
 export interface ProviderOptions {
@@ -39,6 +64,7 @@ export interface ProviderOptions {
 	policy?: SeverityPolicy;
 	dryRun?: boolean;
 	policyDocument?: PolicyDocument;
+	extensions?: ScanExtensions;
 }
 
 export type {DryRunOptions} from './dry-run.ts';
@@ -60,6 +86,13 @@ export const scannerCapabilities = {
 		'configurable-policy',
 		'project-policy-overrides',
 		'dry-run',
+		'parallel-worker-scan',
+		'transpiler-source-scan',
+		'transpiler-bundle-scan',
+		'external-tool-orchestration',
+		'websocket-threat-feed',
+		'redis-distributed-cache',
+		'html-response-scanning',
 	],
 	categories: [
 		'protestware',
@@ -72,38 +105,6 @@ export const scannerCapabilities = {
 		'unmaintained',
 	],
 };
-
-function isAllowed(pkg: Bun.Security.Package, allowlist: AllowlistItem[]): AllowlistItem | null {
-	for (const entry of allowlist) {
-		if (entry.package === pkg.name && Bun.semver.satisfies(pkg.version, entry.range)) {
-			return entry;
-		}
-	}
-	return null;
-}
-
-function findThreats(
-	packages: Bun.Security.Package[],
-	feed: ThreatFeedItem[],
-	allowlist: AllowlistItem[],
-): {item: ThreatFeedItem; matchingPackages: Bun.Security.Package[]}[] {
-	const result: {item: ThreatFeedItem; matchingPackages: Bun.Security.Package[]}[] = [];
-
-	for (const item of feed) {
-		const matchingPackages = packages.filter(
-			p =>
-				p.name === item.package &&
-				Bun.semver.satisfies(p.version, item.range) &&
-				!isAllowed(p, allowlist),
-		);
-
-		if (matchingPackages.length > 0) {
-			result.push({item, matchingPackages});
-		}
-	}
-
-	return result;
-}
 
 function buildAdvisory(
 	item: ThreatFeedItem,
@@ -121,19 +122,69 @@ function buildAdvisory(
 	};
 }
 
+function scanPackageSources(
+	packages: Bun.Security.Package[],
+	sources: Record<string, string>,
+): Bun.Security.Advisory[] {
+	const advisories: Bun.Security.Advisory[] = [];
+
+	for (const pkg of packages) {
+		const source = sources[pkg.name];
+		if (!source) continue;
+
+		const findings = scanSource(source);
+		advisories.push(...findingsToAdvisories(pkg.name, pkg.version, findings));
+	}
+
+	return advisories;
+}
+
+async function scanPackageBundles(
+	packages: Bun.Security.Package[],
+	bundles: Record<string, string>,
+): Promise<Bun.Security.Advisory[]> {
+	const advisories: Bun.Security.Advisory[] = [];
+
+	for (const pkg of packages) {
+		const bundlePath = bundles[pkg.name];
+		if (!bundlePath) continue;
+
+		const result = await scanBundle(bundlePath);
+		advisories.push(...findingsToAdvisories(pkg.name, pkg.version, result.findings));
+	}
+
+	return advisories;
+}
+
+async function maybeRunExternalTools(extensions?: ScanExtensions): Promise<ToolRunResult[]> {
+	if (!extensions?.runExternalTools) return [];
+	return runAvailableTools(extensions.externalTools);
+}
+
 export function createProvider(options: ProviderOptions): SecurityScannerProvider {
 	const config = options.config;
 	const policy = options.policy ?? DEFAULT_POLICY;
 	const dryRun = options.dryRun ?? false;
 	const policyRules = options.policyDocument?.override ?? [];
+	const defaultExtensions = options.extensions;
 
 	return {
 		version: '1',
 		config,
-		async scan(input: {packages: Bun.Security.Package[]}): Promise<Bun.Security.Advisory[]> {
-			const {rules, allowlist} = await loadFeed(config);
+		async scan(input: {
+			packages: Bun.Security.Package[];
+			extensions?: ScanExtensions;
+		}): Promise<Bun.Security.Advisory[]> {
+			const extensions = input.extensions ?? defaultExtensions;
+			const {rules, allowlist} = await loadThreatFeed(config);
 
-			const threats = findThreats(input.packages, rules, allowlist);
+			const threats = await matchThreatsParallel(
+				input.packages,
+				rules,
+				allowlist,
+				extensions?.parallel,
+			);
+
 			const results: Bun.Security.Advisory[] = [];
 
 			for (const {item, matchingPackages} of threats) {
@@ -141,6 +192,16 @@ export function createProvider(options: ProviderOptions): SecurityScannerProvide
 				if (!level) continue;
 				results.push(buildAdvisory(item, level, matchingPackages, false));
 			}
+
+			if (extensions?.sources) {
+				results.push(...scanPackageSources(input.packages, extensions.sources));
+			}
+
+			if (extensions?.bundles) {
+				results.push(...(await scanPackageBundles(input.packages, extensions.bundles)));
+			}
+
+			await maybeRunExternalTools(extensions);
 
 			const {filtered} = applyPolicy(results, policyRules);
 			return applyDryRun(filtered, {dryRun});
