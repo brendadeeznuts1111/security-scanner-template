@@ -4,6 +4,7 @@ import type {TranspilerScanReport} from '../scan/transpiler/types.ts';
 import {formatTranspilerReportMarkdown} from '../scan/transpiler/reporter.ts';
 import type {SupplyChainScanProfile} from '../cli/supply-chain-profiles.ts';
 import type {SupplyChainScanIdentity} from '../intel/scanner-identity.ts';
+import type {SupplyChainRemediationPlan} from '../intel/supply-chain-remediation.ts';
 
 export interface SupplyChainDeepScanReport {
 	profile: SupplyChainScanProfile | 'default';
@@ -14,7 +15,29 @@ export interface SupplyChainDeepScanReport {
 	packages?: SemverScanReport;
 	constraints?: ConstraintScanReport;
 	policyPresent: boolean;
+	remediation?: SupplyChainRemediationPlan;
 	durationMs: number;
+}
+
+function formatRemediationQueueMarkdown(plan: SupplyChainRemediationPlan): string {
+	if (plan.queue.length === 0) {
+		return '_No remediation actions planned._';
+	}
+	const lines = [
+		'## Remediation queue',
+		'',
+		`| Auto-fixable | ${plan.autoFixableCount} |`,
+		`| Manual | ${plan.manualCount} |`,
+		'',
+	];
+	for (const action of plan.queue) {
+		const tag = action.autoFixable ? 'auto' : 'manual';
+		lines.push(`- **[${tag}/${action.layer}]** ${action.message}`);
+		if (action.command) {
+			lines.push(`  - \`${action.command}\``);
+		}
+	}
+	return lines.join('\n');
 }
 
 function formatPartyLabel(party: SupplyChainScanIdentity['scanner']): string {
@@ -156,6 +179,10 @@ export function formatSupplyChainScanMarkdown(report: SupplyChainDeepScanReport)
 		(report.constraints?.violations.length ?? 0) === 0
 	) {
 		lines.push('_No findings across enabled scan layers._', '');
+	}
+
+	if (report.remediation && report.remediation.queue.length > 0) {
+		lines.push('', formatRemediationQueueMarkdown(report.remediation), '');
 	}
 
 	return lines.filter(line => line !== '').join('\n');

@@ -32,6 +32,10 @@ import {
 	resolveScannerPackageRoot,
 	resolveSupplyChainScanIdentity,
 } from '../intel/scanner-identity.ts';
+import {
+	planSupplyChainRemediation,
+	type SupplyChainRemediationPlan,
+} from '../intel/supply-chain-remediation.ts';
 
 export interface SupplyChainDeepScanOptions {
 	path: string;
@@ -48,6 +52,8 @@ export interface SupplyChainDeepScanOptions {
 	transitive?: boolean;
 	registry?: DomainRegistry;
 	emitFormattedStdout?: boolean;
+	/** Include semver remediation suggestions in package layer. */
+	remediation?: boolean;
 }
 
 async function runBundleLayer(
@@ -113,7 +119,7 @@ async function runPolicyLayers(
 			domain: options.domain ?? 'external.project',
 			config: stubConfig,
 			includeThreatFeed: options.threatFeed === true || !!options.feedUrl,
-			includeRemediation: false,
+			includeRemediation: options.remediation !== false,
 			deepConstraints: profile.includeConstraints,
 			transitive: options.transitive,
 			threatEntries:
@@ -142,9 +148,10 @@ async function runPolicyLayers(
 	};
 }
 
-export async function runSupplyChainDeepScan(
+/** Collect a multi-layer supply-chain scan report (no stdout). */
+export async function collectSupplyChainDeepScanReport(
 	options: SupplyChainDeepScanOptions,
-): Promise<number> {
+): Promise<SupplyChainDeepScanReport> {
 	const started = performance.now();
 	const scanPath = resolveSupplyChainScanPath(options.path);
 	if (!existsSync(scanPath)) {
@@ -188,14 +195,22 @@ export async function runSupplyChainDeepScan(
 		policyPresent: policyLayers.policyPresent ?? false,
 		durationMs: performance.now() - started,
 	};
+	report.remediation = planSupplyChainRemediation(report);
+	return report;
+}
 
+/** Write formatted scan output and operator stderr summary. */
+export async function emitSupplyChainDeepScanReport(
+	report: SupplyChainDeepScanReport,
+	options: SupplyChainDeepScanOptions,
+	plan: SupplyChainRemediationPlan = report.remediation ?? planSupplyChainRemediation(report),
+): Promise<void> {
+	const enriched = {...report, remediation: plan};
 	const format = options.format ?? 'json';
 	const body =
 		format === 'markdown'
-			? formatSupplyChainScanMarkdown(report)
-			: format === 'json'
-				? formatSupplyChainScanJson(report)
-				: formatSupplyChainScanJson(report);
+			? formatSupplyChainScanMarkdown(enriched)
+			: formatSupplyChainScanJson(enriched);
 
 	if (options.output) {
 		await Bun.write(options.output, body);
@@ -205,22 +220,37 @@ export async function runSupplyChainDeepScan(
 
 	if (format !== 'json' && !options.output) {
 		const {colorize, TERMINAL} = await import('../color/index.ts');
+		const profile = resolveSupplyChainProfile(options.profile);
 		console.error(
 			colorize(
 				TERMINAL.scannerInfo,
-				`[supply-chain] ${report.identity.scanner.name}@${report.identity.scanner.version ?? '0.0.0'} profile=${profile.name} bundle=${report.bundle.findings.length} pkg=${report.packages?.violations.length ?? 0} constraints=${report.constraints?.violations.length ?? 0} (${report.durationMs.toFixed(2)}ms)`,
+				`[supply-chain] ${report.identity.scanner.name}@${report.identity.scanner.version ?? '0.0.0'} profile=${profile.name} bundle=${report.bundle.findings.length} pkg=${report.packages?.violations.length ?? 0} constraints=${report.constraints?.violations.length ?? 0} queue=${plan.autoFixableCount}a/${plan.manualCount}m (${report.durationMs.toFixed(2)}ms)`,
 			),
 		);
 		if (!report.policyPresent && (profile.includePackages || profile.includeConstraints)) {
 			console.error(
 				colorize(
 					TERMINAL.scannerWarn,
-					`[supply-chain] no ${DEFAULT_POLICY_FILE} at ${projectRoot ?? scanPath} — skipped package/constraint layers`,
+					`[supply-chain] no ${DEFAULT_POLICY_FILE} at ${report.projectRoot ?? report.bundlePath} — skipped package/constraint layers`,
+				),
+			);
+		}
+		if (plan.queue.length > 0 && plan.autoFixableCount > 0) {
+			console.error(
+				colorize(
+					TERMINAL.scannerOk,
+					`[supply-chain] ${plan.autoFixableCount} auto-fix(es) queued — pass --fix to apply and re-scan`,
 				),
 			);
 		}
 	}
+}
 
+export async function runSupplyChainDeepScan(
+	options: SupplyChainDeepScanOptions,
+): Promise<number> {
+	const report = await collectSupplyChainDeepScanReport(options);
+	await emitSupplyChainDeepScanReport(report, options);
 	return supplyChainScanHasBlockingFindings(report) ? 1 : 0;
 }
 

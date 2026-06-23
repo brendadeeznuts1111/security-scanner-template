@@ -5,16 +5,53 @@ import {
 	isSupplyChainScanProfile,
 	SUPPLY_CHAIN_SCAN_PROFILES,
 } from './supply-chain-profiles.ts';
-import {runSupplyChainDeepScan} from './supply-chain-scan.ts';
+import {runSupplyChainDeepScan, type SupplyChainDeepScanOptions} from './supply-chain-scan.ts';
+import {runSupplyChainDeepScanLoop} from './supply-chain-loop.ts';
+import {watchSupplyChainDeepScan} from './supply-chain-watch.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 
-async function runSupplyChainScan(values: Record<string, unknown>, positionals: string[]): Promise<number> {
+function buildScanOptions(
+	values: Record<string, unknown>,
+	positionals: string[],
+): SupplyChainDeepScanOptions | null {
 	const rawPath = (values.path as string | undefined) ?? positionals[1];
 	if (!rawPath) {
-		console.error(colorize(TERMINAL.scannerFatal, '[supply-chain] --path is required'));
-		return 1;
+		return null;
 	}
 
+	const format =
+		values.format === 'json' || values.format === 'markdown' || values.format === 'html'
+			? (values.format as 'json' | 'markdown' | 'html')
+			: values.json === true
+				? 'json'
+				: values.markdown === true
+					? 'markdown'
+					: undefined;
+
+	const explicitRules = (values.rules as string | undefined)
+		?.split(',')
+		.map(rule => rule.trim())
+		.filter(Boolean);
+
+	return {
+		path: rawPath,
+		profile: values.profile as string | undefined,
+		domain: values.domain as string | undefined,
+		rules: explicitRules,
+		format: format === 'html' ? 'json' : format,
+		output: values.output as string | undefined,
+		projectRoot: values.root as string | undefined,
+		policyPath: values.policy as string | undefined,
+		verifyIntegrity: values['verify-integrity'] === true,
+		threatFeed: values['threat-feed'] === true,
+		feedUrl: values['feed-url'] as string | undefined,
+		transitive: values.transitive === true,
+		registry: domainRegistry,
+		emitFormattedStdout: format === 'markdown' || format === 'json',
+	};
+}
+
+async function runSupplyChainScan(values: Record<string, unknown>, positionals: string[]): Promise<number> {
 	const profileName = values.profile as string | undefined;
 	if (profileName && !isSupplyChainScanProfile(profileName)) {
 		const known = Object.keys(SUPPLY_CHAIN_SCAN_PROFILES).join(', ');
@@ -24,33 +61,66 @@ async function runSupplyChainScan(values: Record<string, unknown>, positionals: 
 		return 1;
 	}
 
-	const format =
-		values.format === 'json' || values.format === 'markdown' || values.format === 'html'
-			? (values.format as 'json' | 'markdown' | 'html')
-			: undefined;
+	const options = buildScanOptions(values, positionals);
+	if (!options) {
+		console.error(colorize(TERMINAL.scannerFatal, '[supply-chain] --path is required'));
+		return 1;
+	}
 
-	const explicitRules = (values.rules as string | undefined)
-		?.split(',')
-		.map(rule => rule.trim())
-		.filter(Boolean);
+	const useLoop =
+		values.fix === true ||
+		values['operator-log'] === true ||
+		typeof values['max-rounds'] === 'number';
 
 	try {
-		return await runSupplyChainDeepScan({
-			path: rawPath,
-			profile: profileName,
-			domain: values.domain as string | undefined,
-			rules: explicitRules,
-			format: format === 'html' ? 'json' : format,
-			output: values.output as string | undefined,
-			projectRoot: values.root as string | undefined,
-			policyPath: values.policy as string | undefined,
-			verifyIntegrity: values['verify-integrity'] === true,
-			threatFeed: values['threat-feed'] === true,
-			feedUrl: values['feed-url'] as string | undefined,
-			transitive: values.transitive === true,
-			registry: domainRegistry,
-			emitFormattedStdout: format === 'markdown' || format === 'json',
+		if (useLoop) {
+			const maxRoundsRaw = values['max-rounds'] as string | undefined;
+			const maxRounds = maxRoundsRaw ? Number.parseInt(maxRoundsRaw, 10) : undefined;
+			return await runSupplyChainDeepScanLoop({
+				...options,
+				fix: values.fix === true,
+				operatorLog: values['operator-log'] === true,
+				maxRounds: Number.isFinite(maxRounds) ? maxRounds : undefined,
+			});
+		}
+		return await runSupplyChainDeepScan(options);
+	} catch (error) {
+		console.error(
+			colorize(
+				TERMINAL.scannerFatal,
+				`[supply-chain] ${error instanceof Error ? error.message : String(error)}`,
+			),
+		);
+		return 1;
+	}
+}
+
+async function runSupplyChainWatch(values: Record<string, unknown>, positionals: string[]): Promise<number> {
+	const profileName = values.profile as string | undefined;
+	if (profileName && !isSupplyChainScanProfile(profileName)) {
+		const known = Object.keys(SUPPLY_CHAIN_SCAN_PROFILES).join(', ');
+		console.error(
+			colorize(TERMINAL.scannerFatal, `[supply-chain] unknown profile "${profileName}" (known: ${known})`),
+		);
+		return 1;
+	}
+
+	const options = buildScanOptions(values, positionals);
+	if (!options) {
+		console.error(colorize(TERMINAL.scannerFatal, '[supply-chain] --path is required'));
+		return 1;
+	}
+
+	try {
+		const debounceRaw = values['debounce-ms'] as string | undefined;
+		const debounceMs = debounceRaw ? Number.parseInt(debounceRaw, 10) : undefined;
+		await watchSupplyChainDeepScan({
+			...options,
+			fix: values.fix === true,
+			operatorLog: values['operator-log'] === true,
+			debounceMs: Number.isFinite(debounceMs) ? debounceMs : undefined,
 		});
+		return 0;
 	} catch (error) {
 		console.error(
 			colorize(
@@ -78,6 +148,10 @@ async function main(): Promise<void> {
 			'threat-feed': {type: 'boolean'},
 			'feed-url': {type: 'string'},
 			transitive: {type: 'boolean'},
+			fix: {type: 'boolean'},
+			'operator-log': {type: 'boolean'},
+			'max-rounds': {type: 'string'},
+			'debounce-ms': {type: 'string'},
 			json: {type: 'boolean'},
 			markdown: {type: 'boolean'},
 			help: {type: 'boolean', short: 'h'},
@@ -100,7 +174,8 @@ async function main(): Promise<void> {
 			.join('\n');
 		console.log(`Usage:
   bun run supply-chain scan --profile <name> --path <dir|file> [--format json|markdown] [--output path]
-  bun run supply-chain scan --profile supply-chain-network --path projects/active/sports-terminal-os/dist --format markdown
+  bun run supply-chain watch --profile <name> --path <dir|file> [--fix] [--operator-log]
+  bun run supply-chain scan --profile supply-chain-network --path dist --format markdown --fix
 
 Profiles:
 ${profiles}
@@ -116,6 +191,10 @@ Options:
   --feed-url             Threat feed URL override
   --transitive           Scan all of node_modules for constraint rules
   --verify-integrity     Verify bundle integrity manifest hashes
+  --fix                  Apply auto-fixable remediations and re-scan (up to 3 rounds)
+  --operator-log         Append findings to .security/operator.jsonl
+  --max-rounds           Cap scan/fix loop rounds (default 3 with --fix, else 1)
+  --debounce-ms          Watch debounce interval (default 500)
   --output               Write report to file`);
 		process.exit(0);
 	}
@@ -124,6 +203,9 @@ Options:
 	switch (command) {
 		case 'scan':
 			process.exit(await runSupplyChainScan(values, positionals));
+			return;
+		case 'watch':
+			process.exit(await runSupplyChainWatch(values, positionals));
 			return;
 		case 'profiles': {
 			console.log(JSON.stringify(SUPPLY_CHAIN_SCAN_PROFILES, null, 2));
