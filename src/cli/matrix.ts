@@ -2,7 +2,7 @@
 import {parseArgs} from 'util';
 import {colorize, TERMINAL} from '../color/index.ts';
 import {domainRegistry} from '../config/registry.ts';
-import {loadTemplate} from '../config/loader.ts';
+import {loadDomainConfigById, loadTemplate} from '../config/loader.ts';
 import {
 	DOMAIN_FIELD_MATRIX,
 	domainFieldValueRows,
@@ -89,8 +89,7 @@ Sections: ${SECTIONS.join(', ')}`);
 	if (values.concerns) {
 		let config;
 		if (values.domain) {
-			await domainRegistry.loadAll();
-			config = domainRegistry.get(values.domain);
+			config = await loadDomainConfigById(process.cwd(), values.domain);
 		} else if (values.template) {
 			config = await loadTemplate();
 		} else {

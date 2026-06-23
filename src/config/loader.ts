@@ -142,6 +142,34 @@ async function loadInventoryFile(
 }
 
 /**
+ * Load public domain config + defaults without resolving vault inventory.
+ * Use for branding/concern matrix inspection when secrets are unavailable.
+ */
+export async function loadDomainConfigSurface(filePath: string): Promise<DomainConfig> {
+	const file = Bun.file(filePath);
+	if (!(await file.exists())) {
+		throw new Error(`Domain file not found: ${filePath}`);
+	}
+
+	const text = await file.text();
+	const parsed = Bun.JSON5.parse(text) as unknown;
+	return applyDefaults(parsed);
+}
+
+/**
+ * Find a domain by reverse-DNS id and load its public config surface (no vault decrypt).
+ */
+export async function loadDomainConfigById(root: string, domainId: string): Promise<DomainConfig> {
+	for (const filePath of discoverDomainFiles(root)) {
+		const config = await loadDomainConfigSurface(filePath);
+		if (config.domain === domainId) {
+			return config;
+		}
+	}
+	throw new Error(`Unknown domain: ${domainId}`);
+}
+
+/**
  * Load a single domain config file and apply defaults.
  */
 export async function loadDomainFile(filePath: string): Promise<LoadedDomain> {
