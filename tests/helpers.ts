@@ -1,4 +1,82 @@
-import {beforeEach, afterEach} from 'bun:test';
+import {afterEach, beforeEach, setSystemTime} from 'bun:test';
+import {mkdir, rm, writeFile} from 'fs/promises';
+import {tmpdir} from 'os';
+import path from 'path';
+
+let isolatedDirCounter = 0;
+
+/** Stable ISO timestamp for deterministic assertions (2026-06-23 noon UTC). */
+export const FIXED_TEST_ISO = '2026-06-23T12:00:00.000Z';
+export const FIXED_TEST_DATE = new Date(FIXED_TEST_ISO);
+export const FIXED_TEST_MS = FIXED_TEST_DATE.getTime();
+
+/**
+ * Reset mocked system time after each test.
+ * @see https://bun.com/reference/bun/test/setSystemTime
+ * @see https://bun.com/docs/test/writing-tests#timeouts
+ */
+export function resetSystemTime(): void {
+	setSystemTime();
+}
+
+/** Freeze `Date.now` / `new Date()` for the current test. */
+export function freezeSystemTime(at: Date | string = FIXED_TEST_ISO): void {
+	setSystemTime(typeof at === 'string' ? new Date(at) : at);
+}
+
+export function setupTimeCleanup(): void {
+	afterEach(() => {
+		setSystemTime();
+	});
+}
+
+/** Run fn with frozen clock, then restore real time. */
+export async function withFixedSystemTime<T>(
+	fn: () => Promise<T> | T,
+	at: Date | string = FIXED_TEST_ISO,
+): Promise<T> {
+	freezeSystemTime(at);
+	try {
+		return await fn();
+	} finally {
+		resetSystemTime();
+	}
+}
+
+/** Unique temp directory safe for concurrent `bun:test` runs. */
+export function isolatedTestDir(prefix: string): string {
+	isolatedDirCounter += 1;
+	return path.join(
+		tmpdir(),
+		`${prefix}-${Date.now()}-${isolatedDirCounter}-${Math.random().toString(36).slice(2)}`,
+	);
+}
+
+/** Create an isolated directory, run fn, then remove it. */
+export async function withTestDir<T>(
+	prefix: string,
+	fn: (dir: string) => Promise<T> | T,
+): Promise<T> {
+	const dir = isolatedTestDir(prefix);
+	await mkdir(dir, {recursive: true});
+	try {
+		return await fn(dir);
+	} finally {
+		await rm(dir, {recursive: true, force: true});
+	}
+}
+
+/** Write a file under `root`, creating parent directories as needed. */
+export async function writeFileInDir(
+	root: string,
+	relativePath: string,
+	contents: string,
+): Promise<string> {
+	const fullPath = path.join(root, relativePath);
+	await mkdir(path.dirname(fullPath), {recursive: true});
+	await writeFile(fullPath, contents);
+	return fullPath;
+}
 
 export const ENV_VARS_TO_CLEAN = [
 	'THREAT_FEED_URL',
@@ -73,9 +151,10 @@ export function packageFixture(
 }
 
 export async function writeTempFile(contents: string): Promise<string> {
-	const path = `/tmp/scanner-test-${Date.now()}.json`;
-	await Bun.write(path, contents);
-	return path;
+	const filePath = path.join(isolatedTestDir('scanner-test'), 'fixture.json');
+	await mkdir(path.dirname(filePath), {recursive: true});
+	await Bun.write(filePath, contents);
+	return filePath;
 }
 
 export async function sha256Hex(input: string): Promise<string> {

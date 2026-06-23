@@ -1,11 +1,13 @@
 /**
- * Bun expect object matchers (Jest-compatible subset).
- * @see https://bun.com/docs/test/writing-tests#object-matchers
+ * Bun expect matchers (Jest-compatible subset).
+ * @see https://bun.com/reference/bun/test/expect
+ * @see https://bun.com/docs/test/writing-tests
  */
 import {describe, expect, test} from 'bun:test';
 
 const sample = {a: 'hello', b: 'world'};
-const numbered = {1: 'hello', b: 'world'};
+// Numeric object literals stringify keys at runtime ("1", not 1).
+const numbered = {'1': 'hello', b: 'world'};
 const values = {a: 'foo', b: 'bar', c: 'baz'};
 const nested = {message: {hello: 'world'}};
 const nestedArray = {message: [{hello: 'world'}]};
@@ -79,5 +81,17 @@ describe('toContainEqual', () => {
 	test('deep-equals array members', () => {
 		expect([{a: 1}]).toContainEqual({a: 1});
 		expect([{a: 1}]).not.toContainEqual({a: 2});
+	});
+});
+
+describe('toContain', () => {
+	test('matches array members, set members, and substrings', () => {
+		expect([1, 2, 3]).toContain(1);
+		expect([1, 2, 3]).not.toContain(4);
+		expect(new Set([true])).toContain(true);
+		expect(new Set([true])).not.toContain(false);
+		expect('hello').toContain('o');
+		expect('hello').toContain('ell');
+		expect('hello').not.toContain('world');
 	});
 });

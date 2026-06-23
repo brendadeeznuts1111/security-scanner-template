@@ -2,13 +2,17 @@
 root = "tests"
 
 # Lifecycle hooks shared across all test files.
+# @see https://bun.com/reference/bun/test
 # @see https://bun.com/docs/test/lifecycle
 preload = ["./tests/setup.ts"]
 
-# Per-test timeout in ms (default 5000). CLI: `bun test --timeout <ms>`
+# Per-test timeout in ms (default 5000).
+# CLI: `bun test --timeout <ms>` — @see https://bun.com/docs/guides/test/timeout
+# Per-test override: `test("name", fn, 500)` — @see https://bun.com/docs/test/writing-tests#timeouts
 timeout = 10000
 
 # Selectively run independent tests in parallel.
+# @see https://bun.com/reference/bun/test/Describe/serial
 # @see https://bun.com/docs/guides/test/concurrent-test-glob
 # Override everything: `bun test --concurrent`
 concurrentTestGlob = [

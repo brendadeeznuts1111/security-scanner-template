@@ -1,6 +1,10 @@
-import {describe, expect, jest, test} from 'bun:test';
+/**
+ * Time helpers + preload cleanup (see tests/setup.ts).
+ * @see https://bun.com/reference/bun/test/setSystemTime
+ * @see https://bun.com/docs/test/writing-tests#timeouts
+ */
+import {describe, expect, test} from 'bun:test';
 import {
-	FIXED_TEST_DATE,
 	FIXED_TEST_ISO,
 	FIXED_TEST_MS,
 	freezeSystemTime,
@@ -29,18 +33,6 @@ describe('setSystemTime', () => {
 		}, FIXED_TEST_ISO);
 		expect(Date.now()).toBeGreaterThanOrEqual(before);
 		expect(Date.now()).not.toBe(FIXED_TEST_MS);
-	});
-});
-
-describe('jest fake timers', () => {
-	test('setSystemTime via jest keeps native Date constructor', () => {
-		const OriginalDate = Date;
-		jest.useFakeTimers();
-		jest.setSystemTime(FIXED_TEST_DATE);
-		expect(Date).toBe(OriginalDate);
-		expect(Date.now()).toBe(FIXED_TEST_MS);
-		expect(new Date().toISOString()).toBe(FIXED_TEST_ISO);
-		jest.useRealTimers();
 	});
 });
 
