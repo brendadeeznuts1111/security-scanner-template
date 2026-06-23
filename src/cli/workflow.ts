@@ -10,7 +10,11 @@ import {colorize, TERMINAL} from '../color/index.ts';
 import {domainRegistry, type DomainRegistry} from '../config/registry.ts';
 import {WorkflowLoop} from '../workflow/loop.ts';
 import {WORKFLOW_SCANNER_IDS} from '../workflow/scanners.ts';
-import type {WorkflowLoopOptions, WorkflowOutputFormat} from '../workflow/types.ts';
+import type {
+	WorkflowEffectsConfig,
+	WorkflowLoopOptions,
+	WorkflowOutputFormat,
+} from '../workflow/types.ts';
 import {cliBoolean, cliString, runCliIfMain} from '../utils/cli.ts';
 
 export interface WorkflowCliOptions {
@@ -29,11 +33,55 @@ export interface WorkflowCliOptions {
 	seedPath?: string;
 	seedWritePath?: string;
 	failOnDrift?: boolean;
+	effects?: WorkflowEffectsConfig;
 	json?: boolean;
 	registry?: DomainRegistry;
 }
 
+function buildWorkflowEffects(
+	cli: WorkflowCliOptions,
+	workflowConfig?: {
+		logEffects?: boolean;
+		alertUrl?: string;
+		fix?: boolean;
+		report?: boolean | string;
+	},
+): WorkflowEffectsConfig | undefined {
+	const alert = cli.effects?.alert ?? workflowConfig?.alertUrl;
+	const fix = cli.effects?.fix ?? workflowConfig?.fix;
+	const report = cli.effects?.report ?? workflowConfig?.report;
+	const log = cli.effects?.log ?? workflowConfig?.logEffects;
+	if (alert === undefined && fix === undefined && report === undefined && log === undefined) {
+		return cli.effects;
+	}
+	return {
+		log: log ?? true,
+		alert,
+		fix,
+		report,
+	};
+}
+
 const OUTPUT_FORMATS: WorkflowOutputFormat[] = ['table', 'json', 'ndjson', 'herdr'];
+
+export function parseWorkflowEffects(
+	values: Record<string, string | boolean | undefined>,
+): WorkflowEffectsConfig | undefined {
+	const alert = cliString(values['alert-url']) ?? cliString(values.alert);
+	const fix = cliBoolean(values.fix);
+	const reportPath = cliString(values['report-path']);
+	const report = reportPath ?? (cliBoolean(values.report) ? true : undefined);
+	const log = typeof values.log === 'boolean' ? values.log : undefined;
+	if (!alert && !fix && report === undefined && log === undefined) {
+		return undefined;
+	}
+	return {
+		...(log !== undefined ? {log} : {}),
+		...(alert ? {alert} : {}),
+		...(fix ? {fix: true} : {}),
+		...(report !== undefined ? {report} : {}),
+	};
+}
 
 function parseScanners(value: string | undefined): string[] | undefined {
 	if (!value) return undefined;
@@ -77,6 +125,7 @@ export async function runWorkflowCli(options: WorkflowCliOptions): Promise<numbe
 		seedPath: options.seedPath ?? workflowConfig?.seedPath,
 		seedWritePath: options.seedWritePath ?? workflowConfig?.seedWritePath,
 		failOnDrift: options.failOnDrift ?? workflowConfig?.failOnDrift,
+		effects: buildWorkflowEffects(options, workflowConfig),
 	});
 
 	if (options.command === 'status') {
@@ -118,6 +167,12 @@ async function main(): Promise<void> {
 			'fail-on-drift': {type: 'boolean'},
 			'seed': {type: 'string'},
 			'seed-write': {type: 'string'},
+			'alert-url': {type: 'string'},
+			'alert': {type: 'string'},
+			'report': {type: 'boolean'},
+			'report-path': {type: 'string'},
+			'log': {type: 'boolean'},
+			'fix': {type: 'boolean'},
 			'tls-deep': {type: 'boolean'},
 			'json': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
@@ -129,8 +184,9 @@ async function main(): Promise<void> {
 	if (parsed.values.help) {
 		console.log(`Usage:
   bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output table|json|ndjson|herdr] [--dry-run] [--fail-on-issue] [--fail-on-severity high]
-      [--seed <path>] [--seed-write <path>] [--fail-on-drift]
-  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--scanners ...] [--output ndjson] [--seed <path>] [--fail-on-drift]
+      [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
+  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--scanners ...] [--output ndjson]
+      [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
   bun sp workflow status --domain <name> [--json]
 
 Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
@@ -172,6 +228,7 @@ Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
 			: undefined,
 		tlsDeep: cliBoolean(parsed.values['tls-deep']),
 		json: cliBoolean(parsed.values.json),
+		effects: parseWorkflowEffects(parsed.values),
 	});
 
 	process.exit(exitCode);

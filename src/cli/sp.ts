@@ -13,7 +13,7 @@ import {runScanPackagesCli} from './scan-packages.ts';
 import {runScanPatternsCli} from './scan-patterns.ts';
 import {runScanConstraintsCli} from './scan-constraints.ts';
 import {runNetworkCli} from './network.ts';
-import {runWorkflowCli} from './workflow.ts';
+import {parseWorkflowEffects, runWorkflowCli} from './workflow.ts';
 import {SecurityShell} from '../interactive/index.ts';
 import {cliBoolean, cliString, runCliIfMain} from '../utils/cli.ts';
 import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
@@ -39,8 +39,8 @@ const HELP = `Usage:
   bun sp network start --all
   bun sp network stop --domain <name>
   bun sp network status --domain <name> [--json]
-  bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output json|ndjson|herdr|table] [--dry-run] [--fail-on-issue] [--seed <path>] [--seed-write <path>] [--fail-on-drift]
-  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--output ndjson] [--seed <path>] [--fail-on-drift]
+  bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output json|ndjson|herdr|table] [--dry-run] [--fail-on-issue] [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report] [--report-path <path>]
+  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--output ndjson] [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report]
   bun sp workflow status --domain <name> [--json]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
@@ -186,6 +186,11 @@ async function main(): Promise<void> {
 			'fail-on-issue': {type: 'boolean'},
 			'seed': {type: 'string'},
 			'seed-write': {type: 'string'},
+			'alert-url': {type: 'string'},
+			'alert': {type: 'string'},
+			'report': {type: 'boolean'},
+			'report-path': {type: 'string'},
+			'log': {type: 'boolean'},
 			'fail-on-severity': {type: 'string'},
 			'tls-host': {type: 'string'},
 			'tls-port': {type: 'string'},
@@ -464,6 +469,7 @@ async function main(): Promise<void> {
 				tlsPort: tlsPortRaw ? Number.parseInt(tlsPortRaw, 10) : undefined,
 				tlsDeep: cliBoolean(values['tls-deep']) ?? cliBoolean(values.deep),
 				json: values.json === true,
+				effects: parseWorkflowEffects(values),
 				registry: domainRegistry,
 			});
 			process.exit(exitCode);

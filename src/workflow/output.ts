@@ -83,6 +83,35 @@ export function formatWorkflowTable(report: WorkflowRunReport, noColor = false):
 	return lines.join('\n');
 }
 
+export function formatWorkflowMarkdown(report: WorkflowRunReport): string {
+	const lines = [
+		`# Workflow Report: ${report.domain}`,
+		'',
+		`- **Timestamp:** ${report.timestamp}`,
+		`- **Issues:** ${report.issueCount}`,
+		`- **Max severity:** ${report.maxSeverity}`,
+		`- **OK:** ${report.ok}`,
+		'',
+		'## Scanners',
+		'',
+	];
+	for (const result of report.results) {
+		lines.push(`### ${result.scannerId} (${result.status})`, '');
+		if (result.issues.length === 0) {
+			lines.push('- No issues', '');
+			continue;
+		}
+		for (const issue of result.issues) {
+			lines.push(`- **[${issue.severity}]** ${issue.message}`);
+		}
+		lines.push('');
+	}
+	if (report.drift && Object.keys(report.drift).length > 0) {
+		lines.push('## Seed drift', '', '```json', JSON.stringify(report.drift, null, 2), '```', '');
+	}
+	return `${lines.join('\n')}\n`;
+}
+
 export function formatWorkflowHerdr(report: WorkflowRunReport): string {
 	const lines = [`[${report.timestamp}] workflow ${report.domain}`];
 	for (const result of report.results) {

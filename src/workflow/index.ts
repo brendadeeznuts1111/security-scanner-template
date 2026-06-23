@@ -1,3 +1,12 @@
+export {
+	applyWorkflowFixes,
+	buildWorkflowAlertPayload,
+	generateWorkflowReport,
+	runWorkflowEffects,
+	sendWorkflowAlert,
+	type WorkflowEffectHandlers,
+	type WorkflowEffectsContext,
+} from './effects/index.ts';
 export {WorkflowLoop, type WorkflowLoopStatus} from './loop.ts';
 export {
 	AVAILABLE_SCANNERS,
@@ -11,6 +20,7 @@ export {
 export {
 	aggregateWorkflowReport,
 	formatWorkflowHerdr,
+	formatWorkflowMarkdown,
 	formatWorkflowNdjson,
 	formatWorkflowOutput,
 	formatWorkflowTable,
@@ -36,6 +46,9 @@ export type {
 	ScannerIssueSeverity,
 	ScannerResult,
 	ScannerStatus,
+	WorkflowEffectsConfig,
+	WorkflowEffectsResult,
+	WorkflowFixResult,
 	WorkflowLoopOptions,
 	WorkflowOutputFormat,
 	WorkflowRunReport,

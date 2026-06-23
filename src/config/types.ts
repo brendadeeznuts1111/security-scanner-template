@@ -212,6 +212,14 @@ export interface DomainWorkflowConfig {
 	seedWritePath?: string;
 	/** Exit non-zero when current state drifts from seed. */
 	failOnDrift?: boolean;
+	/** Extra drift/issue logs to stderr (default true). */
+	logEffects?: boolean;
+	/** Webhook URL for drift/issue alerts. */
+	alertUrl?: string;
+	/** Attempt semver auto-remediation for high/critical violations. */
+	fix?: boolean;
+	/** Write Markdown report each run (`true` → reports/<domain>-workflow.md). */
+	report?: boolean | string;
 }
 
 export interface DomainService {

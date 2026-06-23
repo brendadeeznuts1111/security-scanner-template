@@ -13,6 +13,7 @@ import type {DomainRegistry} from '../config/registry.ts';
 import type {DomainWorkflowConfig} from '../config/types.ts';
 import {createAsyncDebouncer} from '../utils/debounce.ts';
 import {onInterruptSignals, waitForInterruptSignal} from '../utils/signals.ts';
+import {runWorkflowEffects} from './effects/index.ts';
 import {aggregateWorkflowReport, formatWorkflowOutput, workflowExitCode} from './output.ts';
 import {
 	createWorkflowScannerContext,
@@ -81,6 +82,7 @@ export class WorkflowLoop {
 			seedPath: options.seedPath,
 			seedWritePath: options.seedWritePath,
 			failOnDrift: options.failOnDrift ?? false,
+			effects: options.effects,
 		};
 	}
 
@@ -100,7 +102,14 @@ export class WorkflowLoop {
 			failOnIssue: config.failOnIssue,
 			failOnSeverity: config.failOnSeverity,
 			seedPath: config.seedPath,
+			seedWritePath: config.seedWritePath,
 			failOnDrift: config.failOnDrift,
+			effects: {
+				log: config.logEffects,
+				alert: config.alertUrl,
+				fix: config.fix,
+				report: config.report,
+			},
 			...overrides,
 		});
 	}
@@ -229,6 +238,25 @@ export class WorkflowLoop {
 			process.stdout.write(formatted);
 		} else {
 			console.log(formatted.trimEnd());
+		}
+
+		const effectsPromise = runWorkflowEffects({
+			domain: this.domainName,
+			projectRoot: this.registry.root,
+			registry: this.registry,
+			report,
+			results,
+			drift,
+			effects: this.options.effects,
+		});
+		const awaitEffects = !this.running || this.options.dryRun === true;
+		if (awaitEffects) {
+			await effectsPromise;
+		} else {
+			void effectsPromise.catch((error: unknown) => {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`[workflow] ${this.domainName} effect error: ${message}`);
+			});
 		}
 
 		return report;
