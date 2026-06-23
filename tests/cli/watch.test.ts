@@ -41,7 +41,9 @@ test('startWatch returns a session that can be aborted', async () => {
 	try {
 		const session = startWatch({debounceMs: 50});
 		expect(session.watchers.length).toBe(2);
+		expect(typeof session.disposeSignals).toBe('function');
 		session.abort();
+		session.disposeSignals();
 	} finally {
 		process.chdir(cwd);
 	}
