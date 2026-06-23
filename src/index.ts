@@ -77,6 +77,8 @@ const cliArgs = parseArgs({
 		'threat-feed-stdin': {type: 'boolean'},
 		'threat-feed-timeout-ms': {type: 'string'},
 		'threat-feed-retries': {type: 'string'},
+		'threat-feed-token-service': {type: 'string'},
+		'threat-feed-token-name': {type: 'string'},
 		'scanner-log-path': {type: 'string'},
 		'scanner-log-stderr': {type: 'boolean'},
 	},
@@ -107,6 +109,77 @@ function getFetchRetries(): number {
 	if (!raw) return DEFAULT_FETCH_RETRIES;
 	const parsed = Number(raw);
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_FETCH_RETRIES;
+}
+
+// --- Remote feed authentication via Bun.secrets ---
+//
+// The scanner stays stateless: it does not store or manage credentials. It only
+// reads a token from the OS keychain (macOS Keychain / libsecret / Windows
+// Credential Manager) at fetch time when the user has opted in by configuring a
+// token name. The token is sent as a `Bearer` token in the `Authorization`
+// header.
+//
+// Opt-in: token lookup only runs when `THREAT_FEED_TOKEN_NAME` (or
+// `--threat-feed-token-name`) is set. This avoids touching the keychain during
+// normal unauthenticated scans and keeps existing tests keychain-free.
+//
+// `secretsAccessor` is an indirection so tests can swap the keychain backend
+// without touching the non-configurable `Bun.secrets` surface.
+
+const DEFAULT_TOKEN_SERVICE = '@acme/bun-security-scanner';
+
+const secretsAccessor: {
+	get(opts: {service: string; name: string}): Promise<string | null>;
+} = {
+	get: opts => Bun.secrets.get(opts),
+};
+
+/**
+ * @internal Test hook: override the secrets backend for the duration of a test.
+ * Returns a restore function. Not part of the public scanner API.
+ */
+export function _setSecretsAccessor(accessor: {
+	get(opts: {service: string; name: string}): Promise<string | null>;
+}): () => void {
+	const original = secretsAccessor.get;
+	secretsAccessor.get = accessor.get;
+	return () => {
+		secretsAccessor.get = original;
+	};
+}
+
+function getTokenService(): string | null {
+	return config('threat-feed-token-service', 'THREAT_FEED_TOKEN_SERVICE') ?? DEFAULT_TOKEN_SERVICE;
+}
+
+function getTokenName(): string | null {
+	const name = config('threat-feed-token-name', 'THREAT_FEED_TOKEN_NAME');
+	return name && name.length > 0 ? name : null;
+}
+
+/**
+ * Resolve the remote-feed bearer token from Bun.secrets. Returns null when
+ * token auth is not opted in (no name configured) or when the OS credential
+ * store is unavailable (e.g. CI without libsecret). Never throws — a missing
+ * token degrades gracefully to an unauthenticated request.
+ */
+async function getThreatFeedToken(): Promise<string | null> {
+	const name = getTokenName();
+	if (!name) return null;
+	const service = getTokenService() ?? DEFAULT_TOKEN_SERVICE;
+
+	try {
+		return await secretsAccessor.get({service, name});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(
+			colorize(
+				COLOR_WARN,
+				`[scanner] could not read threat-feed token from Bun.secrets (${service}/${name}): ${message}`,
+			),
+		);
+		return null;
+	}
 }
 
 function isEventLoggingEnabled(): boolean {
@@ -273,6 +346,7 @@ async function fetchWithTimeoutAndRetry(
 	url: string,
 	timeoutMs = getFetchTimeoutMs(),
 	retries = getFetchRetries(),
+	headers: Record<string, string> = {},
 ): Promise<Response> {
 	let lastError: Error | undefined;
 
@@ -281,7 +355,7 @@ async function fetchWithTimeoutAndRetry(
 		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 		try {
-			const response = await fetch(url, {signal: controller.signal});
+			const response = await fetch(url, {signal: controller.signal, headers});
 			clearTimeout(timeoutId);
 			return response;
 		} catch (error) {
@@ -299,7 +373,13 @@ async function fetchWithTimeoutAndRetry(
 async function fetchRemoteThreatFeed(
 	url: string,
 ): Promise<{rules: ThreatFeedItem[]; allowlist: AllowlistItem[]}> {
-	const response = await fetchWithTimeoutAndRetry(url);
+	const token = await getThreatFeedToken();
+	const headers: Record<string, string> = {};
+	if (token) {
+		headers['Authorization'] = `Bearer ${token}`;
+	}
+
+	const response = await fetchWithTimeoutAndRetry(url, undefined, undefined, headers);
 
 	if (!response.ok) {
 		throw new Error(`Threat feed request failed: ${response.status} ${response.statusText}`);

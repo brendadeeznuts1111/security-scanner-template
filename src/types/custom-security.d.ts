@@ -22,5 +22,21 @@ declare global {
 				integrity?: string;
 			}
 		}
+
+		// Bun.secrets is a newer runtime API not yet present in @types/bun@1.2.x.
+		// Declared here so the scanner can use it without waiting on an upstream
+		// types release. See https://bun.com/docs/runtime/secrets.
+		interface Secrets {
+			get(options: {service: string; name: string}): Promise<string | null>;
+			set(options: {
+				service: string;
+				name: string;
+				value: string;
+				allowUnrestrictedAccess?: boolean;
+			}): Promise<void>;
+			delete(options: {service: string; name: string}): Promise<boolean>;
+		}
+
+		const secrets: Secrets;
 	}
 }

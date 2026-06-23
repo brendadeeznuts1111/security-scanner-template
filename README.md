@@ -74,15 +74,17 @@ Bun provides several built-in APIs that are particularly useful for security sca
 
 The scanner can be configured with environment variables and/or CLI flags. CLI flags take precedence over env vars.
 
-| Env var                  | CLI flag                   | Description                                 | Default |
-| ------------------------ | -------------------------- | ------------------------------------------- | ------- |
-| `THREAT_FEED_STDIN`      | `--threat-feed-stdin`      | Read threat feed JSON from stdin.           | —       |
-| `THREAT_FEED_URL`        | `--threat-feed-url`        | URL of a remote JSON threat feed.           | —       |
-| `THREAT_FEED_PATH`       | `--threat-feed-path`       | Path to a local JSON threat feed file.      | —       |
-| `THREAT_FEED_TIMEOUT_MS` | `--threat-feed-timeout-ms` | Timeout for fetching the remote feed.       | `5000`  |
-| `THREAT_FEED_RETRIES`    | `--threat-feed-retries`    | Number of retries for remote feed requests. | `2`     |
-| `SCANNER_LOG_PATH`       | `--scanner-log-path`       | Append structured JSON events to this file. | —       |
-| `SCANNER_LOG_STDERR`     | `--scanner-log-stderr`     | Emit structured events to stderr.           | `0`     |
+| Env var                     | CLI flag                      | Description                                                                          | Default                      |
+| --------------------------- | ----------------------------- | ------------------------------------------------------------------------------------ | ---------------------------- |
+| `THREAT_FEED_STDIN`         | `--threat-feed-stdin`         | Read threat feed JSON from stdin.                                                    | —                            |
+| `THREAT_FEED_URL`           | `--threat-feed-url`           | URL of a remote JSON threat feed.                                                    | —                            |
+| `THREAT_FEED_PATH`          | `--threat-feed-path`          | Path to a local JSON threat feed file.                                               | —                            |
+| `THREAT_FEED_TIMEOUT_MS`    | `--threat-feed-timeout-ms`    | Timeout for fetching the remote feed.                                                | `5000`                       |
+| `THREAT_FEED_RETRIES`       | `--threat-feed-retries`       | Number of retries for remote feed requests.                                          | `2`                          |
+| `THREAT_FEED_TOKEN_NAME`    | `--threat-feed-token-name`    | Keychain entry name for the remote feed bearer token. Opt-in to authenticated fetch. | —                            |
+| `THREAT_FEED_TOKEN_SERVICE` | `--threat-feed-token-service` | Keychain service name for the token.                                                 | `@acme/bun-security-scanner` |
+| `SCANNER_LOG_PATH`          | `--scanner-log-path`          | Append structured JSON events to this file.                                          | —                            |
+| `SCANNER_LOG_STDERR`        | `--scanner-log-stderr`        | Emit structured events to stderr.                                                    | `0`                          |
 
 Feed precedence: `THREAT_FEED_STDIN` → `THREAT_FEED_URL` → `THREAT_FEED_PATH` → `rules/security-rules.json` → hardcoded fallback.
 
@@ -101,6 +103,55 @@ cat custom-rules.json | THREAT_FEED_STDIN=1 bun run src/index.ts
 ```
 
 The bundled `rules/security-rules.json` is the scanner's default policy. It is also exported as `./rules` and `./rules.json` so downstream tools can import the same definitions the scanner uses.
+
+### Remote feed authentication (Bun.secrets)
+
+When the remote threat feed requires authentication, the scanner reads a bearer
+token from the OS keychain via [`Bun.secrets`](https://bun.com/docs/runtime/secrets)
+and sends it as `Authorization: Bearer <token>`. This keeps credentials out of
+env vars and source files.
+
+Token lookup is **opt-in**: it only runs when `THREAT_FEED_TOKEN_NAME` is set.
+Without it, the scanner fetches the feed unauthenticated (preserving existing
+behavior). A missing or unreadable token degrades gracefully to an
+unauthenticated request rather than failing the scan.
+
+**One-time setup** — store the token in the keychain (run once per machine):
+
+```bash
+bun -e "await Bun.secrets.set({
+  service: '@acme/bun-security-scanner',
+  name: 'threat-feed-token',
+  value: 'your-token-here',
+})"
+```
+
+**Use it** — point the scanner at the name you stored:
+
+```bash
+THREAT_FEED_URL=https://threat.example.com/feed.json \
+THREAT_FEED_TOKEN_NAME=threat-feed-token \
+bun install
+```
+
+To use a non-default service name (e.g. a UTI for a published CLI), set
+`THREAT_FEED_TOKEN_SERVICE`:
+
+```bash
+THREAT_FEED_TOKEN_SERVICE=com.acme.scanner \
+THREAT_FEED_TOKEN_NAME=threat-feed-token \
+bun install
+```
+
+Platform behavior follows `Bun.secrets`:
+
+- **macOS**: Keychain Services (may prompt for access on first use)
+- **Linux**: libsecret / GNOME Keyring / KWallet (must be running)
+- **Windows**: Windows Credential Manager
+
+In CI or other environments without a keychain, leave `THREAT_FEED_TOKEN_NAME`
+unset and provide the feed via `THREAT_FEED_URL` to an unauthenticated endpoint,
+or pipe it via `--threat-feed-stdin`.
 
 ### Threat feed format
 
