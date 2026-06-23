@@ -26,15 +26,22 @@ declare global {
 		// Bun.secrets is a newer runtime API not yet present in @types/bun@1.2.x.
 		// Declared here so the scanner can use it without waiting on an upstream
 		// types release. See https://bun.com/docs/runtime/secrets.
+		//
+		// Both the object form `get({service, name})` and the positional form
+		// `get(service, name)` are supported at runtime; both overloads are
+		// declared here so consumers can use either style.
 		interface Secrets {
 			get(options: {service: string; name: string}): Promise<string | null>;
+			get(service: string, name: string): Promise<string | null>;
 			set(options: {
 				service: string;
 				name: string;
 				value: string;
 				allowUnrestrictedAccess?: boolean;
 			}): Promise<void>;
+			set(service: string, name: string, value: string): Promise<void>;
 			delete(options: {service: string; name: string}): Promise<boolean>;
+			delete(service: string, name: string): Promise<boolean>;
 		}
 
 		const secrets: Secrets;

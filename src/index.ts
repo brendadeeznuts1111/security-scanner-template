@@ -79,6 +79,9 @@ const cliArgs = parseArgs({
 		'threat-feed-retries': {type: 'string'},
 		'threat-feed-token-service': {type: 'string'},
 		'threat-feed-token-name': {type: 'string'},
+		'store-token': {type: 'boolean'},
+		'store-token-value': {type: 'string'},
+		'clear-token': {type: 'boolean'},
 		'scanner-log-path': {type: 'string'},
 		'scanner-log-stderr': {type: 'boolean'},
 	},
@@ -123,30 +126,11 @@ function getFetchRetries(): number {
 // `--threat-feed-token-name`) is set. This avoids touching the keychain during
 // normal unauthenticated scans and keeps existing tests keychain-free.
 //
-// `secretsAccessor` is an indirection so tests can swap the keychain backend
-// without touching the non-configurable `Bun.secrets` surface.
+// See https://bun.com/docs/runtime/secrets for the native API.
 
-const DEFAULT_TOKEN_SERVICE = '@acme/bun-security-scanner';
-
-const secretsAccessor: {
-	get(opts: {service: string; name: string}): Promise<string | null>;
-} = {
-	get: opts => Bun.secrets.get(opts),
-};
-
-/**
- * @internal Test hook: override the secrets backend for the duration of a test.
- * Returns a restore function. Not part of the public scanner API.
- */
-export function _setSecretsAccessor(accessor: {
-	get(opts: {service: string; name: string}): Promise<string | null>;
-}): () => void {
-	const original = secretsAccessor.get;
-	secretsAccessor.get = accessor.get;
-	return () => {
-		secretsAccessor.get = original;
-	};
-}
+// Reverse-DNS service name per Bun.secrets best practices:
+// https://bun.com/docs/runtime/secrets#best-practices
+const DEFAULT_TOKEN_SERVICE = 'com.acme.bun-security-scanner';
 
 function getTokenService(): string | null {
 	return config('threat-feed-token-service', 'THREAT_FEED_TOKEN_SERVICE') ?? DEFAULT_TOKEN_SERVICE;
@@ -169,7 +153,7 @@ async function getThreatFeedToken(): Promise<string | null> {
 	const service = getTokenService() ?? DEFAULT_TOKEN_SERVICE;
 
 	try {
-		return await secretsAccessor.get({service, name});
+		return await Bun.secrets.get({service, name});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
@@ -729,3 +713,83 @@ export const scanner: Bun.Security.Scanner = {
 		return results;
 	},
 };
+
+// --- Token management CLI helpers (Bun.secrets.set / .delete) ---
+//
+// When the scanner is run directly (not loaded by `bun install`), these flags
+// let users store or clear the remote-feed bearer token in the OS keychain
+// without writing a one-off `bun -e` snippet. They use Bun.secrets directly
+// per https://bun.com/docs/runtime/secrets#api.
+//
+//   bun run src/index.ts --store-token --threat-feed-token-name threat-feed-token
+//   bun run src/index.ts --store-token --threat-feed-token-name threat-feed-token --store-token-value ghp_xxx
+//   bun run src/index.ts --clear-token --threat-feed-token-name threat-feed-token
+//
+// `--threat-feed-token-service` overrides the default service name. When
+// `--store-token-value` is omitted, the user is prompted interactively (input
+// is hidden on supporting terminals).
+
+async function runTokenCli(): Promise<void> {
+	const name = getTokenName();
+	const service = getTokenService() ?? DEFAULT_TOKEN_SERVICE;
+
+	if (cliArgs['store-token'] === true) {
+		if (!name) {
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					'[scanner] --store-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
+				),
+			);
+			process.exit(1);
+		}
+
+		let value: string | undefined =
+			typeof cliArgs['store-token-value'] === 'string' ? cliArgs['store-token-value'] : undefined;
+
+		if (!value) {
+			// prompt() is Bun's built-in readline helper. On TTY-less environments
+			// it returns null; fall back to reading from stdin.
+			value = prompt(`Enter token for ${service}/${name}:`) ?? undefined;
+		}
+
+		if (!value || value.length === 0) {
+			console.error(colorize(COLOR_ERROR, '[scanner] no token provided, aborting.'));
+			process.exit(1);
+		}
+
+		await Bun.secrets.set({service, name, value});
+		console.error(
+			colorize(COLOR_ALLOWED, `[scanner] token stored in keychain (${service}/${name})`),
+		);
+		process.exit(0);
+	}
+
+	if (cliArgs['clear-token'] === true) {
+		if (!name) {
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					'[scanner] --clear-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
+				),
+			);
+			process.exit(1);
+		}
+
+		const deleted = await Bun.secrets.delete({service, name});
+		if (deleted) {
+			console.error(
+				colorize(COLOR_ALLOWED, `[scanner] token removed from keychain (${service}/${name})`),
+			);
+		} else {
+			console.error(colorize(COLOR_WARN, `[scanner] no token found for ${service}/${name}`));
+		}
+		process.exit(0);
+	}
+}
+
+// Run the CLI helpers when the flags are present. cliArgs is parsed from
+// Bun.argv with strict:false, so --store-token / --clear-token are undefined
+// during normal `bun install` or library imports — making this a no-op
+// unless the user explicitly passes the flags.
+await runTokenCli();

@@ -1,6 +1,6 @@
 import {expect, test, beforeEach, afterEach} from 'bun:test';
 import {$} from 'bun';
-import {scanner, scannerCapabilities, _setSecretsAccessor} from './src/index.ts';
+import {scanner, scannerCapabilities} from './src/index.ts';
 
 /////////////////////////////////////////////////////////////////////////////////////
 //  This test file is mostly just here to get you up and running quickly. It's
@@ -645,12 +645,17 @@ test('Should read threat feed from stdin via --threat-feed-stdin', async () => {
 // --- Remote feed authentication via Bun.secrets ---
 //
 // Bun.secrets talks to the OS keychain, which we cannot rely on in tests.
-// The scanner exposes an internal `_setSecretsAccessor` hook so tests can
-// swap the keychain backend without touching the non-configurable Bun.secrets
-// surface. Each test restores the real backend in its `finally` block.
+// The `Bun.secrets` binding itself is writable (only its property descriptor
+// is non-configurable), so tests swap the whole object for a stub and restore
+// the original in `finally`. Production code calls `Bun.secrets.get` directly
+// per https://bun.com/docs/runtime/secrets#api.
 
 function withSecretsGet(impl: (opts: {service: string; name: string}) => Promise<string | null>) {
-	return _setSecretsAccessor({get: impl});
+	const original = Bun.secrets;
+	(Bun as unknown as {secrets: unknown}).secrets = {get: impl};
+	return () => {
+		(Bun as unknown as {secrets: unknown}).secrets = original;
+	};
 }
 
 test('Should send Bearer token from Bun.secrets when THREAT_FEED_TOKEN_NAME is set', async () => {
@@ -810,5 +815,110 @@ test('Should proceed unauthenticated when Bun.secrets.get throws', async () => {
 	} finally {
 		restore();
 		server.stop(true);
+	}
+});
+
+// --- Token management CLI helpers (--store-token / --clear-token) ---
+//
+// These spawn the scanner as a subprocess so `import.meta.main` is true and
+// the CLI helper block runs. Bun.secrets is stubbed by injecting a shim script
+// that overrides Bun.secrets before importing the scanner.
+
+test('--store-token stores the token via Bun.secrets.set', async () => {
+	const scriptPath = `/tmp/scanner-store-token-test-${crypto.randomUUID()}.ts`;
+	const outPath = `/tmp/scanner-store-token-out-${crypto.randomUUID()}.txt`;
+
+	await Bun.write(
+		scriptPath,
+		`
+		const calls: {service: string; name: string; value: string}[] = [];
+		(Bun as unknown as {secrets: unknown}).secrets = {
+			get: async () => null,
+			set: async (opts: {service: string; name: string; value: string}) => {
+				calls.push(opts);
+				await Bun.write('${outPath}', JSON.stringify(calls));
+			},
+			delete: async () => true,
+		};
+		await import('${new URL('./src/index.ts', import.meta.url).pathname}');
+		`,
+	);
+
+	try {
+		// --store-token-value avoids needing interactive prompt in the subprocess.
+		await $`bun run ${scriptPath} --store-token --threat-feed-token-name my-token --store-token-value ghp_test123`
+			.env({...process.env, THREAT_FEED_TOKEN_SERVICE: 'test-service'})
+			.quiet();
+
+		const calls = JSON.parse(await Bun.file(outPath).text());
+		expect(calls).toEqual([{service: 'test-service', name: 'my-token', value: 'ghp_test123'}]);
+	} finally {
+		await Bun.file(scriptPath)
+			.delete()
+			.catch(() => {});
+		await Bun.file(outPath)
+			.delete()
+			.catch(() => {});
+	}
+});
+
+test('--clear-token deletes the token via Bun.secrets.delete', async () => {
+	const scriptPath = `/tmp/scanner-clear-token-test-${crypto.randomUUID()}.ts`;
+	const outPath = `/tmp/scanner-clear-token-out-${crypto.randomUUID()}.txt`;
+
+	await Bun.write(
+		scriptPath,
+		`
+		(Bun as unknown as {secrets: unknown}).secrets = {
+			get: async () => null,
+			set: async () => {},
+			delete: async () => {
+				await Bun.write('${outPath}', JSON.stringify({deleted: true}));
+				return true;
+			},
+		};
+		await import('${new URL('./src/index.ts', import.meta.url).pathname}');
+		`,
+	);
+
+	try {
+		await $`bun run ${scriptPath} --clear-token --threat-feed-token-name my-token`
+			.env({...process.env, THREAT_FEED_TOKEN_SERVICE: 'test-service'})
+			.quiet();
+
+		const result = JSON.parse(await Bun.file(outPath).text());
+		expect(result).toEqual({deleted: true});
+	} finally {
+		await Bun.file(scriptPath)
+			.delete()
+			.catch(() => {});
+		await Bun.file(outPath)
+			.delete()
+			.catch(() => {});
+	}
+});
+
+test('--store-token without --threat-feed-token-name exits with error', async () => {
+	const scriptPath = `/tmp/scanner-store-token-no-name-${crypto.randomUUID()}.ts`;
+
+	await Bun.write(
+		scriptPath,
+		`
+		(Bun as unknown as {secrets: unknown}).secrets = {
+			get: async () => null,
+			set: async () => {},
+			delete: async () => true,
+		};
+		await import('${new URL('./src/index.ts', import.meta.url).pathname}');
+		`,
+	);
+
+	try {
+		const proc = $`bun run ${scriptPath} --store-token --store-token-value ghp_test`.quiet();
+		await expect(proc).rejects.toThrow(); // non-zero exit
+	} finally {
+		await Bun.file(scriptPath)
+			.delete()
+			.catch(() => {});
 	}
 });
