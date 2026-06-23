@@ -5,16 +5,6 @@ import {
 	type ThreatFeedItem,
 } from './validator.ts';
 
-function isJSONLFeed(text: string): boolean {
-	const trimmed = text.trim();
-	if (trimmed.length === 0) return false;
-	// JSONL starts with an object or array on the first line; a plain JSON array
-	// would also start with '[' on the first line, so we treat multi-line '[' content
-	// as JSONL only when it contains newline-separated values.
-	const first = trimmed[0];
-	return (first === '{' || first === '[') && trimmed.includes('\n');
-}
-
 function parseLine(line: string): ThreatFeedItem | AllowlistItem | null {
 	try {
 		const parsed = JSON.parse(line) as unknown;
@@ -132,12 +122,9 @@ export async function streamJSONLFeed(
 }
 
 /**
- * Detect whether a body of text or a URL represents a JSONL feed.
+ * Detect whether a URL or file path represents a JSONL feed.
  */
-export function isJSONLSource(textOrUrl: string): boolean {
-	if (textOrUrl.includes('\n')) {
-		return isJSONLFeed(textOrUrl);
-	}
-	const lower = textOrUrl.toLowerCase();
+export function isJSONLSource(urlOrPath: string): boolean {
+	const lower = urlOrPath.toLowerCase();
 	return lower.endsWith('.jsonl') || lower.endsWith('.ndjson');
 }

@@ -51,6 +51,7 @@ export const scannerCapabilities = {
 	supports: [
 		'remote-threat-feed',
 		'local-threat-feed',
+		'jsonl-streaming-feed',
 		'cache-aware-feed',
 		'stale-while-revalidate-cache',
 		'bun-secrets-auth',

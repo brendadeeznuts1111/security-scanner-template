@@ -134,12 +134,11 @@ async function loadLocalFeed(localPath: string): Promise<LoadedFeed> {
 	const file = Bun.file(localPath);
 	const text = await file.text();
 
-	if (isJSONLSource(localPath) || isJSONLSource(text)) {
+	if (isJSONLSource(localPath)) {
 		return parseJSONLFeed(text);
 	}
 
-	const data = await file.json();
-	return normalizeThreatFeed(data);
+	return normalizeThreatFeed(JSON.parse(text));
 }
 
 const DEFAULT_RULES_PATH = new URL('../../rules/security-rules.json', import.meta.url).pathname;

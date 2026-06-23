@@ -69,7 +69,7 @@ test('setSeverityPolicy overrides default categorization', async () => {
 test('recordDecision and audit buffer decisions', async () => {
 	supplyChain.activate({});
 
-	supplyChain.recordDecision({
+	await supplyChain.recordDecision({
 		package: 'event-stream',
 		version: '3.3.6',
 		requestedRange: '^3.3.0',
@@ -86,7 +86,7 @@ test('recordDecision and audit buffer decisions', async () => {
 test('audit filters by hours since', async () => {
 	supplyChain.activate({});
 
-	supplyChain.recordDecision({
+	await supplyChain.recordDecision({
 		package: 'old-pkg',
 		version: '1.0.0',
 		requestedRange: '1.0.0',
@@ -95,7 +95,7 @@ test('audit filters by hours since', async () => {
 		decidedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
 	});
 
-	supplyChain.recordDecision({
+	await supplyChain.recordDecision({
 		package: 'new-pkg',
 		version: '1.0.0',
 		requestedRange: '1.0.0',
@@ -147,7 +147,7 @@ test('activate dryRun option applies to scanPackage', async () => {
 
 test('report generates JSON from audit buffer', async () => {
 	supplyChain.activate({});
-	supplyChain.recordDecision({
+	await supplyChain.recordDecision({
 		package: 'event-stream',
 		version: '3.3.6',
 		requestedRange: '^3.3.0',
@@ -169,4 +169,41 @@ test('report generates JSON from audit buffer', async () => {
 	const parsed = JSON.parse(json);
 	expect(parsed.fatalCount).toBe(1);
 	expect(parsed.advisories[0]?.package).toBe('event-stream');
+});
+
+test('encrypted audit sink persists decisions across reactivations', async () => {
+	const auditPath = `/tmp/scanner-audit-${crypto.randomUUID()}.jsonl.enc`;
+	const masterKey = 'test-audit-key';
+
+	try {
+		supplyChain.activate({
+			auditLog: auditPath,
+			auditMasterKey: masterKey,
+		});
+
+		await supplyChain.recordDecision({
+			package: 'audited-pkg',
+			version: '1.0.0',
+			requestedRange: '1.0.0',
+			advisories: [],
+			allowed: true,
+			decidedAt: new Date().toISOString(),
+		});
+
+		// Reactivate to clear the in-memory buffer and prove persistence.
+		supplyChain.deactivate();
+		supplyChain.activate({
+			auditLog: auditPath,
+			auditMasterKey: masterKey,
+		});
+
+		const all = await supplyChain.audit();
+		expect(all.length).toBe(1);
+		expect(all[0]?.package).toBe('audited-pkg');
+	} finally {
+		await Bun.file(auditPath)
+			.delete()
+			.catch(() => {});
+		supplyChain.deactivate();
+	}
 });

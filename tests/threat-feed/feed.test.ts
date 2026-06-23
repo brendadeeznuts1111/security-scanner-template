@@ -1,5 +1,6 @@
 import {expect, test} from 'bun:test';
 import {$} from 'bun';
+import {parseJSONLFeed, streamJSONLFeed} from '../../src/provider/feed-jsonl.ts';
 import {scanner} from '../../src/index.ts';
 import {
 	setupEnvCleanup,
@@ -244,4 +245,115 @@ test('Should refetch remote threat feed when cache is expired', async () => {
 			.catch(() => {});
 		await $`rm -rf ${cacheDir}`.quiet().catch(() => {});
 	}
+});
+
+test('parseJSONLFeed parses newline-delimited threat feed', async () => {
+	const feed = [
+		JSON.stringify({
+			package: 'jsonl-pkg',
+			range: '1.0.0',
+			url: 'https://example.com/jsonl-pkg',
+			description: 'JSONL threat',
+			categories: ['malware'],
+		}),
+		JSON.stringify({
+			package: 'allowed-pkg',
+			range: '*',
+			reason: 'internal package',
+		}),
+	].join('\n');
+
+	const {rules, allowlist} = parseJSONLFeed(feed);
+	expect(rules.length).toBe(1);
+	expect(rules[0]?.package).toBe('jsonl-pkg');
+	expect(allowlist.length).toBe(1);
+	expect(allowlist[0]?.package).toBe('allowed-pkg');
+});
+
+test('parseJSONLFeed skips malformed lines', async () => {
+	const feed = [
+		JSON.stringify({
+			package: 'good-pkg',
+			range: '1.0.0',
+			url: 'https://example.com/good-pkg',
+			description: 'Valid',
+			categories: ['malware'],
+		}),
+		'{bad json',
+		JSON.stringify({
+			package: 'also-good-pkg',
+			range: '2.0.0',
+			url: 'https://example.com/also-good-pkg',
+			description: 'Valid',
+			categories: ['malware'],
+		}),
+	].join('\n');
+
+	const {rules} = parseJSONLFeed(feed);
+	expect(rules.length).toBe(2);
+	expect(rules.map(r => r.package)).toEqual(['good-pkg', 'also-good-pkg']);
+});
+
+test('streamJSONLFeed processes response body line-by-line', async () => {
+	const feed = [
+		JSON.stringify({
+			package: 'stream-pkg',
+			range: '1.0.0',
+			url: 'https://example.com/stream-pkg',
+			description: 'Streamed threat',
+			categories: ['malware'],
+		}),
+		'',
+	].join('\n');
+
+	const server = Bun.serve({
+		port: 0,
+		fetch: () =>
+			new Response(feed, {
+				headers: {'Content-Type': 'application/x-ndjson'},
+			}),
+	});
+
+	try {
+		const response = await fetch(`http://localhost:${server.port}`);
+		const {rules} = await streamJSONLFeed(response);
+		expect(rules.length).toBe(1);
+		expect(rules[0]?.package).toBe('stream-pkg');
+	} finally {
+		server.stop(true);
+	}
+});
+
+test('Should load a local JSONL threat feed from a file path', async () => {
+	const path = `/tmp/scanner-test-${Date.now()}.jsonl`;
+	await Bun.write(
+		path,
+		[
+			JSON.stringify({
+				package: 'local-jsonl-pkg',
+				range: '1.0.0',
+				url: 'https://example.com/local-jsonl-pkg',
+				description: 'Malicious local JSONL package',
+				categories: ['malware'],
+			}),
+		].join('\n') + '\n',
+	);
+	process.env.THREAT_FEED_PATH = path;
+
+	const advisories = await scanner.scan({
+		packages: [{name: 'local-jsonl-pkg', version: '1.0.0', requestedRange: '1.0.0', tarball: ''}],
+	});
+
+	expect(advisories).toMatchObject([
+		{
+			level: 'fatal',
+			package: 'local-jsonl-pkg',
+			url: 'https://example.com/local-jsonl-pkg',
+			description: 'Malicious local JSONL package',
+		},
+	]);
+
+	await Bun.file(path)
+		.delete()
+		.catch(() => {});
 });

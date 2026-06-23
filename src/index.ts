@@ -3,6 +3,7 @@ import {parseArgs} from 'util';
 import {mkdir} from 'fs/promises';
 import path from 'path';
 import {isOsCredentialStoreAvailable, detectSecretsBackend} from './secrets-backend.ts';
+import {isJSONLSource, parseJSONLFeed, streamJSONLFeed} from './provider/feed-jsonl.ts';
 
 const ThreatCategorySchema = z.enum([
 	'protestware',
@@ -10,7 +11,9 @@ const ThreatCategorySchema = z.enum([
 	'backdoor',
 	'malware',
 	'botnet',
+	'token-stealer',
 	'deprecated',
+	'unmaintained',
 ]);
 
 const ThreatFeedItemSchema = z.object({
@@ -531,8 +534,9 @@ async function fetchRemoteThreatFeedDirect(
 		throw new Error(`Threat feed request failed: ${response.status} ${response.statusText}`);
 	}
 
-	const data = await response.json();
-	const feed = normalizeThreatFeed(data);
+	const feed = isJSONLSource(url)
+		? await streamJSONLFeed(response)
+		: normalizeThreatFeed(await response.json());
 
 	await emitEvent({
 		type: 'feed.loaded',
@@ -583,8 +587,9 @@ async function loadLocalThreatFeed(
 	path: string,
 ): Promise<{rules: ThreatFeedItem[]; allowlist: AllowlistItem[]}> {
 	const file = Bun.file(path);
-	const data = await file.json();
-	const feed = normalizeThreatFeed(data);
+	const text = await file.text();
+
+	const feed = isJSONLSource(path) ? parseJSONLFeed(text) : normalizeThreatFeed(JSON.parse(text));
 
 	await emitEvent({
 		type: 'feed.loaded',
@@ -598,16 +603,28 @@ async function loadLocalThreatFeed(
 }
 
 /**
- * Read a threat feed from stdin. Bun.stdin is a BunFile, so we can read it
- * as JSON directly. Only called when --threat-feed-stdin / THREAT_FEED_STDIN
- * is explicitly set, so this won't interfere with `bun install` piping.
+ * Read a threat feed from stdin. Supports both plain JSON and JSONL.
+ * Only called when --threat-feed-stdin / THREAT_FEED_STDIN is explicitly set,
+ * so this won't interfere with `bun install` piping.
  */
 async function loadStdinThreatFeed(): Promise<{
 	rules: ThreatFeedItem[];
 	allowlist: AllowlistItem[];
 }> {
-	const data = await Bun.stdin.json();
-	const feed = normalizeThreatFeed(data);
+	const text = await Bun.stdin.text();
+
+	let feed: {rules: ThreatFeedItem[]; allowlist: AllowlistItem[]};
+	try {
+		feed = normalizeThreatFeed(JSON.parse(text));
+	} catch (error) {
+		// Only fall back to JSONL when the input is not valid JSON. If the JSON
+		// is valid but fails schema validation, propagate the error.
+		if (error instanceof SyntaxError) {
+			feed = parseJSONLFeed(text);
+		} else {
+			throw error;
+		}
+	}
 
 	await emitEvent({
 		type: 'feed.loaded',
@@ -819,13 +836,23 @@ export const scannerCapabilities = {
 		'remote-threat-feed',
 		'local-threat-feed',
 		'stdin-threat-feed',
+		'jsonl-streaming-feed',
 		'tarball-hash-verification',
 		'timeout-and-retry',
 		'zod-validation',
 		'allowlist-policy',
 		'structured-event-emission',
 	],
-	categories: ['protestware', 'adware', 'backdoor', 'malware', 'botnet', 'deprecated'],
+	categories: [
+		'protestware',
+		'adware',
+		'backdoor',
+		'malware',
+		'botnet',
+		'token-stealer',
+		'deprecated',
+		'unmaintained',
+	],
 };
 
 export const scanner: Bun.Security.Scanner = {
