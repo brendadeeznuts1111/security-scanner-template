@@ -1,6 +1,11 @@
 import path from 'path';
+import {filePathFromModuleUrl} from '../utils/runtime.ts';
 import {applyDefaults} from './defaults.ts';
 import {decryptInventory, decryptInventoryJSONL} from './vault.ts';
+import {getMasterKey} from './master-key.ts';
+import {masterKeyLookup} from '../domain/secrets-service.ts';
+import {loadEncryptedStore} from './encrypted-store.ts';
+import {createDomainSecurity, type DomainSecurity} from './security.ts';
 import type {DomainConfig, LoadedDomain, SecretEntry} from './types.ts';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -10,8 +15,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export {type LoadedDomain} from './types.ts';
 
 export const DOMAIN_GLOB = 'domains/*.security.json5';
-export const TEMPLATE_PATH = new URL('../../templates/domain.template.json5', import.meta.url)
-	.pathname;
+export const TEMPLATE_PATH = filePathFromModuleUrl(
+	new URL('../../templates/domain.template.json5', import.meta.url),
+);
 
 /**
  * Discover all domain config files under the given root using Bun.Glob.
@@ -21,12 +27,82 @@ export function discoverDomainFiles(root: string): string[] {
 	return Array.from(glob.scanSync({cwd: root, absolute: true}));
 }
 
+interface PrivateInventoryMetadata {
+	domain?: string;
+	version?: number;
+	createdAt?: string;
+	masterKeyName?: string;
+	encryptedStore?: string;
+	secrets?: {
+		inventory?: SecretEntry[];
+	};
+}
+
+function privateInventoryPath(domainFilePath: string, domain: string): string {
+	return path.resolve(path.dirname(domainFilePath), '..', '.vault', `${domain}.inventory.json5`);
+}
+
+function parsePrivateInventory(raw: unknown): PrivateInventoryMetadata {
+	if (!isPlainObject(raw)) return {};
+	const secrets = isPlainObject(raw.secrets) ? raw.secrets : undefined;
+	const inventory = Array.isArray(secrets?.inventory)
+		? (secrets.inventory as SecretEntry[]).filter(
+				(item): item is SecretEntry => typeof item.name === 'string',
+			)
+		: undefined;
+
+	return {
+		domain: typeof raw.domain === 'string' ? raw.domain : undefined,
+		version: typeof raw.version === 'number' ? raw.version : undefined,
+		createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
+		masterKeyName: typeof raw.masterKeyName === 'string' ? raw.masterKeyName : undefined,
+		encryptedStore: typeof raw.encryptedStore === 'string' ? raw.encryptedStore : undefined,
+		secrets: inventory !== undefined ? {inventory} : undefined,
+	};
+}
+
+async function loadPrivateInventory(
+	config: DomainConfig,
+	domainFilePath: string,
+): Promise<SecretEntry[]> {
+	const privatePath = privateInventoryPath(domainFilePath, config.domain);
+	const file = Bun.file(privatePath);
+	if (!(await file.exists())) {
+		return config.secrets.inventory;
+	}
+
+	const raw = Bun.JSON5.parse(await file.text()) as unknown;
+	const metadata = parsePrivateInventory(raw);
+
+	// Phase B: encrypted store backed by a Bun.secrets master key.
+	if (metadata.encryptedStore && metadata.masterKeyName) {
+		const storePath = path.resolve(path.dirname(domainFilePath), metadata.encryptedStore);
+		const lookup = masterKeyLookup(config, metadata.masterKeyName);
+		const masterKey = await getMasterKey(lookup);
+		if (!masterKey) {
+			throw new Error(
+				`Master key not found in Bun.secrets for ${lookup.service}/${lookup.name}`,
+			);
+		}
+		return loadEncryptedStore(storePath, masterKey);
+	}
+
+	// Phase B fallback: unencrypted private inventory (deprecated after migration).
+	if (metadata.secrets?.inventory) {
+		return metadata.secrets.inventory;
+	}
+
+	return config.secrets.inventory;
+}
+
 async function loadInventoryFile(
 	config: DomainConfig,
 	domainFilePath: string,
 ): Promise<SecretEntry[]> {
 	const inventoryFile = config.secrets.inventoryFile;
-	if (!inventoryFile) return config.secrets.inventory;
+	if (!inventoryFile) {
+		return loadPrivateInventory(config, domainFilePath);
+	}
 
 	const resolvedPath = path.resolve(path.dirname(domainFilePath), inventoryFile);
 	const file = Bun.file(resolvedPath);
@@ -37,6 +113,7 @@ async function loadInventoryFile(
 	const text = await file.text();
 	const masterKey = process.env.VAULT_MASTER_KEY;
 
+	// Legacy encrypted inventory file (Phase A).
 	if (resolvedPath.endsWith('.enc')) {
 		if (!masterKey) {
 			throw new Error('VAULT_MASTER_KEY is required to decrypt inventory files');
@@ -89,6 +166,18 @@ export async function loadDomainFile(filePath: string): Promise<LoadedDomain> {
 		path: filePath,
 		config,
 	};
+}
+
+/**
+ * Load a single domain and construct its security context.
+ */
+export async function loadDomainSecurity(
+	filePath: string,
+	csrfSecret?: string,
+): Promise<{loaded: LoadedDomain; security: DomainSecurity}> {
+	const loaded = await loadDomainFile(filePath);
+	const security = await createDomainSecurity(loaded.config, csrfSecret);
+	return {loaded, security};
 }
 
 /**

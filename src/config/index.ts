@@ -10,3 +10,8 @@ export {
 } from './loader.ts';
 export {checkAllDomains, checkDomain, type DoctorIssue, type DoctorResult} from './doctor.ts';
 export {createDomainRegistry, domainRegistry, type DomainRegistry} from './registry.ts';
+export {
+	loadDomainReportContext,
+	resolveProjectDomain,
+	type DomainReportContext,
+} from './resolve-domain.ts';

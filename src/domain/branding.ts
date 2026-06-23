@@ -1,0 +1,109 @@
+import type {DomainChannels, DomainColors, DomainConfig} from '../config/types.ts';
+import {ansiCode, colorize, normalizeHex, toCss} from '../color/index.ts';
+
+/** Reverse-DNS domain identifier pattern (matches config doctor). */
+export const REVERSE_DNS_PATTERN = /^[a-zA-Z0-9][-a-zA-Z0-9.]*$/;
+
+export function isReverseDnsDomain(domain: string): boolean {
+	return REVERSE_DNS_PATTERN.test(domain);
+}
+
+/** Filesystem-safe segment from a reverse-DNS domain id. */
+export function reverseDnsPathSegment(domain: string): string {
+	return domain.replace(/[^a-zA-Z0-9.-]+/g, '_');
+}
+
+export interface ColorSwatch {
+	name: string;
+	hex: string;
+	css: string;
+}
+
+/**
+ * Human-facing service label — displayName when set, otherwise reverse-DNS domain.
+ */
+export function domainDisplayName(config: DomainConfig): string {
+	return config.displayName?.trim() || config.domain;
+}
+
+import {resolveSecretsService} from './secrets-service.ts';
+
+export {resolveSecretsService, resolveSecretsService as domainServiceName};
+
+/**
+ * REPL prompt label: `sp:Example Service>`.
+ */
+export function domainPromptLabel(config: DomainConfig): string {
+	return `sp:${domainDisplayName(config)}> `;
+}
+
+/**
+ * Colorize text with a domain palette entry via Bun.color ANSI codes.
+ */
+export function colorizeDomain(
+	config: DomainConfig,
+	key: keyof DomainColors | keyof DomainChannels,
+	text: string,
+): string {
+	const channels = config.channels as unknown as Record<string, string>;
+	const colors = config.colors as unknown as Record<string, string>;
+	const color = channels[key] ?? colors[key];
+	if (!color) return text;
+	return colorize(color, text);
+}
+
+/**
+ * List normalized domain colors for terminal swatch rendering.
+ */
+export function domainColorSwatches(config: DomainConfig): ColorSwatch[] {
+	const entries: [string, string][] = [
+		...(Object.entries(config.colors) as [string, string][]),
+		...(Object.entries(config.channels).map(
+			([name, value]) => [`channel:${name}`, value] as [string, string],
+		)),
+	];
+
+	const swatches: ColorSwatch[] = [];
+	for (const [name, value] of entries) {
+		const hex = normalizeHex(value);
+		const css = toCss(value);
+		if (hex && css) {
+			swatches.push({name, hex, css});
+		}
+	}
+	return swatches;
+}
+
+/**
+ * Render a one-line ANSI color swatch for the REPL.
+ */
+export function formatColorSwatch(swatch: ColorSwatch): string {
+	const block = ansiCode(swatch.hex, 'ansi-256') + '██' + '\x1b[0m';
+	return `${block} ${swatch.name}: ${swatch.hex}`;
+}
+
+/**
+ * Default QR module/background colors from the domain palette.
+ */
+export function domainQrColors(config: DomainConfig): {dark: string; light: string} {
+	const channels = config.channels as unknown as Record<string, string>;
+	return {
+		dark: channels.token ?? config.colors.primary,
+		light: '#FFFFFF',
+	};
+}
+
+/**
+ * Startup banner lines for the interactive shell.
+ */
+export function domainBannerLines(config: DomainConfig): string[] {
+	const lines = [
+		domainDisplayName(config),
+		config.domain,
+		`service: ${resolveSecretsService(config)}`,
+	];
+	if (config.description) {
+		lines.push(config.description);
+	}
+	return lines;
+}

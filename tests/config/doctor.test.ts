@@ -1,6 +1,7 @@
 import {expect, test, beforeEach, afterEach} from 'bun:test';
 import {checkAllDomains, checkDomain} from '../../src/config/doctor.ts';
 import {applyDefaults} from '../../src/config/defaults.ts';
+import {clearSystemCACache, seedSystemCACacheForTests} from '../../src/intel/tls/system-ca.ts';
 
 const TEST_DIR = `/tmp/config-doctor-test-${Date.now()}`;
 
@@ -49,6 +50,45 @@ test('checkDomain reports invalid domain name', () => {
 	expect(result.issues.some(i => i.field === 'domain')).toBe(true);
 });
 
+test('checkDomain reports secrets.service drift after defaults merge', () => {
+	const config = applyDefaults({
+		domain: 'com.example.secrets',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	config.secrets.service = 'com.other.service';
+	const result = checkDomain({
+		domain: config.domain,
+		path: '/tmp/test.security.json5',
+		config,
+	});
+	expect(result.ok).toBe(false);
+	expect(
+		result.issues.some(
+			i => i.field === 'secrets.service' && i.code === 'SECRETS_SERVICE_MISMATCH',
+		),
+	).toBe(true);
+});
+
+test('checkAllDomains reports public secrets.service override mismatch', async () => {
+	await writeDomain(
+		'mismatch',
+		`{
+			domain: "com.example.mismatch",
+			secrets: { service: "com.other.override", inventory: [] },
+			csrf: { enabled: false, tokenLength: 32 },
+		}`,
+	);
+
+	const result = await checkAllDomains(TEST_DIR);
+	const domain = result.domains.find(d => d.domain === 'com.example.mismatch');
+	expect(domain?.ok).toBe(false);
+	expect(
+		domain?.issues.some(
+			i => i.field === 'secrets.service' && i.message.includes('com.other.override'),
+		),
+	).toBe(true);
+});
+
 test('checkDomain reports unknown error code as warning', () => {
 	const result = checkDomain(
 		loadedFixture({
@@ -61,6 +101,28 @@ test('checkDomain reports unknown error code as warning', () => {
 	).toBe(true);
 });
 
+test('checkDomain reports unsupported password algorithm', () => {
+	const result = checkDomain(
+		loadedFixture({
+			domain: 'com.example.password',
+			identity: {algorithm: 'md5', minLength: 8, requireSpecialChar: true},
+		}),
+	);
+	expect(result.ok).toBe(false);
+	expect(result.issues.some(i => i.field === 'identity.algorithm')).toBe(true);
+});
+
+test('checkDomain reports invalid bcrypt cost', () => {
+	const result = checkDomain(
+		loadedFixture({
+			domain: 'com.example.password',
+			identity: {algorithm: 'bcrypt', minLength: 8, requireSpecialChar: true, cost: 50},
+		}),
+	);
+	expect(result.ok).toBe(false);
+	expect(result.issues.some(i => i.field === 'identity.cost')).toBe(true);
+});
+
 test('checkAllDomains validates discovered domain files', async () => {
 	await writeDomain('good', '{ domain: "com.example.good" }');
 	await writeDomain('bad', '{ domain: "bad domain", colors: { primary: "red" } }');
@@ -69,6 +131,52 @@ test('checkAllDomains validates discovered domain files', async () => {
 	expect(result.domains.length).toBe(2);
 	expect(result.ok).toBe(false);
 	expect(result.errors).toBeGreaterThan(0);
+	expect(result.runtime.apisOk).toBe(true);
+	expect(result.runtime.crossRef.ok).toBe(true);
+	expect(result.runtime.version).toBe(Bun.version);
+	expect(result.runtime.systemCA.platform).toBe(process.platform);
+	expect(result.runtime.terminalIO.bunVersion).toBe(Bun.version);
+	expect(result.runtime.platform.bunVersion).toBe(Bun.version);
+	expect(typeof result.runtime.platform.bunTypesTsgoCompatible).toBe('boolean');
+	expect(Array.isArray(result.peerMetaIssues)).toBe(true);
+});
+
+test('checkDomain warns when system CA is available but tls.useSystemCA is explicitly false', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(
+		loadedFixture({domain: 'com.example.tls-doctor', tls: {useSystemCA: false}}),
+	);
+	expect(
+		result.issues.some(
+			i => i.code === 'SYSTEM_CA_AVAILABLE' && i.field === 'tls.useSystemCA',
+		),
+	).toBe(true);
+
+	clearSystemCACache();
+});
+
+test('checkDomain does not warn when system CA auto-validation applies', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(loadedFixture({domain: 'com.example.tls-auto'}));
+	expect(result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE')).toBe(false);
+
+	clearSystemCACache();
+});
+
+test('checkDomain does not warn when tls.useSystemCA is enabled', () => {
+	clearSystemCACache();
+	seedSystemCACacheForTests(['-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----']);
+
+	const result = checkDomain(
+		loadedFixture({domain: 'com.example.tls-enabled', tls: {useSystemCA: true}}),
+	);
+	expect(result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE')).toBe(false);
+
+	clearSystemCACache();
 });
 
 test('checkAllDomains is ok when no domains are present', async () => {

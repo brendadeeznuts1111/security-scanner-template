@@ -1,4 +1,5 @@
 import type {DomainConfig, DomainColors, DomainChannels, SecretEntry} from './types.ts';
+import {syncSecretsService} from '../domain/secrets-service.ts';
 
 export const DEFAULT_COLORS: DomainColors = {
 	primary: '#0A84FF',
@@ -31,6 +32,7 @@ export const DEFAULT_CONFIG: Omit<DomainConfig, 'domain'> = {
 		algorithm: 'bcrypt',
 		minLength: 12,
 		requireSpecialChar: true,
+		cost: 10,
 	},
 	token: {
 		algorithm: 'HS256',
@@ -40,6 +42,12 @@ export const DEFAULT_CONFIG: Omit<DomainConfig, 'domain'> = {
 	csrf: {
 		enabled: true,
 		tokenLength: 32,
+		mode: 'stateless',
+		cookieName: '_csrf',
+		headerName: 'X-CSRF-Token',
+		sessionCookieName: '_session',
+		encoding: 'base64url',
+		algorithm: 'sha256',
 	},
 	supplyChain: {
 		enabled: true,
@@ -59,8 +67,25 @@ export const DEFAULT_CONFIG: Omit<DomainConfig, 'domain'> = {
 		report: {
 			format: 'markdown',
 			output: './.security/reports',
+			operatorQr: {
+				enabled: true,
+				size: 180,
+			},
 		},
 	},
+	visual: {
+		qr: {
+			enabled: true,
+		},
+	},
+	service: {
+		interactive: false,
+		http1: true,
+		http3: false,
+	},
+	audit: {},
+	intel: {},
+	tls: {},
 	errorOverrides: {},
 };
 
@@ -150,13 +175,27 @@ export function applyDefaults(partial: unknown): DomainConfig {
 		throw new Error('Domain config must have a `domain` string');
 	}
 
-	const base = deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, partial);
+	const base = deepMerge(
+		structuredClone(DEFAULT_CONFIG) as unknown as Record<string, unknown>,
+		partial,
+	);
 
 	const merged = base as unknown as DomainConfig;
 	merged.domain = partial.domain;
-	merged.secrets.service = partial.domain;
+	syncSecretsService(merged);
 
 	const partialSecrets = partial as Record<string, unknown>;
+	const partialSupplyChainForFeed = partialSecrets.supplyChain as Record<string, unknown> | undefined;
+	const partialFeed = isPlainObject(partialSupplyChainForFeed?.feed)
+		? (partialSupplyChainForFeed.feed as Record<string, unknown>)
+		: undefined;
+	if (merged.supplyChain.feed.apiKeyVault) {
+		const explicitService =
+			typeof partialFeed?.apiKeyService === 'string' && partialFeed.apiKeyService.length > 0;
+		if (!explicitService) {
+			merged.supplyChain.feed.apiKeyService = merged.domain;
+		}
+	}
 	const partialInventory = (partialSecrets.secrets as Record<string, unknown> | undefined)
 		?.inventory;
 	if (Array.isArray(partialInventory)) {

@@ -48,6 +48,14 @@ export const DOMAIN_SECRETS: Record<string, DomainSecret[]> = {
 			allowUnrestrictedAccess: false,
 			description: 'Password for registry publish-time authentication checks',
 		},
+		{
+			domain: SCANNER_DOMAIN,
+			service: SCANNER_DOMAIN,
+			name: 'csrf-secret',
+			required: false,
+			allowUnrestrictedAccess: false,
+			description: 'Secret for Bun.CSRF token signing and verification',
+		},
 	],
 };
 
