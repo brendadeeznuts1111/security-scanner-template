@@ -12,6 +12,7 @@ import {runTranspilerBundleCli} from './transpiler-bundle.ts';
 import {runScanPackagesCli} from './scan-packages.ts';
 import {runScanPatternsCli} from './scan-patterns.ts';
 import {runScanConstraintsCli} from './scan-constraints.ts';
+import {runNetworkCli} from './network.ts';
 import {SecurityShell} from '../interactive/index.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
@@ -33,6 +34,9 @@ const HELP = `Usage:
   bun sp scan source --domain <name> [--path src/] [--root <path>] [--fix] [--json]
   bun sp scan constraints --domain <name> [--root <path>] [--path src/] [--transitive] [--no-imports] [--fix] [--json]
   bun sp scan bundle --domain <name> --path <dir|file> [--rules id,id] [--format json|markdown|html] [--output path] [--verify-integrity] [--update-snapshot] [--fail-on-bundle-drift] [--baseline-dir <path>] [--json]
+  bun sp network start --domain <name> [--json]
+  bun sp network stop --domain <name> [--json]
+  bun sp network status --domain <name> [--json]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
 
@@ -386,6 +390,30 @@ async function main(): Promise<void> {
 				root: values.root,
 			});
 			return;
+		}
+		case 'network': {
+			const domain = values.domain;
+			if (!domain) {
+				console.error(colorize(TERMINAL.scannerFatal, '[sp] network requires --domain <name>'));
+				process.exit(1);
+			}
+			const subcommand = positionals[1];
+			if (subcommand !== 'start' && subcommand !== 'stop' && subcommand !== 'status') {
+				console.error(
+					colorize(
+						TERMINAL.scannerFatal,
+						`[sp] network requires start|stop|status (got ${subcommand ?? '(none)'})`,
+					),
+				);
+				process.exit(1);
+			}
+			const exitCode = await runNetworkCli({
+				domain,
+				command: subcommand,
+				json: values.json === true,
+				registry: domainRegistry,
+			});
+			process.exit(exitCode);
 		}
 		case 'doctor': {
 			const matrixSection =

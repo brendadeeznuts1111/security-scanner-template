@@ -51,6 +51,8 @@ import {loadSnapshotWithVersionCheck, resolveSnapshotRoot} from '../domain/docto
 import {snapshotPolicyFromDocument} from '../policy/engine.ts';
 import {loadProjectPolicies} from '../policy/loader.ts';
 import {resolveScannerVersion} from '../intel/scanner-version.ts';
+import {NetworkLoop, type NetworkLoopOptions} from '../network/loop.ts';
+import type {NetworkAuditSummary, NetworkLoopStatus} from '../network/types.ts';
 import path from 'path';
 
 export type RouteHandler = (req: Request) => Response | Promise<Response>;
@@ -66,6 +68,7 @@ export {buildServeInit, resolveServeOptions} from './serve-options.ts';
 export class Service {
 	private domain?: Domain;
 	private server?: ReturnType<typeof Bun.serve>;
+	private networkLoop?: NetworkLoop;
 
 	private readonly registry: DomainRegistry;
 	private readonly domainName: string;
@@ -144,6 +147,12 @@ export class Service {
 		}
 
 		this.server = Bun.serve(buildServeInit(resolved, (req: Request) => this.handleRequest(req)));
+
+		const network = config.service?.network;
+		if (network?.enabled) {
+			await this.startNetworkMonitor();
+		}
+
 		return this.server;
 	}
 
@@ -161,8 +170,127 @@ export class Service {
 	 * Stop the running server.
 	 */
 	stop(): void {
+		this.stopNetworkMonitor();
 		this.server?.stop(true);
 		this.server = undefined;
+	}
+
+	/**
+	 * Start the per-domain network audit loop (dist patterns, semver, health).
+	 */
+	async startNetworkMonitor(
+		options: {onHealthFailure?: NetworkLoopOptions['onHealthFailure']} = {},
+	): Promise<NetworkLoopStatus> {
+		if (!this.domain) {
+			await this.initialize();
+		}
+
+		const config = this.registry.get(this.domainName);
+		const network = config.service?.network;
+		if (!network?.enabled) {
+			throw new Error(`Network monitor is disabled for domain ${this.domainName}`);
+		}
+
+		if (this.networkLoop?.status().running) {
+			return this.networkLoop.status();
+		}
+
+		const projectRoot = this.registry.root;
+		const distPath = path.resolve(projectRoot, network.distPath ?? './dist');
+
+		this.networkLoop = new NetworkLoop({
+			domainId: this.domainName,
+			projectRoot,
+			distPath,
+			healthUrl: network.healthUrl,
+			probeInterval: network.probeInterval,
+			watch: network.watch,
+			watchInterval: network.watchInterval,
+			failOnHealth: network.failOnHealth,
+			scanPatterns: dir => this.registry.scanPatterns(dir, projectRoot),
+			checkPackageVersions: packages => this.registry.checkPackageVersions(packages),
+			recordAudit: summary => this.recordNetworkAudit(summary),
+			onHealthFailure: options.onHealthFailure,
+		});
+
+		await this.networkLoop.start();
+		return this.networkLoop.status();
+	}
+
+	/** Stop the network audit loop without stopping the HTTP server. */
+	stopNetworkMonitor(): void {
+		this.networkLoop?.stop();
+		this.networkLoop = undefined;
+	}
+
+	/** Current network monitor status (idle when not running). */
+	networkMonitorStatus(): NetworkLoopStatus {
+		if (this.networkLoop) {
+			return this.networkLoop.status();
+		}
+		const config = this.registry.has(this.domainName)
+			? this.registry.get(this.domainName)
+			: undefined;
+		const network = config?.service?.network;
+		const projectRoot = this.registry.root;
+		return {
+			running: false,
+			domain: this.domainName,
+			distPath: path.resolve(projectRoot, network?.distPath ?? './dist'),
+			healthUrl: network?.healthUrl,
+			probeIntervalMs: network?.probeInterval ?? 8000,
+			watchEnabled: network?.watch === true,
+			watchIntervalMs: network?.watchInterval ?? 750,
+			probeCount: 0,
+			auditCount: 0,
+		};
+	}
+
+	private async recordNetworkAudit(summary: NetworkAuditSummary): Promise<void> {
+		if (!this.domain?.audit) {
+			return;
+		}
+
+		const blocking =
+			summary.semverViolations > 0 ||
+			summary.patternMatches > 0 ||
+			summary.healthStatus === 'degraded' ||
+			summary.healthStatus === 'unreachable';
+
+		const level: 'fatal' | 'warn' | 'info' =
+			summary.healthStatus === 'unreachable' || summary.semverViolations > 0
+				? 'fatal'
+				: summary.patternMatches > 0 || summary.healthStatus === 'degraded'
+					? 'warn'
+					: 'info';
+
+		const description = [
+			`patterns=${summary.patternMatches}`,
+			`semver=${summary.semverViolations}`,
+			summary.healthStatus ? `health=${summary.healthStatus}` : null,
+			summary.healthLatencyMs != null ? `latency=${summary.healthLatencyMs}ms` : null,
+		]
+			.filter(Boolean)
+			.join(' ');
+
+		await this.audit({
+			id: `network-audit-${Date.now()}`,
+			package: this.domainName,
+			version: '0.0.0',
+			requestedRange: '*',
+			advisories: [
+				{
+					level,
+					package: 'network-audit',
+					version: '0.0.0',
+					url: null,
+					description,
+					categories: ['network-audit'],
+				},
+			],
+			allowed: !blocking,
+			decidedAt: summary.timestamp,
+		});
 	}
 
 	/**
@@ -569,6 +697,7 @@ export class Service {
 	 * Close the service and any underlying resources.
 	 */
 	close(): void {
+		this.stopNetworkMonitor();
 		this.stop();
 		this.domain?.close();
 	}

@@ -154,6 +154,23 @@ export interface DomainServiceScan {
 	transpiler?: DomainServiceScanTranspiler;
 }
 
+/** Per-domain dist health and supply-chain monitor loop. */
+export interface DomainNetworkConfig {
+	enabled: boolean;
+	/** Path to dist/ directory (relative to project root). */
+	distPath?: string;
+	/** Health endpoint URL (`/health`, `/meta`, etc.). */
+	healthUrl?: string;
+	/** Health probe interval in ms (default 8000). */
+	probeInterval?: number;
+	/** Poll dist fingerprint for changes and re-audit. */
+	watch?: boolean;
+	/** Dist watch interval in ms (default 750). */
+	watchInterval?: number;
+	/** Treat non-healthy probes as fatal (exit 1 in CLI). */
+	failOnHealth?: boolean;
+}
+
 export interface DomainService {
 	/**
 	 * Enable Bun.Terminal PTY for external scanner orchestration (`scan interactive`, REPL `scan`).
@@ -170,6 +187,8 @@ export interface DomainService {
 	tls?: DomainServiceTls;
 	/** Supply-chain scanning (transpiler bundle scan, etc.). */
 	scan?: DomainServiceScan;
+	/** Continuous dist audit, semver, and health monitoring. */
+	network?: DomainNetworkConfig;
 }
 
 export interface DomainAuditBackendConfig {

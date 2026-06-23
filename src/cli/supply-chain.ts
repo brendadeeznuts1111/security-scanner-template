@@ -8,6 +8,7 @@ import {
 import {runSupplyChainDeepScan, type SupplyChainDeepScanOptions} from './supply-chain-scan.ts';
 import {runSupplyChainDeepScanLoop} from './supply-chain-loop.ts';
 import {watchSupplyChainDeepScan} from './supply-chain-watch.ts';
+import {runSupplyChainNetworkLoop} from './supply-chain-network-loop.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 
 function buildScanOptions(
@@ -152,6 +153,15 @@ async function main(): Promise<void> {
 			'operator-log': {type: 'boolean'},
 			'max-rounds': {type: 'string'},
 			'debounce-ms': {type: 'string'},
+			'health-url': {type: 'string'},
+			'health-url-secret': {type: 'string'},
+			baseline: {type: 'string'},
+			'update-baseline': {type: 'boolean'},
+			watch: {type: 'boolean'},
+			'herdr-tab': {type: 'boolean'},
+			'fail-on-health': {type: 'boolean'},
+			'fail-on-drift': {type: 'boolean'},
+			'fail-on-endpoint-change': {type: 'boolean'},
 			json: {type: 'boolean'},
 			markdown: {type: 'boolean'},
 			help: {type: 'boolean', short: 'h'},
@@ -175,6 +185,7 @@ async function main(): Promise<void> {
 		console.log(`Usage:
   bun run supply-chain scan --profile <name> --path <dir|file> [--format json|markdown] [--output path]
   bun run supply-chain watch --profile <name> --path <dir|file> [--fix] [--operator-log]
+  bun run supply-chain network --path <bundle-dir> [--watch] [--baseline path] [--health-url-secret svc/name]
   bun run supply-chain scan --profile supply-chain-network --path dist --format markdown --fix
 
 Profiles:
@@ -207,6 +218,45 @@ Options:
 		case 'watch':
 			process.exit(await runSupplyChainWatch(values, positionals));
 			return;
+		case 'network': {
+			const rawPath = (values.path as string | undefined) ?? positionals[1];
+			if (!rawPath) {
+				console.error(colorize(TERMINAL.scannerFatal, '[supply-chain] network requires --path'));
+				process.exit(1);
+			}
+			try {
+				process.exit(
+					await runSupplyChainNetworkLoop({
+						path: rawPath,
+						domain: values.domain as string | undefined,
+						projectRoot: values.root as string | undefined,
+						healthUrl: values['health-url'] as string | undefined,
+						healthUrlSecret: values['health-url-secret'] as string | undefined,
+						baseline: values.baseline as string | undefined,
+						updateBaseline: values['update-baseline'] === true,
+						watch: values.watch === true,
+						debounceMs: values['debounce-ms']
+							? Number.parseInt(String(values['debounce-ms']), 10)
+							: undefined,
+						json: values.json === true,
+						herdrTab: values['herdr-tab'] === true,
+						failOnHealth: values['fail-on-health'] === true,
+						failOnDrift:
+							values['fail-on-drift'] === true ||
+							values['fail-on-endpoint-change'] === true,
+					}),
+				);
+			} catch (error) {
+				console.error(
+					colorize(
+						TERMINAL.scannerFatal,
+						`[supply-chain] ${error instanceof Error ? error.message : String(error)}`,
+					),
+				);
+				process.exit(1);
+			}
+			return;
+		}
 		case 'profiles': {
 			console.log(JSON.stringify(SUPPLY_CHAIN_SCAN_PROFILES, null, 2));
 			process.exit(0);
