@@ -1,5 +1,8 @@
 [test]
 root = "tests"
+# Position-arg filters are substring matches (not globs). Glob slices: src/domain/test-layout.ts
+# @see https://bun.com/docs/test/discovery#position-arguments-as-filters
+# @see https://bun.com/docs/runtime/archive#filtering-with-glob-patterns
 
 # Lifecycle hooks shared across all test files.
 # @see https://bun.com/reference/bun/test

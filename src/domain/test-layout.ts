@@ -1,6 +1,7 @@
 /**
- * Canonical `tests/` tree layout and CI slice filters.
+ * Canonical `tests/` tree layout, glob slices, and CI filters.
  * @see https://bun.com/docs/test/discovery#position-arguments-as-filters
+ * @see https://bun.com/docs/runtime/archive#filtering-with-glob-patterns
  */
 
 /** Support files allowed at `tests/` root (not `*.test.ts`). */
@@ -50,6 +51,11 @@ export const TEST_TOP_LEVEL_SLICES = [
 
 export type TestTopLevelSlice = (typeof TEST_TOP_LEVEL_SLICES)[number];
 
+export type TestSliceId =
+	| TestTopLevelSlice
+	| typeof TEST_CONVENTIONS_BUN_DIR
+	| 'conventions';
+
 /** Bun conformance + serial tests (not run concurrently with each other). */
 export const TEST_CONVENTIONS_BUN_DIR = 'conventions/bun';
 
@@ -59,8 +65,123 @@ export const TEST_CONCURRENT_FILE_PREFIX = 'concurrent-';
 /** Kebab-case test file stem: `doctor-snapshot.test.ts`, `concurrent-resolve-config.test.ts`. */
 export const TEST_FILE_STEM_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
+/**
+ * Glob slices for programmatic discovery (Bun.Archive / Bun.Glob semantics).
+ * Positive patterns include; `!` prefixes exclude. Negative-only lists match nothing.
+ */
+export const TEST_SLICE_GLOBS: Record<TestSliceId, readonly string[]> = {
+	domain: ['domain/**', '!domain-runtime/**'],
+	'domain-runtime': ['domain-runtime/**'],
+	network: ['network/**'],
+	conventions: ['conventions/**'],
+	cli: ['cli/**'],
+	intel: ['intel/**'],
+	audit: ['audit/**'],
+	build: ['build/**'],
+	color: ['color/**'],
+	config: ['config/**'],
+	core: ['core/**'],
+	crypto: ['crypto/**'],
+	csrf: ['csrf/**'],
+	features: ['features/**'],
+	image: ['image/**'],
+	integrity: ['integrity/**'],
+	interactive: ['interactive/**'],
+	logging: ['logging/**'],
+	markdown: ['markdown/**'],
+	policy: ['policy/**'],
+	provider: ['provider/**'],
+	registry: ['registry/**'],
+	report: ['report/**'],
+	scan: ['scan/**'],
+	scripts: ['scripts/**'],
+	security: ['security/**'],
+	semver: ['semver/**'],
+	service: ['service/**'],
+	shell: ['shell/**'],
+	'supply-chain': ['supply-chain/**'],
+	'threat-feed': ['threat-feed/**'],
+	'threat-intel': ['threat-intel/**'],
+	utils: ['utils/**'],
+	visual: ['visual/**'],
+	xref: ['xref/**'],
+	'conventions/bun': ['conventions/bun/**'],
+};
+
+/**
+ * `bun test` position filters (substring matches, not globs) with `root = "tests"`.
+ * Trailing slash avoids accidental overlap (e.g. `domain` ⊂ `domain-runtime`).
+ */
+export const TEST_SLICE_CLI_FILTERS: Partial<Record<TestSliceId, readonly string[]>> = {
+	domain: ['domain/'],
+	'domain-runtime': ['domain-runtime/'],
+	network: ['network/'],
+	conventions: ['conventions/'],
+	cli: ['cli/'],
+	intel: ['intel/'],
+};
+
 const TOP_LEVEL_SLICE_SET = new Set<string>(TEST_TOP_LEVEL_SLICES);
 const SUPPORT_FILE_SET = new Set<string>(TEST_ROOT_SUPPORT_FILES);
+
+export function normalizeTestRelativePath(relativePath: string): string {
+	return relativePath.replaceAll('\\', '/');
+}
+
+/**
+ * Match a tests-relative path against Bun glob patterns (archive-style include/exclude).
+ */
+export function matchesTestGlobPatterns(
+	relativePath: string,
+	patterns: readonly string[],
+): boolean {
+	const normalized = normalizeTestRelativePath(relativePath);
+	const positive = patterns.filter(pattern => !pattern.startsWith('!'));
+	const negative = patterns
+		.filter(pattern => pattern.startsWith('!'))
+		.map(pattern => pattern.slice(1));
+
+	if (positive.length === 0) {
+		return false;
+	}
+
+	const included = positive.some(pattern => new Bun.Glob(pattern).match(normalized));
+	if (!included) {
+		return false;
+	}
+
+	return !negative.some(pattern => new Bun.Glob(pattern).match(normalized));
+}
+
+export function matchesTestSliceGlob(relativePath: string, slice: TestSliceId): boolean {
+	return matchesTestGlobPatterns(relativePath, TEST_SLICE_GLOBS[slice]);
+}
+
+/** List `*.test.ts` paths under `testsRoot` for a glob-defined slice. */
+export async function listTestFilesForSlice(
+	testsRoot: string,
+	slice: TestSliceId,
+): Promise<string[]> {
+	const patterns = TEST_SLICE_GLOBS[slice];
+	const glob = new Bun.Glob('**/*.test.ts');
+	const matched: string[] = [];
+	for await (const relative of glob.scan({cwd: testsRoot, onlyFiles: true})) {
+		if (matchesTestGlobPatterns(relative, patterns)) {
+			matched.push(relative);
+		}
+	}
+	return matched.sort();
+}
+
+/** `bun test` position-argument filters for a slice (substring discovery). */
+export function testSliceCliFilters(slice: TestSliceId): readonly string[] {
+	return TEST_SLICE_CLI_FILTERS[slice] ?? [`${slice}/`];
+}
+
+/** Primary CLI filter for package.json scripts. */
+export function testSliceFilter(slice: TestSliceId): string {
+	return testSliceCliFilters(slice)[0] ?? `${slice}/`;
+}
 
 export function isTestSupportFile(relativePath: string): boolean {
 	return !relativePath.includes('/') && SUPPORT_FILE_SET.has(relativePath);
@@ -92,7 +213,11 @@ export function isValidTestFileStem(fileName: string): boolean {
 	return TEST_FILE_STEM_PATTERN.test(stem);
 }
 
-/** Position-argument filter for `bun test` with `root = "tests"`. */
-export function testSliceFilter(slice: TestTopLevelSlice | typeof TEST_CONVENTIONS_BUN_DIR): string {
-	return `${slice}/`;
+/** Substring filter used by `bun test` (position args) for a tests-relative path. */
+export function matchesTestSliceCliFilters(
+	relativePath: string,
+	filters: readonly string[],
+): boolean {
+	const normalized = normalizeTestRelativePath(relativePath);
+	return filters.some(filter => normalized.includes(filter));
 }

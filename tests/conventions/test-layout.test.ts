@@ -5,9 +5,14 @@ import {
 	isConcurrentTestFileName,
 	isTestSupportFile,
 	isValidTestFileStem,
+	listTestFilesForSlice,
+	matchesTestSliceCliFilters,
+	matchesTestSliceGlob,
 	TEST_CONVENTIONS_BUN_DIR,
 	TEST_ROOT_SUPPORT_FILES,
+	TEST_SLICE_CLI_FILTERS,
 	TEST_TOP_LEVEL_SLICES,
+	testSliceCliFilters,
 	topLevelTestSlice,
 } from '../../src/domain/test-layout.ts';
 
@@ -55,6 +60,25 @@ test('bun conformance tests are grouped under conventions/bun', async () => {
 		}
 	}
 	expect(misplaced).toEqual([]);
+});
+
+test('glob slices align with bun test CLI substring filters', async () => {
+	const slices = ['domain', 'domain-runtime', 'network', 'conventions'] as const;
+	for (const slice of slices) {
+		const globFiles = await listTestFilesForSlice(TESTS_ROOT, slice);
+		const cliFilters = testSliceCliFilters(slice);
+		expect(TEST_SLICE_CLI_FILTERS[slice]).toBeDefined();
+
+		for (const relative of globFiles) {
+			expect(matchesTestSliceCliFilters(relative, cliFilters)).toBe(true);
+		}
+
+		const allGlob = new Bun.Glob('**/*.test.ts');
+		for (const relative of allGlob.scanSync({cwd: TESTS_ROOT})) {
+			if (!matchesTestSliceCliFilters(relative, cliFilters)) continue;
+			expect(matchesTestSliceGlob(relative, slice)).toBe(true);
+		}
+	}
 });
 
 test('concurrent-prefixed tests declare slice in path', () => {
