@@ -88,6 +88,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		modules: [
 			'src/scan/tools.ts',
 			'src/scan/terminal.ts',
+			'src/scan/shell.ts',
 			'src/service/index.ts',
 			'src/interactive/shell.ts',
 		],
@@ -110,14 +111,23 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		bunApi: 'Bun.spawn',
 		description:
 			'Inherited stdio spawns, TERM env for PTY children, interactive-session guards, pipeline pager diagnostics.',
-		modules: ['src/utils/process.ts', 'src/utils/terminal-io.ts', 'src/scan/terminal.ts'],
+		modules: [
+			'src/utils/process.ts',
+			'src/utils/terminal-io.ts',
+			'src/scan/terminal.ts',
+			'src/scan/shell.ts',
+			'src/scan/readline.ts',
+		],
 		exports: [
 			'spawnInherit',
 			'spawnInheritAndExit',
 			'requireInteractiveSession',
 			'getTerminalIORuntimeInfo',
+			'formatRuntimeInfoTable',
+			'resolveHumanStdout',
+			'spawnEnvWithTerm',
 		],
-		cliCommands: ['sp shell', 'scan interactive', 'build', 'sp doctor --json'],
+		cliCommands: ['sp shell', 'sp scan', 'scan interactive', 'build', 'sp doctor --json'],
 		related: ['bun.spawn', 'bun.terminal'],
 		docsUrl: 'https://bun.com/docs/runtime/child-process',
 	},
@@ -179,21 +189,52 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		name: 'SQLite audit backend',
 		layer: 'storage',
 		feature: 'AUDIT_SQLITE',
-		description: 'Encrypted SQLite audit sink for .db/.sqlite paths.',
-		modules: ['src/audit/factory.ts', 'src/audit/encrypted-sqlite-sink.ts', 'src/domain/index.ts'],
+		description: 'Encrypted SQLite audit sink for .db/.sqlite paths (fallback backend).',
+		modules: [
+			'src/audit/factory.ts',
+			'src/audit/encrypted-sqlite-sink.ts',
+			'src/domain/audit-paths.ts',
+			'src/domain/index.ts',
+		],
 		exports: ['createAuditSink', 'EncryptedSQLiteSink', 'AuditSink'],
-		configFields: ['audit.sqlite.path', 'audit.sqlite.masterKey'],
-		related: ['bun.bundle.features'],
+		configFields: [
+			'audit.sqlite.path',
+			'audit.sqlite.masterKey',
+			'audit.sqlite.compress',
+			'audit.sqlite.compressionFormat',
+		],
+		cliCommands: ['sp shell audit tail'],
+		related: ['feature.audit-jsonl', 'bun.bundle.features'],
 	},
 	{
 		id: 'feature.audit-jsonl',
 		name: 'JSONL audit backend',
 		layer: 'storage',
 		feature: 'AUDIT_JSONL',
-		description: 'Encrypted JSONL audit sink for non-SQLite paths.',
-		modules: ['src/audit/factory.ts', 'src/audit/encrypted-jsonl-sink.ts'],
-		exports: ['createAuditSink', 'EncryptedJSONLSink'],
-		related: ['bun.bundle.features'],
+		description: 'Per-domain encrypted JSONL audit sink (preferred backend).',
+		modules: [
+			'src/audit/factory.ts',
+			'src/audit/encrypted-jsonl-sink.ts',
+			'src/domain/audit-paths.ts',
+			'src/domain/audit-display.ts',
+			'src/domain/index.ts',
+			'src/domain/supply-chain-config.ts',
+			'src/interactive/shell.ts',
+		],
+		exports: [
+			'createAuditSink',
+			'EncryptedJSONLSink',
+			'resolveDomainAuditPath',
+			'formatColorizedAuditEntry',
+		],
+		configFields: [
+			'audit.jsonl.path',
+			'audit.jsonl.masterKey',
+			'audit.jsonl.compress',
+			'audit.jsonl.compressionFormat',
+		],
+		cliCommands: ['sp shell audit tail', 'watch'],
+		related: ['feature.audit-sqlite', 'bun.bundle.features'],
 	},
 	{
 		id: 'feature.intel-dns',
@@ -412,10 +453,36 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		name: 'High-precision timing',
 		layer: 'runtime',
 		bunApi: 'Bun.nanoseconds',
-		description: 'Nanosecond timers for scan and threat-feed fetch benchmarks.',
-		modules: ['src/utils/runtime.ts', 'src/utils/timing.ts'],
-		exports: ['nanoseconds', 'createTimer'],
+		description: 'Nanosecond timers for scan, doctor, and mitata microbenchmarks.',
+		modules: ['src/utils/runtime.ts', 'src/utils/timing.ts', 'src/utils/benchmark.ts'],
+		exports: ['nanoseconds', 'createTimer', 'benchmark', 'benchmarkAll'],
 		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+		related: ['bench.mitata', 'bun.jsc.heapStats'],
+		cliCommands: ['bench', 'doctor --benchmark', 'sp bench'],
+	},
+	{
+		id: 'bench.mitata',
+		name: 'Mitata microbenchmarks',
+		layer: 'cli',
+		description:
+			'Public mitata suites under bench/ (doctor, field-matrix, domain-load) with BENCHMARK_RUNNER JSON output.',
+		modules: ['bench/runner.mjs', 'bench/doctor/bench.mjs', 'src/cli/bench.ts'],
+		exports: ['runBenchCli'],
+		cliCommands: ['bench', 'sp bench'],
+		docsUrl: 'https://bun.sh/docs/project/benchmarking',
+		related: ['bun.nanoseconds', 'bun.jsc.heapStats'],
+	},
+	{
+		id: 'bun.jsc.heapStats',
+		name: 'JavaScript heap stats',
+		layer: 'runtime',
+		bunApi: 'bun:jsc.heapStats',
+		description:
+			'Heap size/object counts attached to benchmark reports and doctor --benchmark JSON.',
+		modules: ['src/utils/bench-metadata.ts', 'src/utils/benchmark.ts'],
+		exports: ['captureBenchmarkHeapStats', 'collectBenchmarkRunMetadata'],
+		docsUrl: 'https://bun.sh/docs/project/benchmarking',
+		related: ['bench.mitata', 'bun.nanoseconds'],
 	},
 	{
 		id: 'bun.jsonl',
@@ -535,7 +602,7 @@ export function getCrossRefsByModule(module: string): CrossRefEntry[] {
 }
 
 /**
- * Entries configured by a domain config field (`audit.sqlite.path`, etc.).
+ * Entries configured by a domain config field (`audit.jsonl.path`, `audit.sqlite.path`, etc.).
  */
 export function getCrossRefsByConfigField(field: string): CrossRefEntry[] {
 	return listCrossRefs({configField: field});

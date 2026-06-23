@@ -36,6 +36,11 @@ import {
 	resolveSecretsService,
 	secretsServiceForDomain,
 } from '../domain/secrets-service.ts';
+import {
+	resolveDomainAudit,
+	resolveDomainAuditMasterKey,
+	resolveDomainAuditPath,
+} from '../domain/audit-paths.ts';
 import {detectPublicTokenIssuerMismatch, resolveTokenIssuer} from '../domain/token-issuer.ts';
 import {domainBrandingProfile, type DomainBrandingProfile} from '../domain/branding.ts';
 import {
@@ -394,6 +399,20 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 
 	if (config.token.ttlSeconds < 1) {
 		report('token.ttlSeconds', 'Token TTL must be positive', 'error');
+	}
+
+	const auditPath = resolveDomainAuditPath(config);
+	if (auditPath && !resolveDomainAuditMasterKey(config)) {
+		const field =
+			resolveDomainAudit(config)?.kind === 'sqlite'
+				? 'audit.sqlite.masterKey'
+				: 'audit.jsonl.masterKey';
+		report(
+			field,
+			`Audit path "${auditPath}" is configured but no master key is set (inline key or AUDIT_MASTER_KEY)`,
+			'warning',
+			'AUDIT_MASTER_KEY_MISSING',
+		);
 	}
 
 	if (config.csrf.tokenLength < 1) {

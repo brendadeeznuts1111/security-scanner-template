@@ -1,6 +1,7 @@
 import {watch, type FSWatcher} from 'fs';
 import path from 'path';
 import {loadDomainReportContext} from '../config/resolve-domain.ts';
+import {supplyChainConfigFromDomain} from '../domain/supply-chain-config.ts';
 import {loadPackageSnapshot, toSecurityPackage} from '../domains/snapshot.ts';
 import * as supplyChain from '../domains/supply-chain.ts';
 import type {ReportFormat} from '../report/index.ts';
@@ -32,6 +33,11 @@ export async function performScan(options: WatchOptions): Promise<void> {
 		return;
 	}
 
+	const domainCtx = await loadDomainReportContext();
+	if (domainCtx?.config.supplyChain.enabled) {
+		supplyChain.activate(supplyChainConfigFromDomain(domainCtx.config));
+	}
+
 	const packages = snapshots.map(toSecurityPackage);
 	const advisories = await supplyChain.scanAll(packages);
 
@@ -42,7 +48,6 @@ export async function performScan(options: WatchOptions): Promise<void> {
 	);
 
 	if (options.report) {
-		const domainCtx = await loadDomainReportContext();
 		const report = await supplyChain.report(options.report, undefined, {
 			domain: domainCtx?.domain,
 			colors: domainCtx?.config.colors,

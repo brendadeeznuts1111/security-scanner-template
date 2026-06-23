@@ -41,6 +41,16 @@ test('domainFieldValueRows resolves secrets.service from domain id', () => {
 	expect(row?.source).toBe('derived');
 });
 
+test('domainFieldValueRows marks default audit.jsonl.path as derived', () => {
+	const config = applyDefaults({
+		domain: 'com.example.matrix-audit',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const row = domainFieldValueRows(config).find(entry => entry.field === 'audit.jsonl.path');
+	expect(row?.value).toBe('./.security/com.example.matrix-audit/audit.jsonl.enc');
+	expect(row?.source).toBe('derived');
+});
+
 test('domainBrandingProfile includes colors, qr, report, and runtime', () => {
 	const config = applyDefaults({
 		domain: 'com.example.branding',

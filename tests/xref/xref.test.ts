@@ -60,6 +60,11 @@ test('getCrossRefsByConfigField resolves service.interactive', () => {
 	expect(entries.some(entry => entry.id === 'service.interactive')).toBe(true);
 });
 
+test('getCrossRefsByConfigField resolves audit.jsonl.path', () => {
+	const entries = getCrossRefsByConfigField('audit.jsonl.path');
+	expect(entries.some(entry => entry.id === 'feature.audit-jsonl')).toBe(true);
+});
+
 test('getCrossRefsByCli resolves scan interactive', () => {
 	const entries = getCrossRefsByCli('scan interactive');
 	expect(entries.some(entry => entry.id === 'bun.terminal')).toBe(true);

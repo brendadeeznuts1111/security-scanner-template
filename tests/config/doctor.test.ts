@@ -31,9 +31,15 @@ function loadedFixture(config: Record<string, unknown>) {
 }
 
 test('checkDomain passes for valid default config', () => {
-	const result = checkDomain(loadedFixture({domain: 'com.example.valid'}));
-	expect(result.ok).toBe(true);
-	expect(result.issues.length).toBe(0);
+	const original = process.env.AUDIT_MASTER_KEY;
+	process.env.AUDIT_MASTER_KEY = 'doctor-test-key';
+	try {
+		const result = checkDomain(loadedFixture({domain: 'com.example.valid'}));
+		expect(result.ok).toBe(true);
+		expect(result.issues.length).toBe(0);
+	} finally {
+		process.env.AUDIT_MASTER_KEY = original;
+	}
 });
 
 test('checkDomain reports invalid hex color', () => {
@@ -65,6 +71,30 @@ test('checkDomain reports secrets.service drift after defaults merge', () => {
 	expect(
 		result.issues.some(i => i.field === 'secrets.service' && i.code === 'SECRETS_SERVICE_MISMATCH'),
 	).toBe(true);
+});
+
+test('checkDomain warns when audit path is set without master key', () => {
+	const config = applyDefaults({
+		domain: 'com.example.audit-warn',
+		audit: {jsonl: {path: './.security/audit.jsonl.enc', masterKey: null}},
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const original = process.env.AUDIT_MASTER_KEY;
+	delete process.env.AUDIT_MASTER_KEY;
+	try {
+		const result = checkDomain({
+			domain: config.domain,
+			path: '/tmp/test.security.json5',
+			config,
+		});
+		expect(
+			result.issues.some(
+				i => i.field === 'audit.jsonl.masterKey' && i.code === 'AUDIT_MASTER_KEY_MISSING',
+			),
+		).toBe(true);
+	} finally {
+		process.env.AUDIT_MASTER_KEY = original;
+	}
 });
 
 test('checkDomain reports token.issuer drift after defaults merge', () => {

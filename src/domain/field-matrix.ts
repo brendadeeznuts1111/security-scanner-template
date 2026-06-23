@@ -1,6 +1,7 @@
 import type {DomainConfig} from '../config/types.ts';
 import {TEMPLATE_PATH, loadTemplate} from '../config/loader.ts';
 import {domainBrandingProfile, type DomainBrandingProfile} from './branding.ts';
+import {defaultJsonlAuditPath, resolveDomainAuditPath} from './audit-paths.ts';
 import {resolveSecretsService} from './secrets-service.ts';
 
 export type DomainFieldSection =
@@ -624,6 +625,9 @@ export function domainFieldValueRows(
 		if (row.field === 'secrets.service') {
 			value = resolveSecretsService(config);
 			source = 'derived';
+		} else if (row.field === 'audit.jsonl.path') {
+			value = resolveDomainAuditPath(config) ?? formatValue(getByPath(config, row.field));
+			source = value === defaultJsonlAuditPath(config.domain) ? 'derived' : 'config';
 		} else {
 			value = formatValue(getByPath(config, row.field));
 		}
