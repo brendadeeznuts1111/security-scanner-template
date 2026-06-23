@@ -22,6 +22,7 @@
 	"types": "./src/index.ts",
 	"files": [
 		"src",
+		"scripts",
 		"rules",
 		"CHANGELOG.md",
 		"SECURITY.md"
@@ -46,13 +47,19 @@
 		"typecheck": "bunx tsc --noEmit",
 		"format": "bunx prettier --write .",
 		"check": "bun run lint && bun run typecheck && bun run test",
+		"check:registry": "bun run src/index.ts --check-registry",
+		"healthcheck": "bun run src/index.ts --healthcheck",
+		"detect-secrets-backend": "bun run scripts/detect-secrets-backend.ts",
 		"prepublishOnly": "bun run check"
 	},
 	"dependencies": {
+		"smol-toml": "^1.6.1",
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.2.20",
+		"@types/node": "^26.0.0",
+		"bun-types": "1.2.20",
 		"prettier": "^3.6.2",
 		"typescript": "^5.9.2"
 	},
@@ -61,6 +68,6 @@
 	},
 	"publishConfig": {
 		"access": "restricted",
-		"registry": "https://your-internal-registry.example.com"
+		"registry": "https://registry.mycompany.com"
 	}
 }

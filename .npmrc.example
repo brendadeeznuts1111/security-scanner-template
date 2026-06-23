@@ -1,5 +1,11 @@
-# Copy this file to .npmrc and replace the registry URL + token.
+# Copy this file to .npmrc and replace the registry URL + credentials.
 # Do not commit .npmrc — it is gitignored.
 
-@acme:registry=https://your-internal-registry.example.com
-//your-internal-registry.example.com/:_authToken=${NPM_CONFIG_TOKEN}
+@acme:registry=https://registry.mycompany.com
+
+# Bearer token (npm Enterprise / Artifactory / GitHub Packages):
+//registry.mycompany.com/:_authToken=${NPM_CONFIG_TOKEN}
+
+# Basic auth (username/password) — uncomment and use instead of the token line:
+# //registry.mycompany.com/:username=${REGISTRY_USERNAME}
+# //registry.mycompany.com/:_password=${REGISTRY_PASSWORD}

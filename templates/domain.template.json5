@@ -1,0 +1,94 @@
+// Golden template for bun-security-planner domains.
+// Copy this file to domains/<domain>.security.json5 and edit only the fields
+// that differ. Every field shown here is optional except `domain`.
+
+{
+	// Required. Reverse-DNS domain identifier.
+	domain: 'com.example.service',
+
+	// Display metadata.
+	displayName: 'Example Service',
+	description: 'One-line description of the domain.',
+
+	// Brand / terminal colors.
+	colors: {
+		primary: '#0A84FF',
+		secondary: '#30D158',
+		fatal: '#FF453A',
+		warn: '#FF9500',
+		info: '#0A84FF',
+		success: '#30D158',
+	},
+
+	// Channel color overrides for audit/log output.
+	channels: {
+		vault: '#0A84FF',
+		identity: '#30D158',
+		token: '#FF9500',
+		csrf: '#FF453A',
+		supplyChain: '#BF5AF2',
+		ops: '#8E8E93',
+	},
+
+	// Vault / secrets configuration.
+	secrets: {
+		service: 'com.example.service',
+		allowUnrestrictedAccess: false,
+		inventory: [
+			// { name: "api-key", required: true, description: "Production API key" },
+		],
+	},
+
+	// Identity / password policy.
+	identity: {
+		algorithm: 'bcrypt',
+		minLength: 12,
+		requireSpecialChar: true,
+	},
+
+	// Token / signing policy.
+	token: {
+		algorithm: 'HS256',
+		ttlSeconds: 3600,
+		issuer: 'com.example.service',
+	},
+
+	// CSRF protection.
+	csrf: {
+		enabled: true,
+		tokenLength: 32,
+	},
+
+	// Supply-chain security.
+	supplyChain: {
+		enabled: true,
+		feed: {
+			remote: 'https://threats.factory-wager.com/v1/bun-feed',
+			apiKeyVault: 'threat-feed-api-key',
+			cachePath: './.security/threat-cache.json',
+			cacheTtl: 3600,
+		},
+		policy: {
+			fatal: ['backdoor', 'botnet', 'token-stealer', 'malware'],
+			warn: ['protestware', 'adware', 'deprecated', 'unmaintained'],
+		},
+	},
+
+	// Operational settings.
+	ops: {
+		watch: {
+			debounceMs: 300,
+			report: null,
+			output: null,
+		},
+		report: {
+			format: 'markdown',
+			output: './.security/reports',
+		},
+	},
+
+	// Universal error code overrides.
+	errorOverrides: {
+		// VAULT_MISSING: { severity: "fatal", channel: "vault" },
+	},
+}

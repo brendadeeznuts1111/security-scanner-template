@@ -1,0 +1,139 @@
+import {watch, type FSWatcher} from 'fs';
+import path from 'path';
+import {loadPackageSnapshot, toSecurityPackage} from '../domains/snapshot.ts';
+import * as supplyChain from '../domains/supply-chain.ts';
+import type {ReportFormat} from '../report/index.ts';
+
+export interface WatchOptions {
+	report?: ReportFormat;
+	output?: string;
+	debounceMs?: number;
+	feedPath?: string;
+}
+
+interface WatchSession {
+	watchers: FSWatcher[];
+	abort: () => void;
+}
+
+export function createDebouncer(fn: () => void, ms: number): () => void {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	return () => {
+		clearTimeout(timeout);
+		timeout = setTimeout(fn, ms);
+	};
+}
+
+/**
+ * Run a single scan of the current project dependencies.
+ */
+export async function performScan(options: WatchOptions): Promise<void> {
+	const start = performance.now();
+	const snapshots = await loadPackageSnapshot();
+	if (snapshots.length === 0) {
+		console.error('[watch] no packages found in package.json — skipping scan');
+		return;
+	}
+
+	const packages = snapshots.map(toSecurityPackage);
+	const advisories = await supplyChain.scanAll(packages);
+
+	const fatalCount = advisories.filter(a => a.level === 'fatal').length;
+	const durationMs = Math.round(performance.now() - start);
+	console.error(
+		`[watch] scan complete: ${advisories.length} advisory(ies), ${fatalCount} fatal (${durationMs}ms)`,
+	);
+
+	if (options.report) {
+		const report = await supplyChain.report(options.report);
+		if (options.output) {
+			const ext = options.report === 'html' ? 'html' : options.report === 'json' ? 'json' : 'md';
+			const filename = `scan-${Date.now()}.${ext}`;
+			const outputPath = path.resolve(options.output, filename);
+			await Bun.write(outputPath, report);
+			console.error(`[watch] report written to ${outputPath}`);
+		}
+	}
+}
+
+/**
+ * Start watching the project for dependency changes.
+ *
+ * Note: `Bun.watch` is not available in this Bun runtime, so this uses the
+ * stable Node.js `fs.watch` API.
+ */
+export function startWatch(options: WatchOptions = {}): WatchSession {
+	const projectRoot = process.cwd();
+	const debounceMs = options.debounceMs ?? 300;
+
+	const watchedPaths = [
+		path.resolve(projectRoot, 'package.json'),
+		path.resolve(projectRoot, 'bun.lockb'),
+	];
+	if (options.feedPath) {
+		watchedPaths.push(path.resolve(options.feedPath));
+	}
+
+	const ac = new AbortController();
+	let scanning = false;
+
+	const onChange = createDebouncer(async () => {
+		if (scanning) return;
+		scanning = true;
+		try {
+			await performScan(options);
+		} catch (error) {
+			console.error('[watch] scan failed:', error instanceof Error ? error.message : String(error));
+		} finally {
+			scanning = false;
+		}
+	}, debounceMs);
+
+	const watchers: FSWatcher[] = [];
+	for (const filePath of watchedPaths) {
+		try {
+			const watcher = watch(filePath, event => {
+				if (event === 'change') {
+					onChange();
+				}
+			});
+			watchers.push(watcher);
+		} catch (error) {
+			console.error(`[watch] could not watch ${filePath}:`, error);
+		}
+	}
+
+	console.error(`[watch] watching ${watchers.length} file(s). Press Ctrl+C to stop.`);
+
+	const shutdown = () => {
+		ac.abort();
+		for (const w of watchers) {
+			try {
+				w.close();
+			} catch {
+				/* ignore close errors */
+			}
+		}
+		console.error('[watch] shutting down.');
+	};
+
+	process.on('SIGINT', shutdown);
+	process.on('SIGTERM', shutdown);
+
+	return {watchers, abort: shutdown};
+}
+
+/**
+ * Run the watch loop until the process receives a signal.
+ */
+export async function watchSupplyChain(options: WatchOptions = {}): Promise<void> {
+	const session = startWatch(options);
+	await new Promise<void>(resolve => {
+		const onExit = () => {
+			session.abort();
+			resolve();
+		};
+		process.once('SIGINT', onExit);
+		process.once('SIGTERM', onExit);
+	});
+}

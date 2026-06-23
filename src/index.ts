@@ -1,5 +1,8 @@
 import {z} from 'zod';
 import {parseArgs} from 'util';
+import {mkdir} from 'fs/promises';
+import path from 'path';
+import {isOsCredentialStoreAvailable, detectSecretsBackend} from './secrets-backend.ts';
 
 const ThreatCategorySchema = z.enum([
 	'protestware',
@@ -79,11 +82,23 @@ const cliArgs = parseArgs({
 		'threat-feed-retries': {type: 'string'},
 		'threat-feed-token-service': {type: 'string'},
 		'threat-feed-token-name': {type: 'string'},
+		'threat-feed-token-provider': {type: 'string'},
+		'threat-feed-cache-ttl': {type: 'string'},
 		'store-token': {type: 'boolean'},
 		'store-token-value': {type: 'string'},
 		'clear-token': {type: 'boolean'},
+		'list-token': {type: 'boolean'},
+		'check-registry': {type: 'boolean'},
+		'healthcheck': {type: 'boolean'},
+		'json': {type: 'boolean'},
+		'dry-run': {type: 'boolean'},
+		'registry-url': {type: 'string'},
+		'registry-username': {type: 'string'},
+		'registry-password': {type: 'string'},
+		'registry-auth-type': {type: 'string'},
 		'scanner-log-path': {type: 'string'},
 		'scanner-log-stderr': {type: 'boolean'},
+		'console-depth': {type: 'string'},
 	},
 	strict: false,
 	allowPositionals: true,
@@ -100,6 +115,19 @@ function configFlag(key: string, envVar: string): boolean {
 	return /^(1|true|yes)$/i.test(process.env[envVar] ?? '');
 }
 
+/**
+ * Apply a custom console inspection depth for debugging. Bun exposes
+ * `console.depth` to control how many levels `console.log` prints.
+ */
+function applyConsoleDepth(): void {
+	const raw = config('console-depth', 'CONSOLE_DEPTH');
+	if (!raw) return;
+	const depth = Number(raw);
+	if (Number.isInteger(depth) && depth >= 0) {
+		(console as unknown as {depth: number}).depth = depth;
+	}
+}
+
 function getFetchTimeoutMs(): number {
 	const raw = config('threat-feed-timeout-ms', 'THREAT_FEED_TIMEOUT_MS');
 	if (!raw) return DEFAULT_FETCH_TIMEOUT_MS;
@@ -114,25 +142,52 @@ function getFetchRetries(): number {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_FETCH_RETRIES;
 }
 
-// --- Remote feed authentication via Bun.secrets ---
+// --- Remote feed authentication ---
 //
-// The scanner stays stateless: it does not store or manage credentials. It only
-// reads a token from the OS keychain (macOS Keychain / libsecret / Windows
-// Credential Manager) at fetch time when the user has opted in by configuring a
-// token name. The token is sent as a `Bearer` token in the `Authorization`
-// header.
+// The scanner stays stateless: it does not store or manage credentials. It reads
+// a token at fetch time from a configurable provider and sends it as a `Bearer`
+// token in the `Authorization` header.
 //
-// Opt-in: token lookup only runs when `THREAT_FEED_TOKEN_NAME` (or
-// `--threat-feed-token-name`) is set. This avoids touching the keychain during
-// normal unauthenticated scans and keeps existing tests keychain-free.
+// Providers:
+//   - `bun-secrets` (default): read from the OS keychain via Bun.secrets
+//     (macOS Keychain / libsecret / Windows Credential Manager). Mostly useful
+//     for local development tools; see https://bun.com/docs/runtime/secrets.
+//   - `env`: read from the `THREAT_FEED_TOKEN` environment variable. This is
+//     the preferred option for production deployment secrets, because the
+//     Bun.secrets API is currently optimized for local CLI workflows.
 //
-// See https://bun.com/docs/runtime/secrets for the native API.
+// Opt-in: the `bun-secrets` provider requires a token name
+// (`THREAT_FEED_TOKEN_NAME` / `--threat-feed-token-name`), so the scanner never
+// touches the keychain unless the user explicitly opts in. The `env` provider
+// is triggered by `THREAT_FEED_TOKEN_PROVIDER=env` plus a non-empty
+// `THREAT_FEED_TOKEN`.
 
 // Reverse-DNS service name per Bun.secrets best practices:
 // https://bun.com/docs/runtime/secrets#best-practices
 const DEFAULT_TOKEN_SERVICE = 'com.acme.bun-security-scanner';
 
-function getTokenService(): string | null {
+// Name used for the pre-flight write probe in --store-token. The probe writes
+// and immediately deletes this placeholder entry so keychain permission/lock
+// problems are surfaced before the user is prompted for the real token.
+const STORE_TEST_TOKEN_NAME = '__scanner_store_test__';
+
+type TokenProvider = 'bun-secrets' | 'env';
+
+function getTokenProvider(): TokenProvider {
+	const raw = config('threat-feed-token-provider', 'THREAT_FEED_TOKEN_PROVIDER');
+	if (raw === 'env') return 'env';
+	if (raw && raw !== 'bun-secrets') {
+		console.error(
+			colorize(
+				COLOR_WARN,
+				`[scanner] unknown token provider "${raw}", falling back to bun-secrets`,
+			),
+		);
+	}
+	return 'bun-secrets';
+}
+
+function getTokenService(): string {
 	return config('threat-feed-token-service', 'THREAT_FEED_TOKEN_SERVICE') ?? DEFAULT_TOKEN_SERVICE;
 }
 
@@ -142,15 +197,50 @@ function getTokenName(): string | null {
 }
 
 /**
- * Resolve the remote-feed bearer token from Bun.secrets. Returns null when
- * token auth is not opted in (no name configured) or when the OS credential
- * store is unavailable (e.g. CI without libsecret). Never throws — a missing
- * token degrades gracefully to an unauthenticated request.
+ * Read the token from the environment. Used by the `env` provider so the token
+ * can be injected via production secret management without touching the OS
+ * keychain.
+ */
+function getEnvThreatFeedToken(): string | null {
+	const token = process.env.THREAT_FEED_TOKEN;
+	return token && token.length > 0 ? token : null;
+}
+
+/**
+ * Resolve the remote-feed bearer token from the configured provider. Returns
+ * null when token auth is not opted in or when the configured provider is
+ * unavailable. Never throws — a missing token degrades gracefully to an
+ * unauthenticated request.
  */
 async function getThreatFeedToken(): Promise<string | null> {
+	const provider = getTokenProvider();
+
+	if (provider === 'env') {
+		const token = getEnvThreatFeedToken();
+		if (!token) {
+			console.error(
+				colorize(
+					COLOR_WARN,
+					'[scanner] THREAT_FEED_TOKEN_PROVIDER=env but THREAT_FEED_TOKEN is not set; sending unauthenticated request',
+				),
+			);
+		}
+		return token;
+	}
+
 	const name = getTokenName();
 	if (!name) return null;
-	const service = getTokenService() ?? DEFAULT_TOKEN_SERVICE;
+	const service = getTokenService();
+
+	if (!(await isOsCredentialStoreAvailable())) {
+		console.error(
+			colorize(
+				COLOR_ERROR,
+				'[scanner] bun-secrets provider is selected but the OS credential store is unreachable. Set THREAT_FEED_TOKEN_PROVIDER=env and provide THREAT_FEED_TOKEN.',
+			),
+		);
+		process.exit(1);
+	}
 
 	try {
 		return await Bun.secrets.get({service, name});
@@ -223,11 +313,13 @@ function formatEventForStderr(event: ScannerEvent): string {
 			const reason = event.reason ? ` — ${event.reason}` : '';
 			return colorize(COLOR_ALLOWED, `[scanner] ALLOWED ${pkg}${reason}`);
 		}
-		case 'scan.complete':
+		case 'scan.complete': {
+			const dryRunNote = event.dryRun ? ' (dry run)' : '';
 			return colorize(
 				COLOR_INFO,
-				`[scanner] scan complete: ${event.advisoryCount} advisory(ies), ${event.allowedCount} allowed (${event.durationMs}ms)`,
+				`[scanner] scan complete${dryRunNote}: ${event.advisoryCount} advisory(ies), ${event.allowedCount} allowed (${event.durationMs}ms)`,
 			);
+		}
 	}
 }
 
@@ -274,7 +366,7 @@ type ScannerEvent =
 	  }
 	| {
 			type: 'feed.loaded';
-			source: 'remote' | 'local' | 'stdin' | 'default';
+			source: 'remote' | 'local' | 'stdin' | 'default' | 'cache';
 			ruleCount: number;
 			allowlistCount: number;
 			timestamp: string;
@@ -301,6 +393,7 @@ type ScannerEvent =
 			allowedCount: number;
 			durationMs: number;
 			timestamp: string;
+			dryRun?: boolean;
 	  };
 
 async function emitEvent(event: ScannerEvent): Promise<void> {
@@ -354,7 +447,76 @@ async function fetchWithTimeoutAndRetry(
 	throw lastError;
 }
 
-async function fetchRemoteThreatFeed(
+const DEFAULT_CACHE_TTL_MS = 0;
+
+function getThreatFeedCacheTtlMs(): number {
+	const raw = config('threat-feed-cache-ttl', 'THREAT_FEED_CACHE_TTL');
+	if (!raw) return DEFAULT_CACHE_TTL_MS;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_CACHE_TTL_MS;
+}
+
+function getThreatFeedCacheDir(): string {
+	const xdg = process.env.XDG_CACHE_HOME;
+	if (xdg) return path.join(xdg, 'bun-security-scanner');
+	return path.join(process.cwd(), 'node_modules', '.cache', 'bun-security-scanner');
+}
+
+function getThreatFeedCachePath(url: string): string {
+	const hash = new Bun.CryptoHasher('sha256').update(url).digest('hex');
+	return path.join(getThreatFeedCacheDir(), `feed-${hash}.json`);
+}
+
+type CachedThreatFeed = {
+	url: string;
+	fetchedAt: number;
+	rules: ThreatFeedItem[];
+	allowlist: AllowlistItem[];
+};
+
+async function readCachedThreatFeed(url: string, ttlMs: number): Promise<CachedThreatFeed | null> {
+	if (ttlMs <= 0) return null;
+	const cachePath = getThreatFeedCachePath(url);
+	const file = Bun.file(cachePath);
+	if (!(await file.exists())) return null;
+
+	try {
+		const cached = (await file.json()) as CachedThreatFeed;
+		if (cached.url !== url) return null;
+		const ageMs = Date.now() - cached.fetchedAt;
+		if (ageMs > ttlMs) return null;
+		return cached;
+	} catch {
+		return null;
+	}
+}
+
+async function writeCachedThreatFeed(
+	url: string,
+	feed: {rules: ThreatFeedItem[]; allowlist: AllowlistItem[]},
+): Promise<void> {
+	const cacheDir = getThreatFeedCacheDir();
+	try {
+		await mkdir(cacheDir, {recursive: true});
+	} catch {
+		return;
+	}
+
+	const cachePath = getThreatFeedCachePath(url);
+	const cached: CachedThreatFeed = {
+		url,
+		fetchedAt: Date.now(),
+		rules: feed.rules,
+		allowlist: feed.allowlist,
+	};
+	try {
+		await Bun.write(cachePath, JSON.stringify(cached));
+	} catch {
+		/* ignore cache write errors */
+	}
+}
+
+async function fetchRemoteThreatFeedDirect(
 	url: string,
 ): Promise<{rules: ThreatFeedItem[]; allowlist: AllowlistItem[]}> {
 	const token = await getThreatFeedToken();
@@ -380,6 +542,40 @@ async function fetchRemoteThreatFeed(
 		timestamp: new Date().toISOString(),
 	});
 
+	return feed;
+}
+
+async function fetchRemoteThreatFeed(
+	url: string,
+): Promise<{rules: ThreatFeedItem[]; allowlist: AllowlistItem[]}> {
+	const ttlMs = getThreatFeedCacheTtlMs();
+	const cached = await readCachedThreatFeed(url, ttlMs);
+
+	if (cached) {
+		const ageMs = Date.now() - cached.fetchedAt;
+		console.error(
+			colorize(COLOR_INFO, `[scanner] using cached threat feed (${Math.round(ageMs / 1000)}s old)`),
+		);
+		// Refresh the cache in the background so the next scan has fresh data.
+		fetchRemoteThreatFeedDirect(url)
+			.then(feed => writeCachedThreatFeed(url, feed))
+			.catch(() => {
+				/* ignore background refresh errors */
+			});
+
+		await emitEvent({
+			type: 'feed.loaded',
+			source: 'cache',
+			ruleCount: cached.rules.length,
+			allowlistCount: cached.allowlist.length,
+			timestamp: new Date().toISOString(),
+		});
+
+		return {rules: cached.rules, allowlist: cached.allowlist};
+	}
+
+	const feed = await fetchRemoteThreatFeedDirect(url);
+	await writeCachedThreatFeed(url, feed);
 	return feed;
 }
 
@@ -668,12 +864,16 @@ export const scanner: Bun.Security.Scanner = {
 			return false;
 		});
 
+		const dryRun = configFlag('dry-run', 'DRY_RUN');
 		const threats = await findThreatsWithHashes(packages, rules, allowlist);
 		const results: Bun.Security.Advisory[] = [];
 
 		for (const {item, matchingPackages, hashVerified} of threats) {
-			const level = categorize(item);
+			let level = categorize(item);
 			if (!level) continue;
+			if (dryRun && level === 'fatal') {
+				level = 'warn';
+			}
 
 			for (const pkg of matchingPackages) {
 				safeEmit({
@@ -706,13 +906,370 @@ export const scanner: Bun.Security.Scanner = {
 			allowedCount: allowedPackages.length,
 			durationMs: Math.round(performance.now() - start),
 			timestamp: new Date().toISOString(),
+			dryRun,
 		});
 
 		closeEventLogWriter();
 
+		if (cliArgs['json'] === true) {
+			console.log(JSON.stringify(results, null, 2));
+		}
+
 		return results;
 	},
 };
+
+// --- Registry health check helper ---
+//
+// Before publishing, verify the configured private registry is reachable and
+// that the configured credentials are accepted. This catches network, URL, and
+// credential issues without attempting an actual publish.
+//
+//   bun run src/index.ts --check-registry
+//   bun run src/index.ts --check-registry --registry-url https://registry.example.com
+//   NPM_CONFIG_TOKEN=xxx bun run src/index.ts --check-registry
+//   REGISTRY_AUTH_TYPE=basic REGISTRY_USERNAME=foo REGISTRY_PASSWORD=bar bun run src/index.ts --check-registry
+
+type RegistryAuthType = 'bearer' | 'basic';
+
+const PACKAGE_JSON_PATH = new URL('../package.json', import.meta.url).pathname;
+
+async function getPublishRegistry(): Promise<string | null> {
+	try {
+		const pkg = await Bun.file(PACKAGE_JSON_PATH).json();
+		return pkg?.publishConfig?.registry ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function getRegistryUrl(): Promise<string | null> {
+	const fromCli = config('registry-url', 'REGISTRY_URL');
+	if (fromCli) return fromCli;
+	return getPublishRegistry();
+}
+
+function getRegistryAuthType(): RegistryAuthType {
+	const explicit = config('registry-auth-type', 'REGISTRY_AUTH_TYPE')?.toLowerCase();
+	if (explicit === 'basic' || explicit === 'bearer') return explicit;
+	// Default: bearer when a token is available, basic when username/password are provided.
+	if (process.env.NPM_CONFIG_TOKEN) return 'bearer';
+	if (
+		config('registry-username', 'REGISTRY_USERNAME') &&
+		config('registry-password', 'REGISTRY_PASSWORD')
+	) {
+		return 'basic';
+	}
+	return 'bearer';
+}
+
+function getRegistryCredentials(): {token?: string; username?: string; password?: string} {
+	return {
+		token: process.env.NPM_CONFIG_TOKEN,
+		username: config('registry-username', 'REGISTRY_USERNAME'),
+		password: config('registry-password', 'REGISTRY_PASSWORD'),
+	};
+}
+
+function buildRegistryAuthHeaders(
+	authType: RegistryAuthType,
+	credentials: {token?: string; username?: string; password?: string},
+): Record<string, string> {
+	const headers: Record<string, string> = {};
+	if (authType === 'bearer') {
+		if (credentials.token) {
+			headers['Authorization'] = `Bearer ${credentials.token}`;
+		}
+	} else if (authType === 'basic' && credentials.username && credentials.password) {
+		headers['Authorization'] =
+			`Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`;
+	}
+	return headers;
+}
+
+function formatRegistryAuthMethod(authType: RegistryAuthType): string {
+	return authType === 'basic' ? 'basic auth' : 'bearer token';
+}
+
+async function runRegistryCheck(): Promise<void> {
+	if (cliArgs['check-registry'] !== true) return;
+
+	const registryUrl = await getRegistryUrl();
+	if (!registryUrl) {
+		console.error(
+			colorize(
+				COLOR_ERROR,
+				'[scanner] no registry URL configured. Set --registry-url, REGISTRY_URL, or publishConfig.registry in package.json',
+			),
+		);
+		process.exit(1);
+	}
+
+	const authType = getRegistryAuthType();
+	const credentials = getRegistryCredentials();
+	const headers = buildRegistryAuthHeaders(authType, credentials);
+	const hasCredentials = Object.keys(headers).length > 0;
+
+	console.error(colorize(COLOR_INFO, `[scanner] checking registry: ${registryUrl}`));
+
+	try {
+		const response = await fetchWithTimeoutAndRetry(registryUrl, 5000, 1, headers);
+		if (response.ok) {
+			console.error(colorize(COLOR_ALLOWED, `[scanner] registry reachable (${response.status})`));
+			if (hasCredentials) {
+				console.error(
+					colorize(
+						COLOR_ALLOWED,
+						`[scanner] registry ${formatRegistryAuthMethod(authType)} accepted`,
+					),
+				);
+			} else {
+				console.error(
+					colorize(COLOR_WARN, '[scanner] no registry credentials set; publish will fail in CI'),
+				);
+			}
+			process.exit(0);
+		}
+		if (response.status === 401) {
+			console.error(colorize(COLOR_ERROR, '[scanner] registry returned 401 Unauthorized'));
+			if (!hasCredentials) {
+				console.error(colorize(COLOR_WARN, '[scanner] no registry credentials set'));
+			} else {
+				console.error(
+					colorize(
+						COLOR_WARN,
+						`[scanner] provided ${formatRegistryAuthMethod(authType)} was rejected`,
+					),
+				);
+			}
+			process.exit(1);
+		}
+		console.error(
+			colorize(
+				COLOR_ERROR,
+				`[scanner] registry returned ${response.status} ${response.statusText}`,
+			),
+		);
+		process.exit(1);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(colorize(COLOR_ERROR, `[scanner] registry check failed: ${message}`));
+		process.exit(1);
+	}
+}
+
+// --- Health check helper ---
+//
+// Pre-flight check for CI/operators: reports threat-feed, secrets-backend, and
+// registry status as JSON and exits non-zero if anything is unhealthy.
+//
+//   bun run src/index.ts --healthcheck
+//   bun run src/index.ts --healthcheck --threat-feed-url https://example.com/feed.json
+
+type ThreatFeedHealth = {
+	configured: boolean;
+	source?: 'remote' | 'local' | 'stdin' | 'default';
+	url?: string;
+	reachable?: boolean;
+	error?: string;
+};
+
+type SecretsBackendHealth = {
+	provider: TokenProvider;
+	backend?: string;
+	configured: boolean;
+	available: boolean;
+	error?: string;
+};
+
+type RegistryHealth = {
+	configured: boolean;
+	url?: string;
+	reachable?: boolean;
+	authenticated?: boolean;
+	error?: string;
+};
+
+type HealthStatus = {
+	threatFeed: ThreatFeedHealth;
+	secretsBackend: SecretsBackendHealth;
+	registry: RegistryHealth;
+	allHealthy: boolean;
+};
+
+async function getThreatFeedHealth(): Promise<ThreatFeedHealth> {
+	const url = config('threat-feed-url', 'THREAT_FEED_URL');
+	const path = config('threat-feed-path', 'THREAT_FEED_PATH');
+	const stdin = cliArgs['threat-feed-stdin'] === true;
+
+	if (url) {
+		const token = await getThreatFeedToken();
+		const headers: Record<string, string> = {};
+		if (token) headers['Authorization'] = `Bearer ${token}`;
+
+		try {
+			const response = await fetchWithTimeoutAndRetry(url, 5000, 1, headers);
+			return {
+				configured: true,
+				source: 'remote',
+				url,
+				reachable: response.ok,
+				error: response.ok ? undefined : `HTTP ${response.status} ${response.statusText}`,
+			};
+		} catch (error) {
+			return {
+				configured: true,
+				source: 'remote',
+				url,
+				reachable: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	}
+
+	if (path) {
+		try {
+			await Bun.file(path).text();
+			return {configured: true, source: 'local', reachable: true};
+		} catch (error) {
+			return {
+				configured: true,
+				source: 'local',
+				reachable: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	}
+
+	if (stdin) {
+		return {configured: true, source: 'stdin'};
+	}
+
+	return {configured: true, source: 'default', reachable: true};
+}
+
+async function getSecretsBackendHealth(): Promise<SecretsBackendHealth> {
+	const provider = getTokenProvider();
+
+	if (provider === 'env') {
+		const token = config('threat-feed-token', 'THREAT_FEED_TOKEN');
+		return {
+			provider: 'env',
+			configured: typeof token === 'string' && token.length > 0,
+			available: true,
+		};
+	}
+
+	const info = await detectSecretsBackend();
+	const name = getTokenName();
+	const service = getTokenService();
+
+	let configured = false;
+	if (info.available && name) {
+		try {
+			const value = await Bun.secrets.get({service, name});
+			configured = value !== null;
+		} catch {
+			configured = false;
+		}
+	}
+
+	return {
+		provider: 'bun-secrets',
+		backend: info.backend,
+		configured,
+		available: info.available,
+		error: info.error,
+	};
+}
+
+async function getRegistryHealth(): Promise<RegistryHealth> {
+	const registryUrl = await getRegistryUrl();
+	if (!registryUrl) {
+		return {configured: false};
+	}
+
+	const authType = getRegistryAuthType();
+	const credentials = getRegistryCredentials();
+	const headers = buildRegistryAuthHeaders(authType, credentials);
+	const hasCredentials = Object.keys(headers).length > 0;
+
+	try {
+		const response = await fetchWithTimeoutAndRetry(registryUrl, 5000, 1, headers);
+		return {
+			configured: true,
+			url: registryUrl,
+			reachable: response.ok,
+			authenticated: hasCredentials ? response.ok : undefined,
+			error: response.ok ? undefined : `HTTP ${response.status} ${response.statusText}`,
+		};
+	} catch (error) {
+		return {
+			configured: true,
+			url: registryUrl,
+			reachable: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+async function getHealthStatus(): Promise<HealthStatus> {
+	const [threatFeed, secretsBackend, registry] = await Promise.all([
+		getThreatFeedHealth(),
+		getSecretsBackendHealth(),
+		getRegistryHealth(),
+	]);
+
+	const allHealthy =
+		(threatFeed.reachable ?? true) && secretsBackend.available && (registry.reachable ?? true);
+
+	return {threatFeed, secretsBackend, registry, allHealthy};
+}
+
+async function withSpinner<T>(message: string, fn: () => Promise<T>): Promise<T> {
+	if (process.stdout.isTTY) {
+		process.stderr.write(`${message}… `);
+	}
+	try {
+		const result = await fn();
+		if (process.stdout.isTTY) {
+			process.stderr.write('✅\n');
+		}
+		return result;
+	} catch (error) {
+		if (process.stdout.isTTY) {
+			process.stderr.write('❌\n');
+		}
+		throw error;
+	}
+}
+
+async function runHealthCheck(): Promise<void> {
+	if (cliArgs['healthcheck'] !== true) return;
+
+	let threatFeed: ThreatFeedHealth;
+	let secretsBackend: SecretsBackendHealth;
+	let registry: RegistryHealth;
+
+	if (process.stdout.isTTY) {
+		console.error(colorize(COLOR_INFO, 'Running health checks…'));
+		threatFeed = await withSpinner('🔍 Threat feed', getThreatFeedHealth);
+		secretsBackend = await withSpinner('🔐 Secrets backend', getSecretsBackendHealth);
+		registry = await withSpinner('📦 Registry', getRegistryHealth);
+	} else {
+		const status = await getHealthStatus();
+		threatFeed = status.threatFeed;
+		secretsBackend = status.secretsBackend;
+		registry = status.registry;
+	}
+
+	const allHealthy =
+		(threatFeed.reachable ?? true) && secretsBackend.available && (registry.reachable ?? true);
+
+	const status: HealthStatus = {threatFeed, secretsBackend, registry, allHealthy};
+	console.log(JSON.stringify(status, null, 2));
+	process.exit(status.allHealthy ? 0 : 1);
+}
 
 // --- Token management CLI helpers (Bun.secrets.set / .delete) ---
 //
@@ -729,9 +1286,83 @@ export const scanner: Bun.Security.Scanner = {
 // `--store-token-value` is omitted, the user is prompted interactively (input
 // is hidden on supporting terminals).
 
+/**
+ * Perform a harmless write-then-delete probe against the OS credential store.
+ * This is used by --store-token to detect a locked keyring or missing write
+ * permission before the user is asked for the real token.
+ *
+ * The probe writes a placeholder value under the configured service and the
+ * well-known name STORE_TEST_TOKEN_NAME, then deletes it immediately. If the
+ * delete step fails, we emit a warning but do not block the real store operation.
+ */
+async function testKeychainWrite(
+	service: string,
+): Promise<{ok: true} | {ok: false; error: string}> {
+	try {
+		await Bun.secrets.set({service, name: STORE_TEST_TOKEN_NAME, value: 'probe'});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {ok: false, error: message};
+	}
+
+	try {
+		const deleted = await Bun.secrets.delete({service, name: STORE_TEST_TOKEN_NAME});
+		if (!deleted) {
+			console.error(
+				colorize(
+					COLOR_WARN,
+					`[scanner] keychain write probe cleanup returned false (${service}/${STORE_TEST_TOKEN_NAME}); the probe entry may remain in the keychain`,
+				),
+			);
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(
+			colorize(
+				COLOR_WARN,
+				`[scanner] keychain write probe cleanup failed (${service}/${STORE_TEST_TOKEN_NAME}): ${message}`,
+			),
+		);
+	}
+
+	return {ok: true};
+}
+
 async function runTokenCli(): Promise<void> {
 	const name = getTokenName();
-	const service = getTokenService() ?? DEFAULT_TOKEN_SERVICE;
+	const service = getTokenService();
+	const provider = getTokenProvider();
+
+	// The token CLI commands manage the OS keychain via Bun.secrets. They are
+	// meaningless when the fetch-time provider is `env`, so fail loudly.
+	if (
+		cliArgs['store-token'] === true ||
+		cliArgs['clear-token'] === true ||
+		cliArgs['list-token'] === true
+	) {
+		if (provider !== 'bun-secrets') {
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					`[scanner] token CLI commands only support the bun-secrets provider (got ${provider}). Switch provider or omit the token CLI flag.`,
+				),
+			);
+			process.exit(1);
+		}
+	}
+
+	// Bun.secrets is experimental and absent on older Bun runtimes. The fetch
+	// path degrades gracefully via try/catch, but the CLI helpers are explicit
+	// user actions — fail loudly with a clear message instead of a TypeError.
+	if (typeof Bun.secrets === 'undefined') {
+		console.error(
+			colorize(
+				COLOR_ERROR,
+				'[scanner] Bun.secrets is not available in this Bun runtime; upgrade to a version that supports it (see https://bun.com/docs/runtime/secrets).',
+			),
+		);
+		process.exit(1);
+	}
 
 	if (cliArgs['store-token'] === true) {
 		if (!name) {
@@ -744,13 +1375,58 @@ async function runTokenCli(): Promise<void> {
 			process.exit(1);
 		}
 
+		// Pre-flight write probe: make sure the keychain/keyring is writable before
+		// asking the user for the real token. This surfaces permission prompts or
+		// locked keyrings early, avoiding wasted input.
+		const probe = await testKeychainWrite(service);
+		if (!probe.ok) {
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					`[scanner] keychain write probe failed (${service}/${STORE_TEST_TOKEN_NAME}): ${probe.error}`,
+				),
+			);
+			console.error(
+				colorize(
+					COLOR_WARN,
+					'[scanner] Check that your keychain/keyring is unlocked and the scanner has permission to write credentials.',
+				),
+			);
+			process.exit(1);
+		}
+
 		let value: string | undefined =
 			typeof cliArgs['store-token-value'] === 'string' ? cliArgs['store-token-value'] : undefined;
 
 		if (!value) {
 			// prompt() is Bun's built-in readline helper. On TTY-less environments
-			// it returns null; fall back to reading from stdin.
+			// (e.g. CI) it returns null; fall back to reading from stdin so
+			// `echo $TOKEN | bun run ... --store-token` works non-interactively.
 			value = prompt(`Enter token for ${service}/${name}:`) ?? undefined;
+		}
+
+		if (!value) {
+			// prompt() returned null (non-TTY) — use Bun's console async iterator
+			// to read stdin line-by-line. This works for both piped input and
+			// interactive paste, and it doesn't block until EOF like Bun.stdin.text().
+			console.error(
+				colorize(
+					COLOR_INFO,
+					`Enter token for ${service}/${name} (paste, then press Enter on a blank line or Ctrl+D to finish):`,
+				),
+			);
+
+			let stdinToken = '';
+			try {
+				for await (const line of console) {
+					if (line === '') break; // blank line ends interactive input
+					stdinToken += line.trim();
+				}
+			} catch {
+				// console iteration error; fall through to "no token provided" below.
+			}
+
+			if (stdinToken.length > 0) value = stdinToken;
 		}
 
 		if (!value || value.length === 0) {
@@ -758,7 +1434,18 @@ async function runTokenCli(): Promise<void> {
 			process.exit(1);
 		}
 
-		await Bun.secrets.set({service, name, value});
+		try {
+			await Bun.secrets.set({service, name, value});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					`[scanner] could not store token in keychain (${service}/${name}): ${message}`,
+				),
+			);
+			process.exit(1);
+		}
 		console.error(
 			colorize(COLOR_ALLOWED, `[scanner] token stored in keychain (${service}/${name})`),
 		);
@@ -776,7 +1463,19 @@ async function runTokenCli(): Promise<void> {
 			process.exit(1);
 		}
 
-		const deleted = await Bun.secrets.delete({service, name});
+		let deleted: boolean;
+		try {
+			deleted = await Bun.secrets.delete({service, name});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					`[scanner] could not delete token from keychain (${service}/${name}): ${message}`,
+				),
+			);
+			process.exit(1);
+		}
 		if (deleted) {
 			console.error(
 				colorize(COLOR_ALLOWED, `[scanner] token removed from keychain (${service}/${name})`),
@@ -786,10 +1485,55 @@ async function runTokenCli(): Promise<void> {
 		}
 		process.exit(0);
 	}
+
+	if (cliArgs['list-token'] === true) {
+		if (!name) {
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					'[scanner] --list-token requires --threat-feed-token-name (or THREAT_FEED_TOKEN_NAME)',
+				),
+			);
+			process.exit(1);
+		}
+
+		// Check existence without printing the value. We call get() and report
+		// yes/no; the token itself is never written to stdout/stderr.
+		let exists = false;
+		try {
+			const value = await Bun.secrets.get({service, name});
+			exists = value !== null;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(
+				colorize(
+					COLOR_ERROR,
+					`[scanner] could not query keychain for ${service}/${name}: ${message}`,
+				),
+			);
+			process.exit(1);
+		}
+
+		if (exists) {
+			console.error(
+				colorize(COLOR_ALLOWED, `[scanner] token present in keychain (${service}/${name})`),
+			);
+		} else {
+			console.error(colorize(COLOR_WARN, `[scanner] no token found for ${service}/${name}`));
+		}
+		process.exit(0);
+	}
 }
 
+// Apply optional console depth before any output, so debug logs from the
+// CLI helpers and scanner use the configured inspection depth.
+applyConsoleDepth();
+
 // Run the CLI helpers when the flags are present. cliArgs is parsed from
-// Bun.argv with strict:false, so --store-token / --clear-token are undefined
-// during normal `bun install` or library imports — making this a no-op
-// unless the user explicitly passes the flags.
+// Bun.argv with strict:false, so --healthcheck / --check-registry / --store-token
+// / --clear-token / --list-token are undefined during normal `bun install` or
+// library imports — making this a no-op unless the user explicitly passes the
+// flags.
+await runHealthCheck();
+await runRegistryCheck();
 await runTokenCli();

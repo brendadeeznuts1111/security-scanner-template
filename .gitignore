@@ -1,5 +1,7 @@
 node_modules
+node_modules/.cache
 .DS_Store
+.security
 dist
 coverage
 .devin/config.local.json
@@ -8,3 +10,5 @@ coverage
 integration-test/**/node_modules
 integration-test/**/bun.lock
 integration-test/**/install.log
+.vault/
+VAULT_MASTER_KEY=

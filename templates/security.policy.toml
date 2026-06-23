@@ -1,0 +1,27 @@
+# Project-level security policy for bun-security-planner.
+# Copy this file to your project root as `security.policy.toml`.
+
+[policy.default]
+fatal = ["backdoor", "botnet", "token-stealer", "malware"]
+warn = ["protestware", "adware", "deprecated", "unmaintained"]
+
+# Example: trust all internal packages.
+# [[policy.override]]
+# package = "@factory-wager/*"
+# action = "ignore"
+# reason = "Internal packages vetted by CI"
+
+# Example: ignore a known false positive.
+# [[policy.override]]
+# package = "lodash"
+# version = ">=4.17.21"
+# cve = "CVE-2021-23337"
+# action = "ignore"
+# reason = "Fixed in our fork"
+
+# Example: escalate anything touching crypto.
+# [[policy.override]]
+# category = "cryptographic-weakness"
+# action = "escalate"
+# to = "fatal"
+# reason = "Crypto weaknesses block release"

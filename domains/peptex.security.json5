@@ -1,0 +1,8 @@
+{
+	domain: 'com.factory-wager.peptex',
+	displayName: 'Peptex',
+	colors: {
+		primary: '#00D2D3',
+		secondary: '#FF9FF3',
+	},
+}

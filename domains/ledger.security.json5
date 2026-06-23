@@ -1,0 +1,11 @@
+{
+	domain: 'com.factory-wager.ledger',
+	displayName: 'Ledger',
+	colors: {
+		primary: '#0A84FF',
+		secondary: '#30D158',
+	},
+	secrets: {
+		inventoryFile: '../.vault/com.factory-wager.ledger.inventory.json5.enc',
+	},
+}

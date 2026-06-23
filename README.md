@@ -74,17 +74,25 @@ Bun provides several built-in APIs that are particularly useful for security sca
 
 The scanner can be configured with environment variables and/or CLI flags. CLI flags take precedence over env vars.
 
-| Env var                     | CLI flag                      | Description                                                                                                                              | Default                         |
-| --------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `THREAT_FEED_STDIN`         | `--threat-feed-stdin`         | Read threat feed JSON from stdin.                                                                                                        | —                               |
-| `THREAT_FEED_URL`           | `--threat-feed-url`           | URL of a remote JSON threat feed.                                                                                                        | —                               |
-| `THREAT_FEED_PATH`          | `--threat-feed-path`          | Path to a local JSON threat feed file.                                                                                                   | —                               |
-| `THREAT_FEED_TIMEOUT_MS`    | `--threat-feed-timeout-ms`    | Timeout for fetching the remote feed.                                                                                                    | `5000`                          |
-| `THREAT_FEED_RETRIES`       | `--threat-feed-retries`       | Number of retries for remote feed requests.                                                                                              | `2`                             |
-| `THREAT_FEED_TOKEN_NAME`    | `--threat-feed-token-name`    | Keychain entry name for the remote feed bearer token. Opt-in to authenticated fetch.                                                     | —                               |
-| `THREAT_FEED_TOKEN_SERVICE` | `--threat-feed-token-service` | Keychain service name for the token (reverse-DNS per [Bun.secrets best practices](https://bun.com/docs/runtime/secrets#best-practices)). | `com.acme.bun-security-scanner` |
-| `SCANNER_LOG_PATH`          | `--scanner-log-path`          | Append structured JSON events to this file.                                                                                              | —                               |
-| `SCANNER_LOG_STDERR`        | `--scanner-log-stderr`        | Emit structured events to stderr.                                                                                                        | `0`                             |
+| Env var                      | CLI flag                       | Description                                                                                                                              | Default                         |
+| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `THREAT_FEED_STDIN`          | `--threat-feed-stdin`          | Read threat feed JSON from stdin.                                                                                                        | —                               |
+| `THREAT_FEED_URL`            | `--threat-feed-url`            | URL of a remote JSON threat feed.                                                                                                        | —                               |
+| `THREAT_FEED_PATH`           | `--threat-feed-path`           | Path to a local JSON threat feed file.                                                                                                   | —                               |
+| `THREAT_FEED_TIMEOUT_MS`     | `--threat-feed-timeout-ms`     | Timeout for fetching the remote feed.                                                                                                    | `5000`                          |
+| `THREAT_FEED_RETRIES`        | `--threat-feed-retries`        | Number of retries for remote feed requests.                                                                                              | `2`                             |
+| `THREAT_FEED_TOKEN_PROVIDER` | `--threat-feed-token-provider` | Token source for authenticated fetch: `bun-secrets` (default) or `env`.                                                                  | `bun-secrets`                   |
+| `THREAT_FEED_TOKEN`          | —                              | Bearer token value when provider is `env`. Use this for production secret injection.                                                     | —                               |
+| `THREAT_FEED_TOKEN_NAME`     | `--threat-feed-token-name`     | Keychain entry name for the remote feed bearer token when provider is `bun-secrets`.                                                     | —                               |
+| `THREAT_FEED_TOKEN_SERVICE`  | `--threat-feed-token-service`  | Keychain service name for the token (reverse-DNS per [Bun.secrets best practices](https://bun.com/docs/runtime/secrets#best-practices)). | `com.acme.bun-security-scanner` |
+| `SCANNER_LOG_PATH`           | `--scanner-log-path`           | Append structured JSON events to this file.                                                                                              | —                               |
+| `SCANNER_LOG_STDERR`         | `--scanner-log-stderr`         | Emit structured events to stderr.                                                                                                        | `0`                             |
+| `CONSOLE_DEPTH`              | `--console-depth`              | Set `console.depth` for deeper inspection logging.                                                                                       | —                               |
+| `THREAT_FEED_CACHE_TTL`      | `--threat-feed-cache-ttl`      | Cache remote feeds for this many milliseconds (`0` disables caching).                                                                    | `0`                             |
+| `DRY_RUN`                    | `--dry-run`                    | Run the scan but downgrade `fatal` advisories to `warn` and never block.                                                                 | `0`                             |
+| —                            | `--healthcheck`                | Pre-flight health check: prints threat-feed, secrets-backend, and registry status as JSON.                                               | —                               |
+| —                            | `--check-registry`             | Verify registry connectivity and auth before publishing.                                                                                 | —                               |
+| —                            | `--json`                       | After the scan completes, print the advisory array as JSON to stdout.                                                                    | —                               |
 
 Feed precedence: `THREAT_FEED_STDIN` → `THREAT_FEED_URL` → `THREAT_FEED_PATH` → `rules/security-rules.json` → hardcoded fallback.
 
@@ -103,6 +111,50 @@ cat custom-rules.json | THREAT_FEED_STDIN=1 bun run src/index.ts
 ```
 
 The bundled `rules/security-rules.json` is the scanner's default policy. It is also exported as `./rules` and `./rules.json` so downstream tools can import the same definitions the scanner uses.
+
+### Machine-readable scan output (`--json`)
+
+When running the scanner in a CI pipeline or script, pass `--json` to emit the full
+advisory array to stdout after the scan completes. stderr remains free for the
+human-readable event log and progress messages.
+
+```bash
+bun run src/index.ts --threat-feed-url https://threat.example.com/feed.json --json > advisories.json
+```
+
+### Dry-run mode (`--dry-run`)
+
+Dry-run runs the full scan but downgrades every `fatal` advisory to `warn` so it
+never blocks installation. Use it to preview a new threat feed or ruleset
+without breaking builds. The `scan.complete` event notes `(dry run)` in stderr.
+
+```bash
+bun run src/index.ts --threat-feed-url https://threat.example.com/feed.json --dry-run --scanner-log-stderr
+```
+
+Combined with `--json`, you can diff advisories between runs:
+
+```bash
+bun run src/index.ts --threat-feed-url https://threat.example.com/feed.json --dry-run --json > before.json
+```
+
+### Remote feed caching (`--threat-feed-cache-ttl`)
+
+Set a cache TTL (in milliseconds) to keep recently fetched remote feeds on disk
+and avoid fetching them on every scan. The first fetch populates the cache;
+subsequent scans use the cached copy while refreshing it in the background for the
+next run. `0` disables caching.
+
+```bash
+# Cache remote feeds for 5 minutes
+bun run src/index.ts --threat-feed-url https://threat.example.com/feed.json --threat-feed-cache-ttl 300000
+```
+
+The cache is stored in `$XDG_CACHE_HOME/bun-security-scanner/` if
+`XDG_CACHE_HOME` is set, otherwise in
+`node_modules/.cache/bun-security-scanner/`. The scanner emits a `feed.loaded`
+event with `source: "cache"` and logs the cache age on stderr when a cached feed
+is used.
 
 ### Remote feed authentication (Bun.secrets)
 
@@ -132,6 +184,18 @@ Or use the built-in helper (prompts interactively if `--store-token-value` is om
 bun run src/index.ts --store-token --threat-feed-token-name threat-feed-token --store-token-value your-token-here
 ```
 
+The helper performs a quick write-then-delete probe (`__scanner_store_test__`) before
+prompting for the real token. This surfaces a locked keychain or missing write permission
+early, so you don't type a sensitive token only to have the store fail.
+
+> **Security note:** passing `--store-token-value` on the command line exposes
+> the token in your shell history and `ps` output. For sensitive tokens, prefer
+> the interactive prompt (omit `--store-token-value`) or pipe via stdin:
+>
+> ```bash
+> echo "$THREAT_FEED_TOKEN" | bun run src/index.ts --store-token --threat-feed-token-name threat-feed-token
+> ```
+
 **Use it** — point the scanner at the name you stored:
 
 ```bash
@@ -139,6 +203,22 @@ THREAT_FEED_URL=https://threat.example.com/feed.json \
 THREAT_FEED_TOKEN_NAME=threat-feed-token \
 bun install
 ```
+
+#### `env` provider (production)
+
+For production deployments where a secret manager injects the token into the
+environment, set the provider to `env` and supply the token via `THREAT_FEED_TOKEN`:
+
+```bash
+THREAT_FEED_URL=https://threat.example.com/feed.json \
+THREAT_FEED_TOKEN_PROVIDER=env \
+THREAT_FEED_TOKEN=your-token-here \
+bun install
+```
+
+This avoids relying on the OS keychain at runtime. The token CLI helpers
+(`--store-token`, `--clear-token`, `--list-token`) only work with the default
+`bun-secrets` provider.
 
 To use a non-default service name (e.g. a UTI for a published CLI), set
 `THREAT_FEED_TOKEN_SERVICE`:
@@ -155,15 +235,36 @@ bun install
 bun run src/index.ts --clear-token --threat-feed-token-name threat-feed-token
 ```
 
-Platform behavior follows `Bun.secrets`:
+#### Platform behavior
 
-- **macOS**: Keychain Services (may prompt for access on first use)
-- **Linux**: libsecret / GNOME Keyring / KWallet (must be running)
-- **Windows**: Windows Credential Manager
+`Bun.secrets` delegates to the operating system's native credential store, so
+platform behavior follows the OS:
+
+- **macOS**: Credentials are stored in the user's login Keychain. The first
+  access may prompt for permission, and credentials persist across restarts.
+- **Linux**: Uses `libsecret` and requires a secret-service daemon such as
+  GNOME Keyring or KWallet. The daemon must be running, and the keyring may
+  prompt for unlock before the token can be read or written.
+- **Windows**: Credentials are stored in Windows Credential Manager, scoped to
+  the user, and encrypted with the Windows Data Protection API.
+
+#### Security properties
+
+- Credentials are encrypted at rest by the OS credential manager.
+- Only the user who stored the token can retrieve it.
+- The raw token is never written to plaintext files (`.env`, `.npmrc`, etc.).
+- Bun zeros the token memory after use.
+
+#### Limitations and CI
+
+- Service and entry names should be under 256 characters.
+- Maximum token length varies by platform (typically 2048–4096 bytes).
+- Some special characters may need escaping depending on the platform.
 
 In CI or other environments without a keychain, leave `THREAT_FEED_TOKEN_NAME`
 unset and provide the feed via `THREAT_FEED_URL` to an unauthenticated endpoint,
-or pipe it via `--threat-feed-stdin`.
+or pipe it via `--threat-feed-stdin`. For production servers, prefer a dedicated
+secret manager rather than `Bun.secrets`.
 
 ### Threat feed format
 
@@ -227,9 +328,9 @@ bun test
 
 ## Publishing Your Scanner
 
-This scanner is configured to publish to an internal, scoped registry. Update the
-`publishConfig.registry` URL in `package.json` and the `.npmrc.example` file with your
-real registry before publishing.
+This scanner is configured to publish to an internal, scoped registry. The
+`publishConfig.registry` URL in `package.json` and the `.npmrc.example` file are set to
+`https://registry.mycompany.com`. Replace it with your real registry URL before publishing.
 
 ### One-time setup
 
@@ -239,7 +340,7 @@ real registry before publishing.
    cp .npmrc.example .npmrc
    ```
 
-2. Edit `.npmrc` and replace `your-internal-registry.example.com` with your real registry.
+2. Edit `.npmrc` and replace `https://registry.mycompany.com` with your real registry URL.
 3. Set your auth token:
 
    ```bash
@@ -255,6 +356,63 @@ bun publish
 ```
 
 `prepublishOnly` automatically runs `bun run check` before publishing.
+
+### Check registry connectivity before publishing
+
+Verify the registry is reachable and that your credentials are accepted without
+attempting a real publish:
+
+```bash
+# Bearer token
+NPM_CONFIG_TOKEN=your-token-here bun run check:registry
+
+# Basic auth
+REGISTRY_AUTH_TYPE=basic REGISTRY_USERNAME=your-user REGISTRY_PASSWORD=your-pass bun run check:registry
+```
+
+You can override the registry URL or auth type for the check:
+
+```bash
+bun run src/index.ts --check-registry --registry-url https://registry.example.com --registry-auth-type basic --registry-username your-user --registry-password your-pass
+```
+
+### Pre-flight health check
+
+Run a single JSON health report before a scan or in CI:
+
+```bash
+bun run healthcheck
+```
+
+The report covers the threat feed, the configured secrets backend, and the
+publish registry:
+
+```json
+{
+	"threatFeed": {"configured": true, "source": "default", "reachable": true},
+	"secretsBackend": {
+		"provider": "bun-secrets",
+		"backend": "keychain",
+		"configured": true,
+		"available": true
+	},
+	"registry": {
+		"configured": true,
+		"url": "https://registry.example.com",
+		"reachable": true,
+		"authenticated": true
+	},
+	"allHealthy": true
+}
+```
+
+The command exits `0` when everything is healthy and non-zero otherwise. Use it
+in CI to fail fast when the OS credential store is missing or the remote feed
+is down:
+
+```bash
+bun run healthcheck --threat-feed-url https://threat.example.com/feed.json
+```
 
 To verify the tarball contents without actually publishing, use `--dry-run`:
 

@@ -1,3 +1,5 @@
+/// <reference types="bun-types" />
+
 export {};
 
 declare global {
