@@ -170,6 +170,27 @@ export async function scanEndpointMetaProbes(options: {
 	};
 }
 
+/** Aggregate probe report into health-style counters for network loop / doctor. */
+export function summarizeEndpointProbeReport(report: EndpointProbeReport): {
+	probesOk: number;
+	probesTotal: number;
+	latencyMs: number;
+	status: 'healthy' | 'degraded' | 'unreachable';
+} {
+	const probesTotal = report.results.length;
+	const probesOk = report.results.filter(result => result.ok).length;
+	const latencyMs = Math.max(...report.results.map(result => result.latencyMs), 0);
+	let status: 'healthy' | 'degraded' | 'unreachable' = 'unreachable';
+	if (probesTotal === 0) {
+		status = 'unreachable';
+	} else if (probesOk === probesTotal) {
+		status = 'healthy';
+	} else if (probesOk > 0) {
+		status = 'degraded';
+	}
+	return {probesOk, probesTotal, latencyMs, status};
+}
+
 export function formatEndpointProbeLine(result: EndpointMetaProbeResult): string {
 	const label = result.label ? `${result.label} ` : '';
 	const status = result.status ?? '—';

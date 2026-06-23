@@ -51,7 +51,19 @@ import {loadSnapshotWithVersionCheck, resolveSnapshotRoot} from '../domain/docto
 import {snapshotPolicyFromDocument} from '../policy/engine.ts';
 import {loadProjectPolicies} from '../policy/loader.ts';
 import {resolveScannerVersion} from '../intel/scanner-version.ts';
+import {auditBundleNetwork} from '../intel/network-audit.ts';
+import {
+	resolveAllEndpointProbeTargets,
+	scanDomainEndpointProbes,
+} from '../intel/endpoint-scan.ts';
+import type {EndpointProbeReport, EndpointProbeTarget} from '../intel/endpoint-types.ts';
+import {resolveHealthUrl} from '../network/health-secrets.ts';
 import {NetworkLoop, type NetworkLoopOptions} from '../network/loop.ts';
+import {
+	ENDPOINT_PROBE_CATALOG_PATH,
+	ENDPOINT_PROBE_META_PATH,
+	handleEndpointProbeApi,
+} from './probe-api.ts';
 import {resolveNetworkConfig, type NetworkConfigOverrides} from '../network/resolve-config.ts';
 import type {NetworkAuditSummary, NetworkLoopStatus} from '../network/types.ts';
 import {defaultNetworkBaselinePath} from '../intel/network-baseline.ts';
@@ -60,6 +72,11 @@ import path from 'path';
 export type RouteHandler = (req: Request) => Response | Promise<Response>;
 export type {ServiceOptions} from './serve-options.ts';
 export {buildServeInit, resolveServeOptions} from './serve-options.ts';
+export {
+	ENDPOINT_PROBE_CATALOG_PATH,
+	ENDPOINT_PROBE_META_PATH,
+	handleEndpointProbeApi,
+} from './probe-api.ts';
 
 /**
  * Service runtime that executes a domain's security primitives.
@@ -332,10 +349,77 @@ export class Service {
 	 * Handle a single request through the domain's security middleware.
 	 */
 	async handleRequest(req: Request): Promise<Response> {
+		const probeResponse = await handleEndpointProbeApi(req, {
+			listTargets: () => this.listEndpointProbeTargets(),
+			runProbes: () => this.probeAllEndpoints(),
+		});
+		if (probeResponse) {
+			return probeResponse;
+		}
+
 		if (this.domain?.csrf) {
 			return this.domain.csrf.middleware(req, () => this.route(req));
 		}
 		return this.route(req);
+	}
+
+	/** Resolved probe targets: domain + policy + health URL + bundle routes. */
+	async listEndpointProbeTargets(
+		options: {distPath?: string; healthUrl?: string} = {},
+	): Promise<EndpointProbeTarget[]> {
+		const root = this.registry.root;
+		const config = this.registry.get(this.domainName);
+		const policy = await loadProjectPolicies(root);
+		const healthUrl =
+			options.healthUrl ??
+			(
+				await resolveHealthUrl({
+					healthUrl: config.service?.network?.healthUrl,
+					healthUrlSecret: config.service?.network?.healthUrlSecret,
+					domain: this.domainName,
+					domainService: config.secrets.service,
+				})
+			).url;
+		let bundleNetwork;
+		const dist = path.resolve(
+			root,
+			options.distPath ?? config.service?.network?.distPath ?? './dist',
+		);
+		bundleNetwork = await auditBundleNetwork(dist);
+		return resolveAllEndpointProbeTargets(config, policy, {healthUrl, bundleNetwork});
+	}
+
+	/** Run meta/security probes against every resolved endpoint. */
+	async probeAllEndpoints(
+		options: {distPath?: string; healthUrl?: string; timeoutMs?: number} = {},
+	): Promise<EndpointProbeReport> {
+		const root = this.registry.root;
+		const config = this.registry.get(this.domainName);
+		const policy = await loadProjectPolicies(root);
+		const healthUrl =
+			options.healthUrl ??
+			(
+				await resolveHealthUrl({
+					healthUrl: config.service?.network?.healthUrl,
+					healthUrlSecret: config.service?.network?.healthUrlSecret,
+					domain: this.domainName,
+					domainService: config.secrets.service,
+				})
+			).url;
+		const dist = path.resolve(
+			root,
+			options.distPath ?? config.service?.network?.distPath ?? './dist',
+		);
+		const bundleNetwork = await auditBundleNetwork(dist);
+		return scanDomainEndpointProbes({
+			root,
+			domain: this.domainName,
+			config,
+			policy,
+			healthUrl,
+			bundleNetwork,
+			timeoutMs: options.timeoutMs,
+		});
 	}
 
 	/**

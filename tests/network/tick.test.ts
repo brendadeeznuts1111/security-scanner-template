@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {FIXED_TEST_ISO} from '../helpers.ts';
 import {mkdirSync, mkdtempSync, writeFileSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
@@ -17,7 +18,7 @@ test('network tick exits 1 on baseline drift when fail-on-drift set', async () =
 	await saveNetworkBaseline(baselinePath, {
 		version: NETWORK_BASELINE_VERSION,
 		domain: 'com.example.tick',
-		capturedAt: new Date().toISOString(),
+		capturedAt: FIXED_TEST_ISO,
 		bundlePath: dist,
 		endpoints: [],
 		healthRoutes: [],

@@ -1,42 +1,43 @@
 import type {DoctorIssue} from '../config/doctor.ts';
 import type {DomainConfig} from '../config/types.ts';
 import type {PolicyDocument} from '../policy/types.ts';
-import {
-	endpointProbesFromDocument,
-	extractEndpointProbesFromToml,
-	mergeEndpointProbeTargets,
-	policyEndpointToTarget,
-} from '../policy/endpoints.ts';
+import {extractEndpointProbesFromToml} from '../policy/endpoints.ts';
 import {loadProjectPolicies} from '../policy/loader.ts';
+import type {NetworkAuditCounts} from './network-audit.ts';
+import {resolveAllEndpointProbeTargets} from './endpoint-resolve.ts';
 import type {EndpointProbeTarget} from './endpoint-types.ts';
 import {scanEndpointMetaProbes} from './endpoint-probe.ts';
 import type {EndpointProbeReport} from './endpoint-types.ts';
-
-function domainEndpointTargets(config: DomainConfig): EndpointProbeTarget[] {
-	return (config.intel?.endpoints ?? []).map(target => ({...target}));
-}
 
 /** Resolve endpoint probe targets from domain config + security.policy.toml. */
 export function resolveEndpointProbeTargets(
 	config: DomainConfig,
 	policy: PolicyDocument | null | undefined,
 ): EndpointProbeTarget[] {
-	return mergeEndpointProbeTargets(
-		domainEndpointTargets(config),
-		endpointProbesFromDocument(policy).map(policyEndpointToTarget),
-	);
+	return resolveAllEndpointProbeTargets(config, policy);
 }
 
-/** Deep scan: HTTP meta probes for configured service endpoints. */
+export {
+	bundleEndpointsToProbeTargets,
+	resolveAllEndpointProbeTargets,
+	resolveRouteProbeUrl,
+} from './endpoint-resolve.ts';
+
+/** Deep scan: HTTP meta probes for all resolved service endpoints. */
 export async function scanDomainEndpointProbes(options: {
 	root: string;
 	domain: string;
 	config: DomainConfig;
 	policy?: PolicyDocument | null;
+	healthUrl?: string | null;
+	bundleNetwork?: NetworkAuditCounts;
 	timeoutMs?: number;
 }): Promise<EndpointProbeReport> {
 	const policy = options.policy ?? (await loadProjectPolicies(options.root));
-	const targets = resolveEndpointProbeTargets(options.config, policy);
+	const targets = resolveAllEndpointProbeTargets(options.config, policy, {
+		healthUrl: options.healthUrl,
+		bundleNetwork: options.bundleNetwork,
+	});
 	return scanEndpointMetaProbes({
 		root: options.root,
 		domain: options.domain,
@@ -53,16 +54,12 @@ export async function collectEndpointDoctorIssues(
 	config: DomainConfig,
 	policy: PolicyDocument | null | undefined,
 ): Promise<DoctorIssue[]> {
-	const targets = resolveEndpointProbeTargets(config, policy);
+	const targets = resolveAllEndpointProbeTargets(config, policy);
 	if (targets.length === 0) {
 		return [];
 	}
 
-	const report = await scanEndpointMetaProbes({
-		root,
-		domain,
-		targets,
-	});
+	const report = await scanEndpointMetaProbes({root, domain, targets});
 
 	return report.violations.map(violation => ({
 		domain,

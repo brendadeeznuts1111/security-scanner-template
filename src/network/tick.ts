@@ -11,7 +11,9 @@ import {
 	type NetworkBaselineDocument,
 	NETWORK_BASELINE_VERSION,
 } from '../intel/network-baseline.ts';
-import {probeNetworkHealth as probeAggregateHealth} from '../intel/network-health.ts';
+import {scanDomainEndpointProbes} from '../intel/endpoint-scan.ts';
+import {summarizeEndpointProbeReport} from '../intel/endpoint-probe.ts';
+import {loadProjectPolicies} from '../policy/loader.ts';
 import type {PackageSemverViolation} from '../intel/semver-checks.ts';
 import type {PatternMatch} from '../scan/patterns/index.ts';
 import {resolveHealthUrl} from './health-secrets.ts';
@@ -97,19 +99,14 @@ function resolveBaselinePath(
 	return defaultNetworkBaselinePath(options.domainId, options.projectRoot);
 }
 
-function mapProbeSummaryToResult(
-	health: Awaited<ReturnType<typeof probeAggregateHealth>>,
+function mapMetaProbeReportToResult(
+	summary: ReturnType<typeof summarizeEndpointProbeReport>,
 ): NetworkHealthProbeResult {
 	return {
-		status:
-			health.status === 'unhealthy'
-				? 'unreachable'
-				: health.status === 'unknown'
-					? 'unreachable'
-					: health.status,
-		latencyMs: health.latencyMs,
-		probesOk: health.probesOk,
-		probesTotal: health.probesTotal,
+		status: summary.status,
+		latencyMs: summary.latencyMs,
+		probesOk: summary.probesOk,
+		probesTotal: summary.probesTotal,
 	};
 }
 
@@ -131,14 +128,29 @@ export async function runNetworkTick(options: NetworkTickOptions): Promise<Netwo
 	});
 
 	let healthProbe: NetworkHealthProbeResult;
-	if (healthResolution.url) {
-		const aggregate = await probeAggregateHealth({
+	if (options.domainConfig && healthResolution.url) {
+		const policy = await loadProjectPolicies(options.projectRoot);
+		const report = await scanDomainEndpointProbes({
+			root: options.projectRoot,
+			domain: options.domainId,
+			config: options.domainConfig,
+			policy,
 			healthUrl: healthResolution.url,
-			extraUrls: bundleNetwork.healthRoutes
-				.filter(route => route.startsWith('http'))
-				.slice(0, 3),
+			bundleNetwork,
 		});
-		healthProbe = mapProbeSummaryToResult(aggregate);
+		healthProbe = mapMetaProbeReportToResult(summarizeEndpointProbeReport(report));
+	} else if (healthResolution.url) {
+		const {probeNetworkHealth} = await import('../intel/network-health.ts');
+		const aggregate = await probeNetworkHealth({healthUrl: healthResolution.url});
+		healthProbe = {
+			status:
+				aggregate.status === 'unhealthy' || aggregate.status === 'unknown'
+					? 'unreachable'
+					: aggregate.status,
+			latencyMs: aggregate.latencyMs,
+			probesOk: aggregate.probesOk,
+			probesTotal: aggregate.probesTotal,
+		};
 	} else {
 		healthProbe = {status: 'unreachable', latencyMs: 0, probesOk: 0, probesTotal: 0};
 	}
