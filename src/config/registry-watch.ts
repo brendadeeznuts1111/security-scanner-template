@@ -3,14 +3,17 @@ import path from 'path';
 import {loadDomainFile} from './loader.ts';
 import type {LoadedDomain} from './types.ts';
 export interface DomainWatchEvent {
-	type: 'added' | 'changed' | 'removed';
+	type: 'added' | 'changed' | 'removed' | 'error';
 	domain: string;
 	path: string;
+	/** Present when `type` is `error`. */
+	error?: string;
 }
 
 export interface DomainWatchOptions {
 	debounceMs?: number;
 	onReload?: (event: DomainWatchEvent) => void;
+	onError?: (event: DomainWatchEvent) => void;
 }
 
 const DOMAIN_SUFFIX = '.security.json5';
@@ -54,12 +57,16 @@ export function startDomainWatch(
 
 		pending.set(
 			absolutePath,
-			setTimeout(async () => {
+			setTimeout(() => {
 				pending.delete(absolutePath);
-				const event = await context.reloadDomain(absolutePath);
-				if (event) {
+				void context.reloadDomain(absolutePath).then(event => {
+					if (!event) return;
+					if (event.type === 'error') {
+						options.onError?.(event);
+						return;
+					}
 					options.onReload?.(event);
-				}
+				});
 			}, debounceMs),
 		);
 	};
@@ -110,20 +117,34 @@ export async function reloadDomainFile(
 		return null;
 	}
 
-	const loaded = await loadDomainFile(filePath);
-	if (previous && previous.domain !== loaded.domain) {
-		domains.delete(previous.domain);
-		clearSecurityCacheForDomain(securityCache, previous.domain);
+	try {
+		const loaded = await loadDomainFile(filePath);
+		if (previous && previous.domain !== loaded.domain) {
+			domains.delete(previous.domain);
+			clearSecurityCacheForDomain(securityCache, previous.domain);
+		}
+
+		domains.set(loaded.domain, loaded);
+		clearSecurityCacheForDomain(securityCache, loaded.domain);
+
+		return {
+			type: previous ? 'changed' : 'added',
+			domain: loaded.domain,
+			path: filePath,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (previous) {
+			domains.delete(previous.domain);
+			clearSecurityCacheForDomain(securityCache, previous.domain);
+		}
+		return {
+			type: 'error',
+			domain: previous?.domain ?? '<unknown>',
+			path: filePath,
+			error: message,
+		};
 	}
-
-	domains.set(loaded.domain, loaded);
-	clearSecurityCacheForDomain(securityCache, loaded.domain);
-
-	return {
-		type: previous ? 'changed' : 'added',
-		domain: loaded.domain,
-		path: filePath,
-	};
 }
 
 export {relativeDomainPath, isDomainConfigFile};

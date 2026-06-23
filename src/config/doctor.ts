@@ -2,6 +2,7 @@ import path from 'path';
 import {isValidConfigColor} from '../color/index.ts';
 import {validateBunRuntime, type BunRuntimeInfo} from '../utils/runtime.ts';
 import {validateCrossRefApis, type CrossRefValidation} from '../xref/index.ts';
+import {applyDefaults} from './defaults.ts';
 import {detectConfigDrift} from './drift.ts';
 import {loadTemplate, TEMPLATE_PATH, type LoadedDomain} from './loader.ts';
 import {resolveEncryptedStorePath} from './vault-paths.ts';
@@ -52,10 +53,7 @@ import {
 	writeDoctorSnapshots,
 	type DoctorSnapshotDocument,
 } from '../domain/doctor-snapshot.ts';
-import {
-	getBunSnapshotRuntimeInfo,
-	type BunSnapshotRuntimeInfo,
-} from '../utils/snapshot-runtime.ts';
+import {getBunSnapshotRuntimeInfo, type BunSnapshotRuntimeInfo} from '../utils/snapshot-runtime.ts';
 
 export interface DoctorIssue {
 	domain: string;
@@ -462,12 +460,90 @@ async function validateDomainSecurity(loaded: LoadedDomain): Promise<DoctorIssue
 	return issues;
 }
 
+/** True when a domain report has no error-severity issues (warnings are allowed). */
+export function domainReportOk(issues: DoctorIssue[]): boolean {
+	return !issues.some(issue => issue.severity === 'error');
+}
+
 /**
- * Validate a single loaded domain.
+ * Validate a single loaded domain (structural checks on merged config only).
  */
 export function checkDomain(loaded: LoadedDomain): {ok: boolean; issues: DoctorIssue[]} {
 	const issues = validateDomain(loaded);
-	return {ok: issues.length === 0, issues};
+	return {ok: domainReportOk(issues), issues};
+}
+
+/**
+ * Full async validation for a loaded domain — public/private vault, CSRF, drift.
+ * Matches the per-domain pipeline used by `checkAllDomains` / `bun sp doctor`.
+ */
+export async function checkLoadedDomain(
+	loaded: LoadedDomain,
+): Promise<{ok: boolean; issues: DoctorIssue[]}> {
+	const {domain, path: filePath} = loaded;
+	const issues: DoctorIssue[] = [];
+
+	if (!(await Bun.file(filePath).exists())) {
+		issues.push(...validateDomain(loaded));
+		issues.push(...(await validateDomainSecurity(loaded)));
+		return {ok: domainReportOk(issues), issues};
+	}
+
+	let publicRaw: Record<string, unknown>;
+	try {
+		publicRaw = Bun.JSON5.parse(await Bun.file(filePath).text()) as Record<string, unknown>;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		issues.push({
+			domain,
+			path: filePath,
+			field: 'file',
+			message: `Could not parse domain config: ${message}`,
+			severity: 'error',
+		});
+		return {ok: domainReportOk(issues), issues};
+	}
+
+	const privatePath = privateVaultPath(filePath, domain);
+	const privateExists = await Bun.file(privatePath).exists();
+	issues.push(...validatePublicFile(domain, filePath, publicRaw, privateExists));
+
+	if (privateExists) {
+		try {
+			const privateRaw = Bun.JSON5.parse(await Bun.file(privatePath).text()) as PrivateVaultConfig;
+			issues.push(...(await validatePrivateFile(domain, privatePath, filePath, privateRaw)));
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			issues.push({
+				domain,
+				path: privatePath,
+				field: 'file',
+				message: `Could not parse private vault: ${message}`,
+				severity: 'error',
+			});
+		}
+	}
+
+	issues.push(...validateDomain(loaded));
+	issues.push(...(await validateDomainSecurity(loaded)));
+
+	try {
+		const template = await loadTemplate();
+		const baseline = applyDefaults({...template, domain: loaded.config.domain});
+		for (const drift of detectConfigDrift(loaded.config, baseline)) {
+			issues.push({
+				domain,
+				path: filePath,
+				field: drift.field,
+				message: drift.message,
+				severity: 'warning',
+			});
+		}
+	} catch {
+		// Template drift checks are best-effort.
+	}
+
+	return {ok: domainReportOk(issues), issues};
 }
 
 /**
@@ -636,7 +712,7 @@ export async function checkAllDomains(
 		domains.push({
 			domain: domainName,
 			path: filePath,
-			ok: issues.length === 0,
+			ok: domainReportOk(issues),
 			issues,
 			branding,
 			matrix,

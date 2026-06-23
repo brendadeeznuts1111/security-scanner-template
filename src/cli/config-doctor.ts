@@ -23,12 +23,47 @@ function formatBrandingLine(result: DoctorResult, domain: DoctorResult['domains'
 	return `  branding: ${b.displayName} | service: ${b.service} | report: ${b.report.format} | qr: ${b.qr.enabled ? 'on' : 'off'} | runtime: interactive=${b.runtime.interactive} http3=${b.runtime.http3}`;
 }
 
+function formatPackageMetadata(result: DoctorResult): string[] {
+	const meta = result.packageMetadata ?? result.snapshot?.document?.metadata.package;
+	if (!meta) {
+		return [];
+	}
+	return [
+		`  package: ${meta.name}@${meta.version}`,
+		`  deps: ${meta.dependencyCount} + ${meta.devDependencyCount} dev | bun: ${meta.bunEngine ?? 'n/a'} | bun-types: ${meta.bunTypesVersion ?? 'n/a'}`,
+	];
+}
+
+function formatSnapshotReport(result: DoctorResult): string[] {
+	const snapshot = result.snapshot;
+	if (!snapshot) {
+		return [];
+	}
+	const lines = [
+		'',
+		colorize(TERMINAL.warn, 'Doctor snapshot'),
+		`  bun matcher: ${snapshot.matcherAvailable ? 'available' : 'unavailable'} | update: ${snapshot.updateRequested ? 'yes' : 'no'}`,
+	];
+	if (snapshot.written.length > 0) {
+		lines.push(colorize(TERMINAL.success, `  wrote ${snapshot.written.length} file(s)`));
+		for (const file of snapshot.written) {
+			lines.push(colorize(TERMINAL.muted, `    ${file}`));
+		}
+	}
+	if (snapshot.compared) {
+		lines.push(
+			snapshot.ok
+				? colorize(TERMINAL.success, '  snapshot index matches baseline')
+				: colorize(TERMINAL.warn, '  snapshot drift detected (see cross-domain checks)'),
+		);
+	}
+	return lines;
+}
+
 function formatTemplateCoverage(result: DoctorResult): string[] {
 	const coverage = result.templateCoverage;
 	const counts = coverage.layerCounts;
-	const status = coverage.ok
-		? colorize(TERMINAL.success, '✓')
-		: colorize(TERMINAL.fatal, '✗');
+	const status = coverage.ok ? colorize(TERMINAL.success, '✓') : colorize(TERMINAL.fatal, '✗');
 	return [
 		'',
 		colorize(TERMINAL.warn, 'Golden template & field matrix'),
@@ -49,6 +84,8 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 	}
 
 	lines.push(...formatTemplateCoverage(result));
+	lines.push(...formatPackageMetadata(result));
+	lines.push(...formatSnapshotReport(result));
 
 	for (const domain of result.domains) {
 		lines.push('');
@@ -69,7 +106,12 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 			lines.push(`  ${formatIssue(issue)}`);
 		}
 		if (options.matrix && domain.matrix?.length) {
-			lines.push(colorize(TERMINAL.muted, '  field matrix (template | domain | branding | service | secrets):'));
+			lines.push(
+				colorize(
+					TERMINAL.muted,
+					'  field matrix (template | domain | branding | service | secrets):',
+				),
+			);
 			lines.push(
 				formatFieldMatrixTable(domain.matrix, {
 					values: true,
@@ -177,25 +219,12 @@ export interface ConfigDoctorOptions {
 	branding?: boolean;
 	/** Limit matrix rows to a section (e.g. branding, secrets, service). */
 	matrixSection?: DomainFieldSection;
-}
-
-function isMatrixSection(value: string): value is DomainFieldSection {
-	return [
-		'domain',
-		'branding',
-		'secrets',
-		'identity',
-		'token',
-		'csrf',
-		'supply-chain',
-		'service',
-		'visual',
-		'ops',
-		'audit',
-		'intel',
-		'tls',
-		'errors',
-	].includes(value);
+	/** Capture/compare doctor snapshots with metadata extraction. */
+	snapshot?: boolean;
+	/** Write snapshots using Bun's native `--update-snapshots` / `-u` flag. */
+	updateSnapshots?: boolean;
+	/** Raw argv for native snapshot flag detection. */
+	argv?: readonly string[];
 }
 
 async function peerMetaDoctorResult(
@@ -208,6 +237,7 @@ async function peerMetaDoctorResult(
 		'../domain/field-matrix.ts'
 	);
 	const {TEMPLATE_PATH} = await import('../config/loader.ts');
+	const {extractPackageMetadata} = await import('../config/package-metadata.ts');
 	const templateCoverageRaw = await validateTemplateFieldCoverage();
 	return {
 		ok: peerMeta.ok,
@@ -232,6 +262,7 @@ async function peerMetaDoctorResult(
 			path: TEMPLATE_PATH,
 			layerCounts: matrixLayerCounts(),
 		},
+		packageMetadata: await extractPackageMetadata(`${root}/package.json`),
 	};
 }
 
@@ -244,6 +275,9 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 	const doctorOptions = {
 		matrix: options.matrix === true,
 		matrixSection: options.matrixSection,
+		snapshot: options.snapshot === true,
+		updateSnapshots: options.updateSnapshots === true,
+		argv: options.argv ?? process.argv,
 		peerMeta: options.checkPeerMeta ? false : undefined,
 	};
 

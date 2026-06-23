@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import {parseArgs} from 'util';
 import {runConfigDoctor} from './config-doctor.ts';
-import {runCliIfMain} from '../utils/cli.ts';
+import {isMainModule} from '../utils/runtime.ts';
 
 async function main(): Promise<void> {
 	const parsed = parseArgs({
@@ -27,10 +27,13 @@ async function main(): Promise<void> {
 	await runConfigDoctor({
 		root,
 		json,
+		argv: Bun.argv,
 		benchmark: parsed.values.benchmark === true,
 		checkPeerMeta: parsed.values['check-peer-meta'] === true,
 		matrix: parsed.values.matrix === true,
 		branding: parsed.values.branding === true,
+		snapshot: parsed.values.snapshot === true || parsed.values['update-snapshots'] === true,
+		updateSnapshots: parsed.values['update-snapshots'] === true,
 		matrixSection:
 			matrixSection &&
 			[
@@ -54,4 +57,11 @@ async function main(): Promise<void> {
 	});
 }
 
-await runCliIfMain(main);
+const __doctorCliMain =
+	isMainModule() ||
+	(process.argv[1]?.includes('doctor.ts') ?? false) ||
+	(Bun.argv[1]?.includes('doctor.ts') ?? false);
+
+if (__doctorCliMain) {
+	await main();
+}

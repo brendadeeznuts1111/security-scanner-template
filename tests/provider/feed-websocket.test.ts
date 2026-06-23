@@ -1,6 +1,38 @@
 import {expect, test} from 'bun:test';
 import {loadWebSocketFeed} from '../../src/provider/feed-websocket.ts';
 
+test('loadWebSocketFeed resolves on first message without waiting for close', async () => {
+	const payload = {
+		rules: [
+			{
+				package: 'ws-open-pkg',
+				range: '1.0.0',
+				url: null,
+				description: 'Keeps socket open',
+				categories: ['malware'],
+			},
+		],
+	};
+
+	const server = Bun.serve({
+		port: 0,
+		fetch(req, srv) {
+			if (srv.upgrade(req)) return undefined;
+			return new Response('ok');
+		},
+		websocket: {
+			message() {},
+			open(ws) {
+				ws.send(JSON.stringify(payload));
+			},
+		},
+	});
+
+	const feed = await loadWebSocketFeed(`ws://localhost:${server.port}`, {timeoutMs: 5000});
+	expect(feed.rules[0]?.package).toBe('ws-open-pkg');
+	server.stop(true);
+});
+
 test('loadWebSocketFeed receives JSON threat feed', async () => {
 	const payload = {
 		rules: [

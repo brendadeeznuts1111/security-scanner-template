@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import {existsSync, mkdirSync, writeFileSync} from 'fs';
 import path from 'path';
-import {generateMasterKey, setMasterKey} from '../src/config/master-key.ts';
+import {generateMasterKey, hasMasterKey, setMasterKey} from '../src/config/master-key.ts';
 import {saveEncryptedStore} from '../src/config/encrypted-store.ts';
 import type {SecretEntry} from '../src/config/types.ts';
 
@@ -30,6 +30,8 @@ interface PublicConfig {
 export interface MigrateOptions {
 	cwd?: string;
 	silent?: boolean;
+	/** Re-migrate domains that already have a private vault or master key. */
+	force?: boolean;
 }
 
 export interface MigrateResult {
@@ -58,6 +60,7 @@ function log(silent: boolean, message: string): void {
 export async function migrate(options: MigrateOptions = {}): Promise<MigrateResult> {
 	const cwd = options.cwd ?? process.cwd();
 	const silent = options.silent ?? false;
+	const force = options.force ?? false;
 
 	const vaultDir = path.join(cwd, '.vault');
 	if (!existsSync(vaultDir)) {
@@ -84,6 +87,17 @@ export async function migrate(options: MigrateOptions = {}): Promise<MigrateResu
 
 		const privatePath = path.join(cwd, '.vault', `${domainName}.inventory.json5`);
 		const storePath = path.join(cwd, '.vault', `${domainName}.secrets.enc`);
+
+		const vaultExists = existsSync(privatePath) || existsSync(storePath);
+		const masterKeyExists = await hasMasterKey({service: domainName, name: MASTER_KEY_NAME});
+		if (!force && (vaultExists || masterKeyExists)) {
+			log(
+				silent,
+				`⏭ ${publicPath}: vault already exists for ${domainName} (pass --force to re-migrate)`,
+			);
+			skipped++;
+			continue;
+		}
 
 		const masterKey = generateMasterKey();
 		await setMasterKey({service: domainName, name: MASTER_KEY_NAME, value: masterKey});
@@ -144,5 +158,6 @@ export async function migrate(options: MigrateOptions = {}): Promise<MigrateResu
 }
 
 if (import.meta.main) {
-	await migrate();
+	const force = process.argv.includes('--force');
+	await migrate({force});
 }

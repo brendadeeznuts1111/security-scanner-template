@@ -1,4 +1,4 @@
-import {mkdtempSync, mkdirSync, rmSync} from 'fs';
+import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
 import {afterEach, beforeEach, expect, test} from 'bun:test';
@@ -34,6 +34,29 @@ beforeEach(() => {
 afterEach(() => {
 	(Bun as unknown as {secrets: typeof Bun.secrets}).secrets = originalSecrets;
 	rmSync(TEST_DIR, {recursive: true, force: true});
+});
+
+test('migrate skips existing vault unless force is set', async () => {
+	const domain = 'com.example.skip';
+	const domainFile = path.join(TEST_DIR, 'domains', 'skip.security.json5');
+	const vaultDir = path.join(TEST_DIR, '.vault');
+	mkdirSync(path.dirname(domainFile), {recursive: true});
+	mkdirSync(vaultDir, {recursive: true});
+	writeFileSync(path.join(vaultDir, `${domain}.inventory.json5`), '{}');
+
+	await Bun.write(
+		domainFile,
+		json5Stringify({
+			domain,
+			secrets: {inventory: [{name: 'api-key', required: true}]},
+		}),
+	);
+
+	const skipped = await migrate({cwd: TEST_DIR, silent: true});
+	expect(skipped).toEqual({migrated: 0, skipped: 1});
+
+	const forced = await migrate({cwd: TEST_DIR, silent: true, force: true});
+	expect(forced).toEqual({migrated: 1, skipped: 0});
 });
 
 test('migrate splits inline inventory into encrypted store and metadata', async () => {

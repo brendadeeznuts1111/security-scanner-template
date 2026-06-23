@@ -1,4 +1,4 @@
-import {checkDomain} from '../config/doctor.ts';
+import {checkLoadedDomain} from '../config/doctor.ts';
 import type {DoctorIssue} from '../config/doctor.ts';
 import type {LoadedDomain} from '../config/types.ts';
 
@@ -52,8 +52,8 @@ function runDomainWorker(loaded: LoadedDomain): Promise<DomainCheckResult> {
 	});
 }
 
-function checkDomainSync(loaded: LoadedDomain): DomainCheckResult {
-	const result = checkDomain(loaded);
+async function checkDomainAsync(loaded: LoadedDomain): Promise<DomainCheckResult> {
+	const result = await checkLoadedDomain(loaded);
 	return {
 		domain: loaded.domain,
 		path: loaded.path,
@@ -73,7 +73,7 @@ export async function checkDomainsParallel(
 	const enabled = options.enabled ?? loadedDomains.length >= threshold;
 
 	if (!enabled || loadedDomains.length < threshold) {
-		return loadedDomains.map(checkDomainSync);
+		return Promise.all(loadedDomains.map(checkDomainAsync));
 	}
 
 	const workerCount = Math.max(1, options.workerCount ?? DEFAULT_WORKER_COUNT);

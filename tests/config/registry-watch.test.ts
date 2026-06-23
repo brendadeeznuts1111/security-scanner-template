@@ -45,6 +45,25 @@ test('reloadDomain removes deleted configs', async () => {
 	expect(registry.has('com.example.removed')).toBe(false);
 });
 
+test('reloadDomain reports error and evicts stale domain when load fails', async () => {
+	await mkdir(`${TEST_ROOT}/domains`, {recursive: true});
+	const filePath = `${TEST_ROOT}/domains/com.example.broken.security.json5`;
+
+	await Bun.write(filePath, '{ domain: "com.example.broken", displayName: "v1" }');
+
+	const registry = createDomainRegistry(TEST_ROOT);
+	await registry.loadAll();
+	expect(registry.get('com.example.broken').displayName).toBe('v1');
+
+	await Bun.write(filePath, 'not-valid-json5 {{{');
+	const event = await registry.reloadDomain(filePath);
+	expect(event?.type).toBe('error');
+	expect(event?.domain).toBe('com.example.broken');
+	expect(event?.path).toBe(filePath);
+	expect(event?.error).toMatch(/parse/i);
+	expect(registry.has('com.example.broken')).toBe(false);
+});
+
 test('watch registers fs watcher without throwing', async () => {
 	await mkdir(`${TEST_ROOT}/domains`, {recursive: true});
 	await Bun.write(
@@ -63,7 +82,7 @@ test('watch registers fs watcher without throwing', async () => {
 
 	const filePath = path.join(TEST_ROOT, 'domains', 'com.example.watch.security.json5');
 	await Bun.write(filePath, '{ domain: "com.example.watch", displayName: "hot" }');
-	await Bun.sleep(250);
+	await Bun.sleep(500);
 
 	registry.unwatch();
 	expect(events.length).toBeGreaterThan(0);

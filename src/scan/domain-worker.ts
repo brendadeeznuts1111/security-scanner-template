@@ -1,4 +1,4 @@
-import {checkDomain} from '../config/doctor.ts';
+import {checkLoadedDomain} from '../config/doctor.ts';
 import type {LoadedDomain} from '../config/types.ts';
 
 export interface DomainCheckResult {
@@ -10,9 +10,9 @@ export interface DomainCheckResult {
 
 declare const self: Worker;
 
-self.onmessage = (event: MessageEvent<LoadedDomain>) => {
+self.onmessage = async (event: MessageEvent<LoadedDomain>) => {
 	const loaded = event.data;
-	const result = checkDomain(loaded);
+	const result = await checkLoadedDomain(loaded);
 	const payload: DomainCheckResult = {
 		domain: loaded.domain,
 		path: loaded.path,

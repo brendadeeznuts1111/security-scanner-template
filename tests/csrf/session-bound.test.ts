@@ -60,6 +60,20 @@ test('middleware blocks POST without a valid token', async () => {
 	expect(response.status).toBe(403);
 });
 
+test('buildCsrfCookie includes HttpOnly by default', () => {
+	const csrf = new SessionBoundCSRF(secret);
+	const {cookieHeader} = csrf.issueForSession('session-secure');
+	expect(cookieHeader).toContain('HttpOnly');
+	expect(cookieHeader).toContain('SameSite=Strict');
+});
+
+test('buildCsrfCookie adds Secure when policy requests it', () => {
+	const csrf = new SessionBoundCSRF(secret, {
+		policy: {enabled: true, tokenLength: 1, mode: 'session-bound', cookieSecure: true},
+	});
+	expect(csrf.buildCsrfCookie('token')).toContain('Secure');
+});
+
 test('middleware allows POST with a valid session-bound token', async () => {
 	const csrf = new SessionBoundCSRF(secret);
 	const sessionId = 'session-42';

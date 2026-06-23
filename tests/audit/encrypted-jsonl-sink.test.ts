@@ -91,6 +91,17 @@ test('compressed sink round-trips', async () => {
 	expect(entries[0]?.package).toBe('compressed');
 });
 
+test('concurrent appends preserve every entry', async () => {
+	const path = `${TEST_DIR}/audit-concurrent.jsonl.enc`;
+	const sink = new EncryptedJSONLSink(path, 'test-key');
+
+	await Promise.all(Array.from({length: 20}, (_, index) => sink.append(makeEntry(`pkg-${index}`))));
+
+	const entries = await sink.readAll();
+	expect(entries).toHaveLength(20);
+	expect(new Set(entries.map(entry => entry.package)).size).toBe(20);
+});
+
 test('parseChunk decrypts complete lines from a partial buffer', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
 	const sink = new EncryptedJSONLSink(path, 'test-key');

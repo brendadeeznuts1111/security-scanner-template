@@ -1,5 +1,5 @@
 import {expect, test, beforeEach, afterEach} from 'bun:test';
-import {checkAllDomains, checkDomain} from '../../src/config/doctor.ts';
+import {checkAllDomains, checkDomain, domainReportOk} from '../../src/config/doctor.ts';
 import {applyDefaults} from '../../src/config/defaults.ts';
 import {clearSystemCACache, seedSystemCACacheForTests} from '../../src/intel/tls/system-ca.ts';
 
@@ -186,15 +186,57 @@ test('checkAllDomains includes template coverage and branding profiles', async (
 	expect(domain?.branding?.service).toBe('com.example.profiled');
 });
 
+test('checkAllDomains writes doctor snapshots with --update-snapshots semantics', async () => {
+	await writeDomain('snap', '{ domain: "com.example.snap", displayName: "Snap" }');
+	await Bun.write(
+		`${TEST_DIR}/package.json`,
+		JSON.stringify({name: 'doctor-snapshot-test', version: '1.0.0'}),
+	);
+
+	const result = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		updateSnapshots: true,
+		argv: ['bun', 'doctor', '--update-snapshots'],
+	});
+	expect(result.snapshot?.updateRequested).toBe(true);
+	expect(result.snapshot?.written.length).toBeGreaterThan(0);
+	expect(result.packageMetadata?.name).toBeTruthy();
+});
+
 test('checkAllDomains collects matrix rows when matrix option is enabled', async () => {
 	await writeDomain('matrix', '{ domain: "com.example.matrix" }');
 
 	const result = await checkAllDomains(TEST_DIR, {matrix: true, matrixSection: 'branding'});
 	expect(result.matrix?.template.length).toBeGreaterThan(0);
 	expect(result.matrix?.domains['com.example.matrix']?.length).toBeGreaterThan(0);
-	expect(result.domains.find(d => d.domain === 'com.example.matrix')?.matrix?.length).toBeGreaterThan(
-		0,
-	);
+	expect(
+		result.domains.find(d => d.domain === 'com.example.matrix')?.matrix?.length,
+	).toBeGreaterThan(0);
+});
+
+test('domainReportOk allows warnings but rejects errors', () => {
+	expect(
+		domainReportOk([
+			{
+				domain: 'com.example.warn',
+				path: '/tmp/x.security.json5',
+				field: 'tls.useSystemCA',
+				message: 'warning only',
+				severity: 'warning',
+			},
+		]),
+	).toBe(true);
+	expect(
+		domainReportOk([
+			{
+				domain: 'com.example.bad',
+				path: '/tmp/x.security.json5',
+				field: 'domain',
+				message: 'error',
+				severity: 'error',
+			},
+		]),
+	).toBe(false);
 });
 
 test('checkAllDomains is ok when no domains are present', async () => {

@@ -17,7 +17,7 @@ const HELP = `Usage:
   bun sp qr --text <value> --out <path>
   bun sp report --image --html <path> [--out <path>]
   bun sp tls --domain <name> --host <hostname> [--use-system-ca|--no-use-system-ca] [--deep] [--port 443] [--json]
-  bun sp doctor [--check-peer-meta] [--matrix] [--branding] [--matrix-section <name>] [--json] [--root <path>]
+  bun sp doctor [--snapshot] [--update-snapshots|-u] [--matrix] [--branding] [--matrix-section <name>] [--json] [--root <path>]
   bun sp doctor --json | fx    # piped pagers work on Bun >= 1.3.14
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
@@ -120,8 +120,10 @@ async function main(): Promise<void> {
 			'json': {type: 'boolean'},
 			'root': {type: 'string'},
 			'check-peer-meta': {type: 'boolean'},
-			matrix: {type: 'boolean'},
-			branding: {type: 'boolean'},
+			'matrix': {type: 'boolean'},
+			'branding': {type: 'boolean'},
+			'snapshot': {type: 'boolean'},
+			'update-snapshots': {type: 'boolean', short: 'u'},
 			'matrix-section': {type: 'string'},
 			'host': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
@@ -211,9 +213,12 @@ async function main(): Promise<void> {
 			await runConfigDoctor({
 				root: values.root,
 				json: values.json === true,
+				argv: Bun.argv,
 				checkPeerMeta: values['check-peer-meta'] === true,
 				matrix: values.matrix === true,
 				branding: values.branding === true,
+				snapshot: values.snapshot === true || values['update-snapshots'] === true,
+				updateSnapshots: values['update-snapshots'] === true,
 				matrixSection:
 					matrixSection &&
 					[

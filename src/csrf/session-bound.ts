@@ -103,8 +103,17 @@ export class SessionBoundCSRF {
 	/**
 	 * Build a Set-Cookie header for the CSRF token.
 	 */
-	buildCsrfCookie(token: string): string {
-		return `${this.cookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Strict`;
+	buildCsrfCookie(token: string, secure?: boolean): string {
+		const flags = ['Path=/', 'SameSite=Strict'];
+		const httpOnly = this.policy.cookieHttpOnly !== false;
+		if (httpOnly) {
+			flags.push('HttpOnly');
+		}
+		const useSecure = secure ?? this.policy.cookieSecure === true;
+		if (useSecure) {
+			flags.push('Secure');
+		}
+		return `${this.cookieName}=${encodeURIComponent(token)}; ${flags.join('; ')}`;
 	}
 
 	/**

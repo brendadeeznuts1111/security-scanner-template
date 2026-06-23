@@ -1,3 +1,5 @@
+import {appendFile, mkdir} from 'fs/promises';
+import path from 'path';
 import {encryptText, decryptText, type EncryptedEnvelope} from '../crypto/aes-gcm.ts';
 import {compressText, decompressText} from '../compression/codec.ts';
 import type {AuditEntry, AuditSink, AuditSinkOptions} from './types.ts';
@@ -15,6 +17,7 @@ export type {AuditEntry} from './types.ts';
 export class EncryptedJSONLSink implements AuditSink {
 	private readonly compress: boolean;
 	private readonly compressionFormat: 'gzip' | 'zstd';
+	private appendChain: Promise<void> = Promise.resolve();
 
 	constructor(
 		private filePath: string,
@@ -36,9 +39,13 @@ export class EncryptedJSONLSink implements AuditSink {
 			: new TextEncoder().encode(serialized);
 		const line = Buffer.from(payload).toString('base64') + '\n';
 
-		const file = Bun.file(this.filePath);
-		const existing = (await file.exists()) ? await file.text() : '';
-		await Bun.write(this.filePath, existing + line);
+		const write = async () => {
+			await mkdir(path.dirname(this.filePath), {recursive: true});
+			await appendFile(this.filePath, line, 'utf8');
+		};
+
+		this.appendChain = this.appendChain.then(write, write);
+		await this.appendChain;
 	}
 
 	/**

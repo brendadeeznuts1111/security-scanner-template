@@ -73,6 +73,10 @@ export interface DomainCsrf {
 	expiresIn?: number;
 	/** Max token age in ms for verify (Bun.CSRF maxAge). Defaults to expiresIn. */
 	maxAge?: number;
+	/** Set Secure on CSRF session cookies (recommended in production HTTPS). */
+	cookieSecure?: boolean;
+	/** Set HttpOnly on CSRF cookies (default: true). */
+	cookieHttpOnly?: boolean;
 }
 
 /** HTTP client protocol for threat-feed downloads (Bun fetch experimental). */
