@@ -1,0 +1,42 @@
+# Transpiler security rules for bun-security-planner (Layer 4.5).
+# Copy to project root or reference via service.scan.transpiler.rulesPath.
+
+[[rule]]
+id = "hardcoded-secret"
+description = "Detects hardcoded API keys or passwords"
+severity = "high"
+pattern = "(?:api[_-]?key|token|secret|password)\\s*=\\s*['\"][a-zA-Z0-9_\\-]{16,}['\"]"
+type = "regex"
+category = "token-stealer"
+
+[[rule]]
+id = "unsafe-eval"
+description = "Detects use of eval() or Function constructor"
+severity = "critical"
+type = "ast"
+astPattern = "\\beval\\s*\\("
+category = "backdoor"
+
+[[rule]]
+id = "function-constructor"
+description = "Detects Function constructor"
+severity = "critical"
+type = "ast"
+astPattern = "new\\s+Function\\s*\\("
+category = "backdoor"
+
+[[rule]]
+id = "remote-import"
+description = "Dynamic import with non-literal specifier"
+severity = "medium"
+type = "regex"
+pattern = "import\\s*\\(\\s*[^'\"\\s][^)]*\\)"
+category = "malware"
+
+[[rule]]
+id = "child-process"
+description = "Spawns child processes"
+severity = "high"
+type = "import"
+importPattern = "child_process"
+category = "backdoor"

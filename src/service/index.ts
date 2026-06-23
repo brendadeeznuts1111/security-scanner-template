@@ -26,6 +26,32 @@ import {generateEnrichedReport} from '../report/enrich.ts';
 import {ReportGenerator} from '../report/generator.ts';
 import type {ReportData} from '../report/types.ts';
 import {buildServeInit, resolveServeOptions, type ServiceOptions} from './serve-options.ts';
+import {
+	BundleScanner,
+	resolveTranspilerConfig,
+	loadProjectTranspilerRules,
+	resolveTranspilerRules,
+	type ScanBundlesOptions,
+	type TranspilerScanReport,
+} from '../scan/transpiler/index.ts';
+import {
+	checkFeedMinVersion,
+	readProjectDependencyVersions,
+	readThreatFeedVersion,
+} from '../intel/semver-checks.ts';
+import {scanPackageSemverViolations, type SemverScanReport} from '../intel/semver-scan.ts';
+import {
+	buildPatternScanReport,
+	type PatternScanReport,
+} from '../intel/pattern-remediation.ts';
+import {scanPolicyConstraints} from '../intel/constraint-checks.ts';
+import type {ConstraintScanReport} from '../intel/constraint-types.ts';
+import {computeBundleSnapshotAtPath} from '../domain/doctor-snapshot-bundles.ts';
+import {loadSnapshotWithVersionCheck, resolveSnapshotRoot} from '../domain/doctor-snapshot.ts';
+import {snapshotPolicyFromDocument} from '../policy/engine.ts';
+import {loadProjectPolicies} from '../policy/loader.ts';
+import {resolveScannerVersion} from '../intel/scanner-version.ts';
+import path from 'path';
 
 export type RouteHandler = (req: Request) => Response | Promise<Response>;
 export type {ServiceOptions} from './serve-options.ts';
@@ -66,6 +92,22 @@ export class Service {
 			csrfSecret: security.csrfSecret,
 			auditMasterKey,
 		});
+	}
+
+	/**
+	 * Validate threat-feed semver against `intel.semver.feedMinVersion`.
+	 */
+	async validateThreatFeedSemver(root: string = process.cwd()): Promise<{
+		ok: boolean;
+		message?: string;
+	}> {
+		const config = this.registry.get(this.domainName);
+		const minRange = config.intel?.semver?.feedMinVersion;
+		if (!minRange) {
+			return {ok: true};
+		}
+		const feedVersion = await readThreatFeedVersion(root, config);
+		return checkFeedMinVersion(feedVersion, minRange);
 	}
 
 	private resolveAuditMasterKey(
@@ -306,6 +348,221 @@ export class Service {
 			registry: this.registry,
 			colors: config.colors,
 		});
+	}
+
+	/**
+	 * Check installed dependency versions against `[[semver.rule]]` policy entries.
+	 */
+	async scanPackageVersions(
+		options: {
+			root?: string;
+			threatFeed?: boolean;
+			remediation?: boolean;
+			feedUrl?: string;
+			deepConstraints?: boolean;
+			transitive?: boolean;
+			sourcePath?: string;
+			probeEndpoints?: boolean;
+			probeTimeoutMs?: number;
+		} = {},
+	): Promise<SemverScanReport> {
+		const root = options.root ?? process.cwd();
+		const config = this.registry.get(this.domainName);
+		const installed = await readProjectDependencyVersions(root);
+		const packages = Object.fromEntries(installed.map(pkg => [pkg.name, pkg.version]));
+
+		if (options.threatFeed || options.feedUrl) {
+			await this.registry.loadThreatFeed(options.feedUrl, {
+				local: config.supplyChain.feed?.local,
+				remote: config.supplyChain.feed?.remote,
+				cachePath: config.supplyChain.feed?.cachePath,
+				cacheTtl: config.supplyChain.feed?.cacheTtl,
+			});
+		}
+
+		return scanPackageSemverViolations(packages, {
+			root,
+			domain: this.domainName,
+			config,
+			includeThreatFeed: options.threatFeed === true || !!options.feedUrl,
+			includeRemediation: options.remediation !== false,
+			deepConstraints: options.deepConstraints === true,
+			transitive: options.transitive,
+			sourcePath: options.sourcePath,
+			probeEndpoints: options.probeEndpoints === true,
+			probeTimeoutMs: options.probeTimeoutMs,
+			threatEntries:
+				options.threatFeed || options.feedUrl ? this.registry.getLoadedThreats() : undefined,
+		});
+	}
+
+	/**
+	 * Deep constraint scan: packages, licenses, sources, and blocked imports.
+	 */
+	async scanConstraints(
+		options: {
+			root?: string;
+			transitive?: boolean;
+			sourcePath?: string;
+			scanImports?: boolean;
+		} = {},
+	): Promise<ConstraintScanReport> {
+		const root = options.root ?? this.registry.root;
+		const policy = await loadProjectPolicies(root);
+		return scanPolicyConstraints({
+			root,
+			policy,
+			transitive: options.transitive,
+			sourcePath: options.sourcePath,
+			scanImports: options.scanImports,
+			domain: this.domainName,
+		});
+	}
+
+	/**
+	 * Scan project source for regex and AST pattern rules from `security.policy.toml`.
+	 */
+	async scanSource(
+		options: {path?: string; root?: string; remediation?: boolean} = {},
+	): Promise<PatternScanReport> {
+		const root = options.root ?? this.registry.root;
+		const scanPath = options.path ?? 'src/';
+		const matches = await this.registry.scanPatterns(scanPath, root);
+		return buildPatternScanReport(matches, {
+			root,
+			path: scanPath,
+			domain: this.domainName,
+			includeRemediation: options.remediation !== false,
+		});
+	}
+
+	/**
+	 * Scan build artifacts and dependencies via Bun.Transpiler (Layer 4.5).
+	 */
+	async scanBundles(options: ScanBundlesOptions = {}): Promise<TranspilerScanReport> {
+		if (!this.domain) {
+			await this.initialize();
+		}
+
+		const config = this.registry.get(this.domainName);
+		const transpilerConfig = resolveTranspilerConfig(config);
+
+		if (!transpilerConfig.enabled) {
+			return {
+				domain: this.domainName,
+				root: options.path ?? process.cwd(),
+				scannedFiles: 0,
+				findings: [],
+				files: [],
+			};
+		}
+
+		const projectRoot = process.cwd();
+		const scanRoot = options.path ? path.resolve(projectRoot, options.path) : projectRoot;
+		const loaded = await loadProjectTranspilerRules(projectRoot, transpilerConfig.rulesPath);
+		const rules = resolveTranspilerRules(loaded, options.rules ?? transpilerConfig.rules);
+		const hasher = this.domain!.registry.integrity;
+
+		const scanner = new BundleScanner({
+			config: transpilerConfig,
+			rules,
+			hasher,
+			domain: this.domainName,
+			verifyIntegrity: options.verifyIntegrity,
+		});
+
+		const report = await scanner.scan(scanRoot);
+
+		const bundlePath = options.path ?? transpilerConfig.includePaths[0];
+		let bundleSnapshot = bundlePath
+			? await computeBundleSnapshotAtPath(projectRoot, bundlePath)
+			: null;
+
+		let bundleDrift: TranspilerScanReport['bundleDrift'];
+		let snapshotCompatibility: TranspilerScanReport['snapshotCompatibility'];
+		if (options.checkBundleDrift !== false && bundleSnapshot) {
+			const snapshotRoot = resolveSnapshotRoot(projectRoot);
+			const policyDocument = await loadProjectPolicies(projectRoot);
+			const snapshotPolicy = snapshotPolicyFromDocument(policyDocument);
+			const scannerVersion = await resolveScannerVersion(projectRoot);
+			const baseline = await loadSnapshotWithVersionCheck(snapshotRoot, this.domainName, {
+				snapshotPolicy,
+				scannerVersion,
+			});
+			if (baseline.versionWarning || baseline.compatibility) {
+				const compat = baseline.compatibility ?? {
+					ok: false,
+					snapshotVersion: baseline.snapshotVersion,
+					scannerVersion: baseline.scannerVersion,
+					message: baseline.versionWarning,
+				};
+				snapshotCompatibility = {
+					ok: compat.ok,
+					snapshotVersion: compat.snapshotVersion,
+					scannerVersion: compat.scannerVersion,
+					storedScannerVersion: baseline.storedScannerVersion,
+					message: compat.message,
+					migrationHint: compat.migrationHint,
+				};
+			}
+			const previous = baseline.domain?.bundles;
+			if (previous && snapshotCompatibility?.ok !== false) {
+				bundleDrift = {
+					changed: previous.hash !== bundleSnapshot.hash,
+					previousHash: previous.hash,
+					currentHash: bundleSnapshot.hash,
+					path: bundleSnapshot.path,
+				};
+			}
+		}
+
+		let semverViolations: TranspilerScanReport['semverViolations'];
+		if (options.includeSemverPolicy !== false || options.threatFeed || options.feedUrl) {
+			const semver = await this.scanPackageVersions({
+				root: projectRoot,
+				threatFeed: options.threatFeed === true,
+				feedUrl: options.feedUrl,
+				remediation: false,
+			});
+			semverViolations = semver.violations.map(violation => ({
+				package: violation.package,
+				version: violation.version,
+				ruleId: violation.ruleId ?? violation.rule?.id ?? 'semver',
+				severity: violation.severity,
+				description: violation.message,
+			}));
+		}
+
+		if (this.domain?.audit && report.findings.length > 0) {
+			const advisories = report.findings.map(finding => ({
+				level: (finding.severity === 'critical' || finding.severity === 'high'
+					? 'fatal'
+					: 'warn') as 'fatal' | 'warn',
+				package: finding.file,
+				version: '0.0.0',
+				url: null,
+				description: `${finding.message}${finding.line ? ` (line ${finding.line})` : ''}`,
+				categories: finding.category ? [finding.category] : ['transpiler'],
+			}));
+
+			await this.domain.audit.append({
+				id: `transpiler-${Date.now()}`,
+				package: this.domainName,
+				version: '0.0.0',
+				requestedRange: '*',
+				advisories,
+				allowed: !report.findings.some(f => f.severity === 'critical' || f.severity === 'high'),
+				decidedAt: new Date().toISOString(),
+			});
+		}
+
+		return {
+			...report,
+			bundleSnapshot: bundleSnapshot ?? undefined,
+			bundleDrift,
+			snapshotCompatibility,
+			semverViolations,
+		};
 	}
 
 	/**

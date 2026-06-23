@@ -24,6 +24,16 @@ test('formatDoctorDiagnosticsTable includes nanoseconds and stringWidth rows', (
 	expect(table).toContain('Bun.stringWidth');
 	expect(table).toContain('inspect.custom');
 	expect(table).toContain('SIGINT');
+	expect(table).toContain('Bun.deepEquals');
+	expect(table).toContain('Bun.escapeHTML');
+});
+
+test('collectDoctorDiagnostics includes bun wrapper catalog audit', () => {
+	const diagnostics = collectDoctorDiagnostics();
+	expect(diagnostics.bunWrappers.entries.length).toBeGreaterThan(5);
+	expect(diagnostics.utilities.deepEqualsAvailable).toBe(true);
+	expect(diagnostics.utilities.peekAvailable).toBe(true);
+	expect(diagnostics.utilities.escapeHtmlAvailable).toBe(true);
 });
 
 test('inspect.custom renders diagnostics table', () => {

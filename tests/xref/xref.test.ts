@@ -31,6 +31,32 @@ test('getCrossRef returns bun.transpiler with bundle scanning exports', () => {
 	expect(entry?.modules).toContain('src/scan/transpiler.ts');
 });
 
+test('getCrossRef returns bun.deepEquals with guide docs and drift exports', () => {
+	const entry = getCrossRef('bun.deepEquals');
+	expect(entry?.bunApi).toBe('Bun.deepEquals');
+	expect(entry?.docsUrl).toBe('https://bun.com/docs/guides/util/deep-equals');
+	expect(entry?.exports).toContain('deepEqualsStrict');
+	expect(entry?.modules).toContain('src/utils/deep-equal.ts');
+});
+
+test('getCrossRef returns bun.peek and bun.inspect runtime entries', () => {
+	expect(getCrossRef('bun.peek')?.modules).toContain('src/utils/peek.ts');
+	expect(getCrossRef('bun.inspect')?.docsUrl).toContain('bun-inspect');
+	expect(getCrossRef('bun.spawn')?.docsUrl).toBe('https://bun.com/docs/guides/process/spawn');
+});
+
+test('getCrossRef returns escapeHTML nanoseconds and signals guide entries', () => {
+	expect(getCrossRef('bun.escapeHTML')?.docsUrl).toBe(
+		'https://bun.com/docs/guides/util/escape-html',
+	);
+	expect(getCrossRef('bun.nanoseconds')?.docsUrl).toBe(
+		'https://bun.com/docs/guides/process/nanoseconds',
+	);
+	expect(getCrossRef('utils.signals')?.docsUrl).toBe(
+		'https://bun.com/docs/guides/process/os-signals',
+	);
+});
+
 test('getRelatedCrossRefs links transpiler to workers and html to webview', () => {
 	expect(
 		getRelatedCrossRefs('bun.transpiler').some(entry => entry.id === 'bun.bundle.features'),

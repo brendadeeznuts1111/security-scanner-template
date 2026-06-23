@@ -76,7 +76,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		exports: ['runTool', 'runAvailableTools', 'spawnChild', 'spawnAndWait', 'spawnStdoutText'],
 		cliCommands: ['scan interactive'],
 		related: ['bun.terminal', 'utils.process'],
-		docsUrl: 'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn',
+		docsUrl: 'https://bun.com/docs/guides/process/spawn',
 		required: true,
 	},
 	{
@@ -144,7 +144,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		],
 		cliCommands: ['sp shell', 'sp scan', 'scan interactive', 'build', 'sp doctor --json'],
 		related: ['bun.spawn', 'bun.terminal', 'utils.signals'],
-		docsUrl: 'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn',
+		docsUrl: 'https://bun.com/docs/runtime/child-process#spawn-a-process-bun-spawn',
 	},
 	{
 		id: 'utils.signals',
@@ -166,7 +166,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		],
 		cliCommands: ['watch', 'shell', 'scan interactive'],
 		related: ['utils.process'],
-		docsUrl: 'https://bun.sh/docs/guides/process/os-signals#listen-to-os-signals',
+		docsUrl: 'https://bun.com/docs/guides/process/os-signals',
 	},
 	{
 		id: 'utils.doctor-diagnostics',
@@ -189,7 +189,117 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		],
 		cliCommands: ['sp doctor', 'sp doctor --json', 'sp doctor --benchmark'],
 		related: ['utils.signals', 'utils.process', 'bun.nanoseconds'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-nanoseconds',
+	},
+	{
+		id: 'bun.install',
+		name: 'Bun install & lockfile',
+		layer: 'runtime',
+		bunApi: 'bun install',
+		description:
+			'Platform cpu/os lockfile targets, install backends, peer auto-install, pnpm migration, cache paths.',
+		modules: [
+			'src/utils/install-runtime.ts',
+			'src/supply-chain/peer-meta.ts',
+			'src/cli/watch.ts',
+			'src/cli/config-doctor.ts',
+		],
+		exports: [
+			'getInstallRuntimeInfo',
+			'detectLockfileState',
+			'validateInstallTarget',
+			'auditInstallState',
+			'formatInstallRuntimeTable',
+			'formatInstallRuntimeInspect',
+			'formatInstallTargetCommand',
+			'resolveInstallWatchPaths',
+			'installWatchPaths',
+			'checkPeerDependenciesMeta',
+		],
+		cliCommands: [
+			'sp doctor',
+			'sp doctor --check-peer-meta',
+			'sp doctor --install-cpu arm64 --install-os linux',
+			'watch',
+		],
+		related: ['utils.doctor-diagnostics'],
+		docsUrl: 'https://bun.sh/docs/cli/install',
+	},
+	{
+		id: 'bun.json5',
+		name: 'JSON5 domain configs',
+		layer: 'config',
+		bunApi: 'Bun.JSON5.parse',
+		description:
+			'Domain configs (*.security.json5) and vault inventory (.vault/*.inventory.json5) with comments and trailing commas.',
+		modules: [
+			'src/config/loader.ts',
+			'src/config/vault.ts',
+			'src/config/registry-watch.ts',
+			'src/utils/config-format-runtime.ts',
+		],
+		exports: [
+			'discoverDomainFiles',
+			'loadDomainFile',
+			'auditConfigFormats',
+			'getConfigFormatRuntimeInfo',
+			'formatConfigFormatRuntimeTable',
+		],
+		configFields: ['domain', 'supplyChain.policy'],
+		cliCommands: ['sp doctor', 'sp doctor --json', 'watch'],
+		related: ['bun.toml', 'utils.doctor-diagnostics', 'domain.policy-bridge'],
+		docsUrl: 'https://bun.sh/docs/runtime/json5',
+		required: true,
+	},
+	{
+		id: 'bun.toml',
+		name: 'TOML policy files',
+		layer: 'config',
+		bunApi: 'Bun.TOML.parse',
+		description:
+			'Project security.policy.toml severity defaults and override rules; parsed via config/toml.ts.',
+		modules: [
+			'src/config/toml.ts',
+			'src/policy/loader.ts',
+			'src/domain/policy-bridge.ts',
+			'src/utils/config-format-runtime.ts',
+		],
+		exports: [
+			'parseToml',
+			'loadPolicy',
+			'loadRootProjectPolicy',
+			'resolveSupplyChainConfig',
+			'resolvePolicyWatchPaths',
+			'discoverPolicyFiles',
+			'auditConfigFormats',
+			'getConfigFormatRuntimeInfo',
+		],
+		configFields: ['supplyChain.policy'],
+		cliCommands: ['sp doctor', 'sp doctor --json', 'watch'],
+		related: ['bun.json5', 'domain.policy-bridge'],
+		docsUrl: 'https://bun.sh/docs/runtime/toml',
+		required: true,
+	},
+	{
+		id: 'domain.policy-bridge',
+		name: 'TOML policy bridge',
+		layer: 'config',
+		description:
+			'Loads root security.policy.toml into supply-chain activate() as policyDocument with TOML-derived severity; hot-reloads on watch.',
+		modules: [
+			'src/domain/policy-bridge.ts',
+			'src/cli/watch.ts',
+			'src/domain/supply-chain-config.ts',
+		],
+		exports: [
+			'loadRootProjectPolicy',
+			'resolveSupplyChainConfig',
+			'resolvePolicyWatchPaths',
+			'supplyChainConfigFromDomain',
+		],
+		configFields: ['supplyChain.policy', 'supplyChain.enabled'],
+		cliCommands: ['watch'],
+		related: ['bun.toml', 'bun.json5'],
 	},
 	{
 		id: 'feature.scan-external',
@@ -222,14 +332,27 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		related: ['bun.bundle.features'],
 	},
 	{
+		id: 'bun.randomUUIDv7',
+		name: 'UUID generation',
+		layer: 'runtime',
+		bunApi: 'Bun.randomUUIDv7',
+		docsUrl: 'https://bun.com/docs/guides/util/javascript-uuid',
+		description:
+			'Monotonic UUID v7 for audit/SQLite keys; v4 via crypto.randomUUID for scratch paths.',
+		modules: ['src/utils/uuid.ts', 'src/audit/entry.ts', 'src/domain/snapshot-history.ts'],
+		exports: ['randomUUID', 'randomUUIDv7', 'correlationId', 'scratchId'],
+		related: ['audit.jsonl', 'audit.sqlite'],
+	},
+	{
 		id: 'bun.which',
 		name: 'Executable lookup',
 		layer: 'scanning',
 		bunApi: 'Bun.which',
 		description: 'Detect external scanners on PATH before spawning.',
 		modules: ['src/utils/tool-detector.ts', 'src/scan/tools.ts'],
-		exports: ['detectTool', 'detectTools'],
+		exports: ['detectTool', 'detectTools', 'which'],
 		related: ['bun.spawn'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-which',
 		required: true,
 	},
 	{
@@ -379,13 +502,42 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		required: true,
 	},
 	{
+		id: 'bun.markdown',
+		name: 'Markdown rendering',
+		layer: 'runtime',
+		bunApi: 'Bun.markdown',
+		docsUrl: 'https://bun.com/docs/runtime/markdown',
+		description:
+			'GFM Markdown → HTML for report summaries; custom render/ANSI/plaintext helpers (unstable API).',
+		modules: ['src/markdown/index.ts', 'src/report/html.ts'],
+		exports: [
+			'markdownToHtml',
+			'renderMarkdown',
+			'markdownToPlaintext',
+			'markdownToAnsi',
+			'isMarkdownAvailable',
+		],
+		related: ['feature.report-html', 'feature.report-markdown', 'bun.color'],
+	},
+	{
 		id: 'bun.color',
 		name: 'Terminal colors',
 		layer: 'runtime',
 		bunApi: 'Bun.color',
+		docsUrl: 'https://bun.com/docs/runtime/color',
 		description: 'ANSI and CSS color output for CLI, doctor, and HTML reports.',
 		modules: ['src/color/index.ts', 'src/cli/formatters.ts', 'src/report/html.ts'],
-		exports: ['colorize', 'TERMINAL', 'cssVariables', 'isValidConfigColor'],
+		exports: [
+			'colorize',
+			'TERMINAL',
+			'cssVariables',
+			'isValidConfigColor',
+			'toRgbaObject',
+			'toRgbObject',
+			'toRgbaArray',
+			'toRgbArray',
+			'toColorNumber',
+		],
 		configFields: ['colors.primary', 'colors.fatal', 'channels'],
 		related: ['feature.report-html'],
 		required: true,
@@ -407,9 +559,27 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		bunApi: 'Bun.Transpiler',
 		description:
 			'Transpile and scan JS/TS sources and bun build bundles for obfuscated or injected threats.',
-		modules: ['src/scan/transpiler.ts', 'src/provider/index.ts', 'src/build/security-plugin.ts'],
-		exports: ['scanSource', 'scanBundle', 'scanBundles', 'findingsToAdvisories'],
-		cliCommands: ['scan bundle', 'scan source'],
+		modules: [
+			'src/scan/transpiler.ts',
+			'src/scan/transpiler/analyzer.ts',
+			'src/scan/transpiler/bundle-scanner.ts',
+			'src/scan/transpiler/rule-engine.ts',
+			'src/scan/transpiler/reporter.ts',
+			'src/scan/transpiler/integrity.ts',
+			'src/provider/index.ts',
+			'src/build/security-plugin.ts',
+		],
+		exports: [
+			'scanSource',
+			'scanBundle',
+			'scanBundles',
+			'scanDirectory',
+			'BundleScanner',
+			'scanSourceWithRules',
+			'findingsToAdvisories',
+		],
+		cliCommands: ['scan bundle', 'scan source', 'sp scan bundle'],
+		configFields: ['service.scan.transpiler'],
 		related: ['bun.bundle.features', 'bun.plugin'],
 		docsUrl: 'https://bun.com/docs/api/transpiler',
 		required: true,
@@ -494,9 +664,20 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'runtime',
 		bunApi: 'Bun.peek',
 		description: 'Inspect pending promises without await — used in domain security cache.',
-		modules: ['src/utils/runtime.ts', 'src/config/registry.ts'],
-		exports: ['peekValue', 'peekStatus'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-peek',
+		modules: ['src/utils/peek.ts', 'src/config/registry.ts'],
+		exports: ['peekValue', 'peekStatus', 'isPeekAvailable'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-peek',
+	},
+	{
+		id: 'bun.inspect',
+		name: 'Inspect formatting',
+		layer: 'runtime',
+		bunApi: 'Bun.inspect',
+		description: 'Doctor tables, debug output, and inspect.custom formatters.',
+		modules: ['src/utils/inspect.ts', 'src/utils/inspect-custom.ts', 'src/utils/doctor-diagnostics.ts'],
+		exports: ['formatTable', 'formatValue', 'formatInspectCustom', 'withInspectCustom', 'isInspectAvailable'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-inspect',
+		related: ['utils.process'],
 	},
 	{
 		id: 'bun.deepEquals',
@@ -504,9 +685,20 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'config',
 		bunApi: 'Bun.deepEquals',
 		description: 'Deep equality for config drift detection and test assertions.',
-		modules: ['src/utils/runtime.ts', 'src/config/drift.ts'],
-		exports: ['deepEquals'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-deepequals',
+		modules: ['src/utils/deep-equal.ts', 'src/config/drift.ts'],
+		exports: ['deepEquals', 'deepEqualsStrict', 'isDeepEqualAvailable'],
+		docsUrl: 'https://bun.com/docs/guides/util/deep-equals',
+	},
+	{
+		id: 'bun.escapeHTML',
+		name: 'HTML escaping',
+		layer: 'runtime',
+		bunApi: 'Bun.escapeHTML',
+		description: 'Escape dynamic text in HTML reports and advisory tables.',
+		modules: ['src/utils/escape-html.ts', 'src/report/safe.ts', 'src/report/generator.ts'],
+		exports: ['escapeHtml', 'isEscapeHtmlAvailable'],
+		docsUrl: 'https://bun.com/docs/guides/util/escape-html',
+		related: ['html.rewriter'],
 	},
 	{
 		id: 'bun.nanoseconds',
@@ -514,9 +706,9 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'runtime',
 		bunApi: 'Bun.nanoseconds',
 		description: 'Nanosecond timers for scan, doctor, and mitata microbenchmarks.',
-		modules: ['src/utils/runtime.ts', 'src/utils/timing.ts', 'src/utils/benchmark.ts'],
-		exports: ['nanoseconds', 'createTimer', 'benchmark', 'benchmarkAll'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+		modules: ['src/utils/nanoseconds.ts', 'src/utils/timing.ts', 'src/utils/benchmark.ts'],
+		exports: ['nanoseconds', 'isNanosecondsAvailable', 'createTimer', 'benchmark', 'benchmarkAll'],
+		docsUrl: 'https://bun.com/docs/guides/process/nanoseconds',
 		related: ['bench.mitata', 'bun.jsc.heapStats'],
 		cliCommands: ['bench', 'doctor --benchmark', 'sp bench'],
 	},
@@ -712,6 +904,10 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof Bun.CSRF?.generate === 'function' && typeof Bun.CSRF?.verify === 'function';
 		case 'Bun.color':
 			return typeof Bun.color === 'function';
+		case 'Bun.markdown':
+			return typeof Bun.markdown?.html === 'function';
+		case 'Bun.randomUUIDv7':
+			return typeof Bun.randomUUIDv7 === 'function';
 		case 'Bun.secrets':
 			return typeof Bun.secrets?.get === 'function';
 		case 'Bun.redis':
@@ -738,8 +934,12 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof Worker === 'function';
 		case 'Bun.peek':
 			return typeof Bun.peek === 'function';
+		case 'Bun.inspect':
+			return typeof Bun.inspect === 'function';
 		case 'Bun.deepEquals':
 			return typeof Bun.deepEquals === 'function';
+		case 'Bun.escapeHTML':
+			return typeof Bun.escapeHTML === 'function';
 		case 'Bun.nanoseconds':
 			return typeof Bun.nanoseconds === 'function';
 		case 'Bun.JSONL':
@@ -748,6 +948,12 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof (Bun as {FileSystemRouter?: unknown}).FileSystemRouter === 'function';
 		case 'Bun.plugin':
 			return typeof Bun.plugin === 'function';
+		case 'Bun.JSON5.parse':
+			return typeof (Bun as {JSON5?: {parse?: unknown}}).JSON5?.parse === 'function';
+		case 'Bun.TOML.parse':
+			return typeof (Bun as {TOML?: {parse?: unknown}}).TOML?.parse === 'function';
+		case 'bun install':
+			return typeof Bun.spawn === 'function';
 		default:
 			return true;
 	}

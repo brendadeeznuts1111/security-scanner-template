@@ -324,7 +324,107 @@ test('checkAllDomains writes doctor snapshots with --update-snapshots semantics'
 	});
 	expect(result.snapshot?.updateRequested).toBe(true);
 	expect(result.snapshot?.written.length).toBeGreaterThan(0);
+	expect(result.snapshot?.written.some(path => path.endsWith('com.example.snap.json'))).toBe(true);
+	expect(
+		result.snapshot?.perDomain?.find(entry => entry.domain === 'com.example.snap')?.domain,
+	).toBe('com.example.snap');
+	expect(result.snapshot?.ok).toBe(true);
 	expect(result.packageMetadata?.name).toBeTruthy();
+});
+
+test('checkAllDomains compares per-domain snapshots on subsequent runs', async () => {
+	await writeDomain('com.example.baseline', '{ domain: "com.example.baseline" }');
+	await Bun.write(
+		`${TEST_DIR}/package.json`,
+		JSON.stringify({name: 'doctor-snapshot-per-domain', version: '1.0.0'}),
+	);
+
+	await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		updateSnapshots: true,
+		argv: ['bun', 'doctor', '--update-snapshots'],
+	});
+
+	const drift = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		argv: ['bun', 'doctor', '--snapshot'],
+	});
+	expect(
+		drift.snapshot?.perDomain?.find(entry => entry.domain === 'com.example.baseline')?.ok,
+	).toBe(true);
+
+	await writeDomain(
+		'com.example.baseline',
+		'{ domain: "com.example.baseline", displayName: "Changed" }',
+	);
+	const changed = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		argv: ['bun', 'doctor', '--snapshot'],
+	});
+	const entry = changed.snapshot?.perDomain?.find(d => d.domain === 'com.example.baseline');
+	expect(entry?.changed).toBe(true);
+	expect(entry?.changedSections.length).toBeGreaterThan(0);
+	expect(
+		changed.crossDomainIssues.some(
+			i =>
+				i.domain === 'com.example.baseline' &&
+				i.code === 'DOCTOR_SNAPSHOT_DOMAIN_DRIFT' &&
+				i.message.includes('branding'),
+		),
+	).toBe(true);
+});
+
+test('checkAllDomains fail-on-drift gate exits policy sections only', async () => {
+	await writeDomain('com.example.gate', '{ domain: "com.example.gate" }');
+	await Bun.write(
+		`${TEST_DIR}/package.json`,
+		JSON.stringify({name: 'doctor-snapshot-gate', version: '1.0.0'}),
+	);
+
+	await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		updateSnapshots: true,
+		argv: ['bun', 'doctor', '--update-snapshots'],
+	});
+
+	const brandingOnly = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		failOnDrift: true,
+		driftSections: 'policy,vault',
+		argv: ['bun', 'doctor', '--snapshot', '--fail-on-drift', '--sections', 'policy,vault'],
+	});
+	expect(brandingOnly.snapshot?.driftGate?.ok).toBe(true);
+
+	await writeDomain('com.example.gate', '{ domain: "com.example.gate", displayName: "Renamed" }');
+	const cosmetic = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		failOnDrift: true,
+		driftSections: 'policy,vault',
+		argv: ['bun', 'doctor', '--snapshot', '--fail-on-drift'],
+	});
+	expect(cosmetic.snapshot?.driftGate?.ok).toBe(true);
+
+	await writeDomain(
+		'com.example.gate',
+		`{
+			domain: "com.example.gate",
+			displayName: "Renamed",
+			supplyChain: {
+				enabled: true,
+				policy: { fatal: ["malware"], warn: [] }
+			}
+		}`,
+	);
+	const policyDrift = await checkAllDomains(TEST_DIR, {
+		snapshot: true,
+		failOnDrift: true,
+		driftSections: 'policy',
+		argv: ['bun', 'doctor', '--snapshot', '--fail-on-drift', '--sections', 'policy'],
+	});
+	expect(policyDrift.snapshot?.driftGate?.ok).toBe(false);
+	expect(
+		policyDrift.snapshot?.driftGate?.violations.some(v => v.domain === 'com.example.gate'),
+	).toBe(true);
 });
 
 test('checkAllDomains collects matrix rows when matrix option is enabled', async () => {

@@ -1,5 +1,8 @@
 /**
- * Bun.color wrappers for terminal output, config normalization, and CSS formatting.
+ * Thin wrappers around [`Bun.color`](https://bun.com/docs/runtime/color).
+ *
+ * Source of truth: `oven-sh/bun` → `docs/runtime/color.mdx`
+ * (formats table, `{rgba}` / `[rgba]` channel extraction, ANSI depths).
  */
 
 export type ColorInput =
@@ -28,6 +31,18 @@ export type BunColorFormat =
 	| '[rgba]';
 
 export type AnsiColorDepth = 'ansi' | 'ansi-16' | 'ansi-256' | 'ansi-16m';
+
+/** `{rgba}` — alpha is 0–1 (CSS-style). See Bun.color docs. */
+export type RgbaObject = {r: number; g: number; b: number; a: number};
+
+/** `{rgb}` — no alpha channel. */
+export type RgbObject = {r: number; g: number; b: number};
+
+/** `[rgba]` — alpha is 0–255 (typed-array friendly). */
+export type RgbaArray = [number, number, number, number];
+
+/** `[rgb]` — no alpha channel. */
+export type RgbArray = [number, number, number];
 
 /** Terminal palette aligned with domain template defaults. */
 export const TERMINAL = {
@@ -80,20 +95,66 @@ export function isValidConfigColor(input: unknown): boolean {
 	return hex !== null && /^#[0-9A-F]{6}$/.test(hex);
 }
 
-/**
- * Format a color as compact CSS (for inline styles and variables).
- */
+/** Compact CSS string (`Bun.color(input, "css")`). */
 export function toCss(input: ColorInput): string | null {
 	return formatColor(input, 'css') as string | null;
 }
 
+/** Lowercase hex (`Bun.color(input, "hex")`). */
+export function toHex(input: ColorInput): string | null {
+	return formatColor(input, 'hex') as string | null;
+}
+
+/** `rgb(...)` string (`Bun.color(input, "rgb")`). */
+export function toRgb(input: ColorInput): string | null {
+	return formatColor(input, 'rgb') as string | null;
+}
+
+/** `rgba(...)` string (`Bun.color(input, "rgba")`). */
+export function toRgba(input: ColorInput): string | null {
+	return formatColor(input, 'rgba') as string | null;
+}
+
+/** `hsl(...)` string (`Bun.color(input, "hsl")`). */
+export function toHsl(input: ColorInput): string | null {
+	return formatColor(input, 'hsl') as string | null;
+}
+
 /**
- * Extract RGBA channels as a Bun.color object.
+ * Extract RGBA channels via `Bun.color(input, "{rgba}")`.
+ * Alpha is 0–1 (CSS-style).
  */
-export function toRgbaObject(
-	input: ColorInput,
-): {r: number; g: number; b: number; a: number} | null {
-	return formatColor(input, '{rgba}') as {r: number; g: number; b: number; a: number} | null;
+export function toRgbaObject(input: ColorInput): RgbaObject | null {
+	return formatColor(input, '{rgba}') as RgbaObject | null;
+}
+
+/**
+ * Extract RGB channels via `Bun.color(input, "{rgb}")`.
+ */
+export function toRgbObject(input: ColorInput): RgbObject | null {
+	return formatColor(input, '{rgb}') as RgbObject | null;
+}
+
+/**
+ * Extract RGBA channels via `Bun.color(input, "[rgba]")`.
+ * Alpha is 0–255 (all channels same integer range).
+ */
+export function toRgbaArray(input: ColorInput): RgbaArray | null {
+	return formatColor(input, '[rgba]') as RgbaArray | null;
+}
+
+/**
+ * Extract RGB channels via `Bun.color(input, "[rgb]")`.
+ */
+export function toRgbArray(input: ColorInput): RgbArray | null {
+	return formatColor(input, '[rgb]') as RgbArray | null;
+}
+
+/**
+ * Compact 24-bit color integer via `Bun.color(input, "number")`.
+ */
+export function toColorNumber(input: ColorInput): number | null {
+	return formatColor(input, 'number') as number | null;
 }
 
 /**
@@ -127,12 +188,7 @@ export function severityColor(severity: string): string {
 	}
 }
 
-/**
- * Emit CSS custom properties for a domain color map.
- */
-/**
- * Lighten a config color toward white for bright terminal / badge accents.
- */
+/** Lighten a config color toward white for bright terminal / badge accents. */
 export function brightenColor(input: ColorInput, mix = 0.22): string | null {
 	const rgba = toRgbaObject(input);
 	if (!rgba) return null;

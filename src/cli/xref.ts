@@ -241,4 +241,4 @@ Features: ${ALL_FEATURES.join(', ')}`);
 	}
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

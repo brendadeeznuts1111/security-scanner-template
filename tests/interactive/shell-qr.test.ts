@@ -13,7 +13,9 @@ let originalSecrets: typeof Bun.secrets;
 
 function testRegistry(config: DomainConfig): DomainRegistry {
 	return {
+		root: process.cwd(),
 		async loadAll() {},
+		async ensureDomain() {},
 		get(domain: string) {
 			if (domain !== config.domain) throw new Error(`Unknown domain: ${domain}`);
 			return config;
@@ -32,6 +34,22 @@ function testRegistry(config: DomainConfig): DomainRegistry {
 		},
 		watch() {},
 		unwatch() {},
+		async checkPackageVersions() {
+			return [];
+		},
+		async scanPatterns() {
+			return [];
+		},
+		async loadThreatFeed() {},
+		checkPackageThreats() {
+			return [];
+		},
+		checkPackagesThreats() {
+			return new Map();
+		},
+		getLoadedThreats() {
+			return [];
+		},
 		async reloadDomain() {
 			return null;
 		},

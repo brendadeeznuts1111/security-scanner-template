@@ -8,6 +8,7 @@ import {colorize, TERMINAL} from './color/index.ts';
 import {sleep} from './utils/rate-limit.ts';
 import {filePathFromModuleUrl} from './utils/runtime.ts';
 import {createTimer} from './utils/timing.ts';
+import {satisfiesVersion} from './semver/index.ts';
 
 const ThreatCategorySchema = z.enum([
 	'protestware',
@@ -700,7 +701,7 @@ async function fetchThreatFeed(): Promise<{rules: ThreatFeedItem[]; allowlist: A
 
 function isAllowed(pkg: Bun.Security.Package, allowlist: AllowlistItem[]): AllowlistItem | null {
 	for (const entry of allowlist) {
-		if (entry.package === pkg.name && Bun.semver.satisfies(pkg.version, entry.range)) {
+		if (entry.package === pkg.name && satisfiesVersion(pkg.version, entry.range)) {
 			return entry;
 		}
 	}
@@ -718,7 +719,7 @@ function findThreats(
 		const matchingPackages = packages.filter(
 			p =>
 				p.name === item.package &&
-				Bun.semver.satisfies(p.version, item.range) &&
+				satisfiesVersion(p.version, item.range) &&
 				!isAllowed(p, allowlist),
 		);
 

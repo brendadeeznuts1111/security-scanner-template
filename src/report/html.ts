@@ -2,6 +2,7 @@ import {cssVariables} from '../color/index.ts';
 import {DEFAULT_COLORS} from '../config/defaults.ts';
 import type {DomainColors} from '../config/types.ts';
 import {filePathFromModuleUrl} from '../utils/runtime.ts';
+import {DEFAULT_REPORT_MARKDOWN_OPTIONS, markdownToHtml} from '../markdown/index.ts';
 import {generateMarkdownReport} from './markdown.ts';
 import {renderAdvisoryRows, renderOverrideRows, safeJsonScript} from './safe.ts';
 import {renderOperatorQr, renderVisualGallery, resolveReportVisuals} from './visuals.ts';
@@ -53,7 +54,9 @@ export async function generateHtmlReport(
 	);
 	const markdown = generateMarkdownReport(data);
 	const summaryMarkdown = markdown.split('## Advisories')[0] ?? markdown;
-	const summaryHtml = Bun.markdown.html(summaryMarkdown);
+	const summaryHtml =
+		markdownToHtml(summaryMarkdown, DEFAULT_REPORT_MARKDOWN_OPTIONS) ??
+		`<pre>${summaryMarkdown.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</pre>`;
 	const visuals = data.visuals?.length ? await resolveReportVisuals(data.visuals) : [];
 
 	return template

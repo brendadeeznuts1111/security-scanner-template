@@ -1,4 +1,4 @@
-import {nanoseconds} from './runtime.ts';
+import {nanoseconds} from './nanoseconds.ts';
 
 export interface Timer {
 	/** Elapsed time in nanoseconds since the timer started. */

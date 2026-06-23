@@ -80,11 +80,10 @@ export async function checkDomainsParallel(
 	const chunkSize = Math.max(1, Math.ceil(loadedDomains.length / workerCount));
 	const chunks = chunkDomains(loadedDomains, chunkSize);
 
-	const results: DomainCheckResult[] = [];
-	for (const chunk of chunks) {
-		const chunkResults = await Promise.all(chunk.map(runDomainWorker));
-		results.push(...chunkResults);
-	}
+	const chunkResults = await Promise.all(
+		chunks.map(chunk => Promise.all(chunk.map(runDomainWorker))),
+	);
+	const results = chunkResults.flat();
 
 	return results.sort((a, b) => a.domain.localeCompare(b.domain));
 }

@@ -18,9 +18,12 @@ export function stringWidth(text: string, options?: StringWidthOptions): number 
 }
 
 /**
- * Strip ANSI escape codes from a string.
+ * Strip ANSI escape codes (`Bun.stripANSI` when available).
  */
 export function stripAnsi(text: string): string {
+	if (typeof Bun.stripANSI === 'function') {
+		return Bun.stripANSI(text);
+	}
 	return text.replace(/\u001b\[[0-9;]*m/g, '');
 }
 

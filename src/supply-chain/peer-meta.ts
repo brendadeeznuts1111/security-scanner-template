@@ -21,6 +21,10 @@ export interface PeerMetaCheckResult {
 /**
  * Detect peer names declared only in peerDependenciesMeta (Bun >=1.3.14 synthesizes
  * an implicit optional "*" peer for each, matching pnpm/yarn).
+ *
+ * Bun install auto-installs peer dependencies; optional peers in
+ * `peerDependenciesMeta` resolve when an existing dependency satisfies them.
+ * @see https://bun.sh/docs/cli/install
  */
 export function findImplicitOptionalPeerNames(manifest: PackageManifestSlice): string[] {
 	const meta = manifest.peerDependenciesMeta;

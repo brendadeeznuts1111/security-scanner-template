@@ -1,14 +1,10 @@
 import {expect, test} from 'bun:test';
 import {
 	deepEquals,
-	escapeHtml,
 	filePathFromModuleUrl,
 	getRuntimeInfo,
 	isMainModule,
 	moduleUrlFromPath,
-	nanoseconds,
-	peekStatus,
-	peekValue,
 	validateBunRuntime,
 } from '../../src/utils/runtime.ts';
 
@@ -31,25 +27,6 @@ test('filePathFromModuleUrl and moduleUrlFromPath round-trip', () => {
 	expect(moduleUrlFromPath(path).protocol).toBe('file:');
 });
 
-test('nanoseconds returns a positive integer', () => {
-	expect(Number.isInteger(nanoseconds())).toBe(true);
-	expect(nanoseconds()).toBeGreaterThan(0);
-});
-
-test('peekValue and peekStatus read settled promises', () => {
-	const fulfilled = Promise.resolve('ok');
-	expect(peekValue(fulfilled)).toBe('ok');
-	expect(peekStatus(fulfilled)).toBe('fulfilled');
-
-	const pending = new Promise(() => {});
-	expect(peekValue(pending)).toBe(pending);
-	expect(peekStatus(pending)).toBe('pending');
-});
-
-test('escapeHtml escapes HTML metacharacters', () => {
-	expect(escapeHtml(`<script>"&'</script>`)).toBe('&lt;script&gt;&quot;&amp;&#x27;&lt;/script&gt;');
-});
-
 test('isMainModule is true for the test entrypoint', () => {
 	expect(isMainModule(import.meta.path)).toBe(import.meta.path === Bun.main);
 });
@@ -59,4 +36,6 @@ test('validateBunRuntime reports required APIs as available', () => {
 	expect(validation.ok).toBe(true);
 	expect(validation.missing).toEqual([]);
 	expect(validation.info.version).toBe(Bun.version);
+	expect(validation.wrapperCatalog.entries.length).toBeGreaterThan(5);
+	expect(validation.wrapperCatalog.entries.some(entry => entry.id === 'spawn')).toBe(true);
 });

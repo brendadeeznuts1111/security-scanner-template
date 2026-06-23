@@ -1,8 +1,15 @@
 import {DEFAULT_TERM_NAME, spawnEnvWithTerm} from '../utils/process.ts';
-import {isPagerFriendlyPipeline, WINDOWS_CONPTY_NOTE} from '../utils/terminal-io.ts';
+import {isPagerFriendlyPipeline, WINDOWS_CONPTY_NOTES} from '../utils/terminal-io.ts';
 
 /** Official Bun PTY spawn documentation. */
-export const BUN_PTY_DOCS_URL = 'https://bun.sh/docs/runtime/child-process#terminal-pty-support';
+export const BUN_PTY_DOCS_URL =
+	'https://bun.com/docs/runtime/child-process#terminal-pty-support';
+
+/** Official Bun `TerminalOptions` shape (PTY on POSIX, ConPTY on Windows). */
+export type BunTerminalOptions = Bun.TerminalOptions;
+
+/** `Bun.spawn({ terminal })` accepts a reusable instance or inline options. */
+export type SpawnTerminalInput = Bun.Terminal | BunTerminalOptions;
 
 /**
  * PTY behaviour notes from Bun docs (POSIX openpty vs Windows ConPTY).
@@ -10,16 +17,18 @@ export const BUN_PTY_DOCS_URL = 'https://bun.sh/docs/runtime/child-process#termi
  * When `terminal` is set on `Bun.spawn`:
  * - Child sees `process.stdout.isTTY === true`
  * - `proc.stdin` / `proc.stdout` / `proc.stderr` are `null` — use `proc.terminal`
- * - `terminal.exit` fires when the PTY stream closes or on `terminal.close()` (reusable)
+ * - `terminal.exit` fires when the PTY stream closes (not subprocess exit)
  * - Use `proc.exited` for subprocess exit codes
+ * - `terminal.name` configures the PTY type; set `TERM` via `env` separately
  */
 export const PTY_SPAWN_BEHAVIOR = {
 	stdioConnectedToTerminal: true,
 	subprocessStreamsNull: true,
 	processExit: 'proc.exited',
-	ptyLifecycleExit: 'terminal option exit callback or terminal.close()',
+	ptyLifecycleExit: 'terminal.exit (PTY EOF) or terminal.close()',
 	reusableTerminal: 'reuse Bun.Terminal across spawns; close when session ends',
-	windows: WINDOWS_CONPTY_NOTE,
+	termEnvSeparateFromName: 'terminal.name does not set TERM — use spawnEnvWithTerm()',
+	windows: WINDOWS_CONPTY_NOTES.summary,
 } as const;
 
 export interface PtyDimensions {
@@ -42,6 +51,7 @@ export interface PtySession {
 	close(): void;
 }
 
+/** Minimal PTY surface for tests and attach helpers. */
 export interface PtyTerminal {
 	write(data: string | Uint8Array | ArrayBuffer): void;
 	resize(cols: number, rows: number): void;
@@ -51,22 +61,13 @@ export interface PtyTerminal {
 	unref?(): void;
 }
 
-export interface SpawnTerminalOptions {
-	cols: number;
-	rows: number;
-	name: string;
-	data: (term: PtyTerminal, data: Uint8Array) => void;
-	/** PTY stream lifecycle (0 = EOF, 1 = error) — not the subprocess exit code. */
-	exit?: (term: PtyTerminal, exitCode: number) => void;
-	/** Invoked when the PTY is ready for more `terminal.write()` data. */
-	drain?: (term: PtyTerminal) => void;
-}
-
 export interface CreateSpawnTerminalConfig {
 	onData?: (data: Uint8Array) => void;
 	dimensions?: PtyDimensions;
-	onExit?: (term: PtyTerminal, exitCode: number) => void;
-	onDrain?: (term: PtyTerminal) => void;
+	/** PTY stream lifecycle — not the subprocess exit code. */
+	onExit?: (term: Bun.Terminal, exitCode: number, signal: string | null) => void;
+	onDrain?: (term: Bun.Terminal) => void;
+	name?: string;
 }
 
 export interface PtySpawnOptions {
@@ -78,8 +79,10 @@ export interface PtySpawnOptions {
 	stdin?: boolean;
 	signal?: AbortSignal;
 	onData?: (data: Uint8Array) => void;
-	onTerminalExit?: (term: PtyTerminal, exitCode: number) => void;
-	onDrain?: (term: PtyTerminal) => void;
+	onTerminalExit?: (term: Bun.Terminal, exitCode: number, signal: string | null) => void;
+	onDrain?: (term: Bun.Terminal) => void;
+	/** Reuse a `Bun.Terminal` or pass inline `TerminalOptions` (do not set stdio). */
+	terminal?: SpawnTerminalInput;
 }
 
 export interface PtySpawnResult {
@@ -89,12 +92,28 @@ export interface PtySpawnResult {
 	signalCode: NodeJS.Signals | null;
 }
 
+/** @deprecated Use {@link BunTerminalOptions} — alias kept for exports. */
+export type SpawnTerminalOptions = BunTerminalOptions;
+
 function defaultCols(): number {
 	return process.stdout.columns ?? 80;
 }
 
 function defaultRows(): number {
 	return process.stdout.rows ?? 24;
+}
+
+export function isBunTerminal(value: unknown): value is Bun.Terminal {
+	return typeof Bun.Terminal === 'function' && value instanceof Bun.Terminal;
+}
+
+export function isTerminalOptions(value: unknown): value is BunTerminalOptions {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		!isBunTerminal(value) &&
+		('cols' in value || 'rows' in value || 'name' in value || 'data' in value)
+	);
 }
 
 /**
@@ -108,22 +127,52 @@ export function writeTerminalOutput(data: Uint8Array | string): void {
 }
 
 /**
+ * Create a standalone `Bun.Terminal` with official defaults.
+ *
+ * Supports `await using term = createTerminal({...})` when `AsyncDisposable` is available.
+ */
+export function createTerminal(
+	options: Partial<BunTerminalOptions> & CreateSpawnTerminalConfig = {},
+): Bun.Terminal {
+	const size = ptyDimensions({
+		cols: options.cols ?? options.dimensions?.cols,
+		rows: options.rows ?? options.dimensions?.rows,
+	});
+	const onData = options.onData ?? writeTerminalOutput;
+
+	return new Bun.Terminal({
+		cols: size.cols,
+		rows: size.rows,
+		name: options.name ?? DEFAULT_TERM_NAME,
+		data(term, data) {
+			if (options.data) {
+				options.data(term, data);
+			} else {
+				onData(data);
+			}
+		},
+		exit: options.onExit ?? options.exit,
+		drain: options.onDrain ?? options.drain,
+	});
+}
+
+/**
  * Factory for Bun.spawn `terminal` option per Bun PTY docs.
  * @see {@link BUN_PTY_DOCS_URL}
  */
 export function createSpawnTerminalOptions(
 	onDataOrConfig: ((data: Uint8Array) => void) | CreateSpawnTerminalConfig,
 	dimensions: PtyDimensions = ptyDimensions(),
-): SpawnTerminalOptions {
+): BunTerminalOptions {
 	const config: CreateSpawnTerminalConfig =
 		typeof onDataOrConfig === 'function' ? {onData: onDataOrConfig} : onDataOrConfig;
 	const size = config.dimensions ?? dimensions;
 	const onData = config.onData ?? writeTerminalOutput;
 
-	const options: SpawnTerminalOptions = {
+	const options: BunTerminalOptions = {
 		cols: size.cols,
 		rows: size.rows,
-		name: DEFAULT_TERM_NAME,
+		name: config.name ?? DEFAULT_TERM_NAME,
 		data(_term, data) {
 			onData(data);
 		},
@@ -140,6 +189,29 @@ export function createSpawnTerminalOptions(
 }
 
 /**
+ * Normalize spawn input to `Bun.Terminal` or `TerminalOptions`.
+ * Never combine `terminal` with explicit stdio on the same spawn.
+ */
+export function resolveSpawnTerminal(
+	input: SpawnTerminalInput | CreateSpawnTerminalConfig | ((data: Uint8Array) => void),
+	dimensions: PtyDimensions = ptyDimensions(),
+): SpawnTerminalInput {
+	if (isBunTerminal(input)) {
+		return input;
+	}
+	if (
+		typeof input === 'function' ||
+		('onData' in (input as object) && !('write' in (input as object)))
+	) {
+		return createSpawnTerminalOptions(
+			input as CreateSpawnTerminalConfig | ((data: Uint8Array) => void),
+			dimensions,
+		);
+	}
+	return input as BunTerminalOptions;
+}
+
+/**
  * Spawn a subprocess with a PTY attached (Bun docs canonical pattern).
  *
  * Parent stdin forwarding and resize propagation are handled by {@link withPtySession}.
@@ -150,21 +222,25 @@ export async function spawnPtyProcess(
 	options: PtySpawnOptions = {},
 ): Promise<PtySpawnResult> {
 	const size = ptyDimensions({cols: options.cols, rows: options.rows});
+	const reusableTerminal = options.terminal && isBunTerminal(options.terminal);
+	const terminalOption = options.terminal
+		? resolveSpawnTerminal(options.terminal, size)
+		: createSpawnTerminalOptions(
+				{
+					onData: options.onData,
+					dimensions: size,
+					onExit: options.onTerminalExit,
+					onDrain: options.onDrain,
+				},
+				size,
+			);
 
 	const proc = Bun.spawn({
 		cmd,
 		cwd: options.cwd,
 		env: spawnEnvWithTerm(options.env),
 		signal: options.signal,
-		terminal: createSpawnTerminalOptions(
-			{
-				onData: options.onData,
-				dimensions: size,
-				onExit: options.onTerminalExit,
-				onDrain: options.onDrain,
-			},
-			size,
-		),
+		terminal: terminalOption,
 	});
 
 	const terminal = proc.terminal;
@@ -173,7 +249,10 @@ export async function spawnPtyProcess(
 	}
 
 	const exitCode = await withPtySession(terminal, {stdin: options.stdin}, async () => proc.exited);
-	terminal.close();
+
+	if (!reusableTerminal) {
+		terminal.close();
+	}
 
 	return {
 		exitCode,
@@ -190,7 +269,10 @@ export async function spawnPtyProcess(
  * to `process.stdin.setRawMode()` for test doubles. Resize listeners attach only
  * when stdout is a TTY (`process.stdout.on('resize')`).
  */
-export function attachPty(terminal: PtyTerminal, options: PtyAttachOptions = {}): () => void {
+export function attachPty(
+	terminal: PtyTerminal | Bun.Terminal,
+	options: PtyAttachOptions = {},
+): () => void {
 	const cleanup: Array<() => void> = [];
 	const forwardStdin = options.stdin ?? Boolean(process.stdin.isTTY);
 
@@ -235,7 +317,7 @@ export function attachPty(terminal: PtyTerminal, options: PtyAttachOptions = {})
  * Run async work with PTY stdin/resize attached; always detaches in `finally`.
  */
 export async function withPtySession<T>(
-	terminal: PtyTerminal,
+	terminal: PtyTerminal | Bun.Terminal,
 	options: PtyAttachOptions,
 	run: () => Promise<T>,
 ): Promise<T> {
@@ -271,33 +353,25 @@ export interface ReusableTerminalOptions {
 	keepAlive?: boolean;
 	onData?: (data: Uint8Array) => void;
 	/** Fires when `terminal.close()` ends the PTY stream (not per subprocess exit). */
-	onExit?: (term: PtyTerminal, exitCode: number) => void;
-	onDrain?: (term: PtyTerminal) => void;
+	onExit?: (term: Bun.Terminal, exitCode: number, signal: string | null) => void;
+	onDrain?: (term: Bun.Terminal) => void;
 }
 
 /**
  * Multi-spawn Bun.Terminal with `ref()` / `unref()` lifecycle.
  *
- * Prefer native `await using terminal = createReusableTerminal()` when Bun supports
- * `AsyncDisposable` on `Bun.Terminal` (Bun >= 1.3.14).
+ * Prefer `await using terminal = createReusableTerminal()` / `createTerminal()`.
  *
  * @see {@link BUN_PTY_DOCS_URL} (Reusable Terminal)
  */
 export function createReusableTerminal(options: ReusableTerminalOptions = {}): Bun.Terminal {
-	const size = ptyDimensions({cols: options.cols, rows: options.rows});
-	const terminal = new Bun.Terminal({
-		cols: size.cols,
-		rows: size.rows,
-		name: options.name ?? DEFAULT_TERM_NAME,
-		data: (_term, data) => {
-			if (options.onData) {
-				options.onData(data);
-			} else {
-				writeTerminalOutput(data);
-			}
-		},
-		exit: options.onExit,
-		drain: options.onDrain,
+	const terminal = createTerminal({
+		cols: options.cols,
+		rows: options.rows,
+		name: options.name,
+		onData: options.onData,
+		onExit: options.onExit,
+		onDrain: options.onDrain,
 	});
 
 	if (options.keepAlive !== false) {

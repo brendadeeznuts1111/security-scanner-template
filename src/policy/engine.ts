@@ -1,4 +1,12 @@
-import type {PolicyDefault, PolicyDocument, PolicyResult, PolicyRule} from './types.ts';
+import {DOCTOR_SNAPSHOT_COMPAT_RANGE} from '../domain/snapshot-types.ts';
+import {satisfiesVersion} from '../semver/index.ts';
+import type {
+	PolicyDefault,
+	PolicyDocument,
+	PolicyResult,
+	PolicyRule,
+	PolicySnapshotConfig,
+} from './types.ts';
 
 function globToRegex(pattern: string): RegExp {
 	const escaped = pattern
@@ -17,7 +25,7 @@ function matchesPackage(rule: PolicyRule, advisory: Bun.Security.Advisory): bool
 function matchesVersion(rule: PolicyRule, advisory: Bun.Security.Advisory): boolean {
 	if (!rule.version) return true;
 	if (!advisory.version) return false;
-	return Bun.semver.satisfies(advisory.version, rule.version);
+	return satisfiesVersion(advisory.version, rule.version);
 }
 
 function matchesCve(rule: PolicyRule, advisory: Bun.Security.Advisory): boolean {
@@ -104,6 +112,18 @@ export function applyPolicy(
  * Derive a severity policy from a policy document's default section.
  * Returns the fatal/warn arrays expected by the provider policy module.
  */
+/** Snapshot drift thresholds from TOML `[snapshot]` (spec §17). */
+export function snapshotPolicyFromDocument(
+	doc: PolicyDocument | null | undefined,
+): PolicySnapshotConfig {
+	return {
+		allowedDrift: doc?.snapshot?.allowedDrift ?? [],
+		requiredSections: doc?.snapshot?.requiredSections ?? [],
+		snapshotVersionRange: doc?.snapshot?.snapshotVersionRange ?? DOCTOR_SNAPSHOT_COMPAT_RANGE,
+		compatibleScannerVersions: doc?.snapshot?.compatibleScannerVersions,
+	};
+}
+
 export function severityPolicyFromDocument(doc: PolicyDocument): {
 	fatal: string[];
 	warn: string[];

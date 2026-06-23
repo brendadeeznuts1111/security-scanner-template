@@ -172,3 +172,23 @@ export function findingsToAdvisories(
 		categories: [finding.category],
 	}));
 }
+
+export {
+	BundleScanner,
+	resolveTranspilerConfig,
+	scanDirectory,
+	scanSourceWithRules,
+	scanAST,
+	DEFAULT_TRANSPILER_RULES,
+	loadTranspilerRules,
+	loadProjectTranspilerRules,
+	resolveTranspilerRules,
+	formatTranspilerReport,
+	hasCriticalFindings,
+	type TranspilerRule,
+	type TranspilerScanResult,
+	type TranspilerScanReport,
+	type TranspilerScanConfig,
+	type ScanBundlesOptions,
+	type TranspilerReportFormat,
+} from './transpiler/index.ts';

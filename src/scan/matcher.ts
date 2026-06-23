@@ -1,4 +1,5 @@
 import type {AllowlistItem, ThreatFeedItem} from '../provider/validator.ts';
+import {satisfiesVersion} from '../semver/index.ts';
 
 export interface ThreatMatch {
 	item: ThreatFeedItem;
@@ -13,7 +14,7 @@ export interface MatcherInput {
 
 function isAllowed(pkg: Bun.Security.Package, allowlist: AllowlistItem[]): AllowlistItem | null {
 	for (const entry of allowlist) {
-		if (entry.package === pkg.name && Bun.semver.satisfies(pkg.version, entry.range)) {
+		if (entry.package === pkg.name && satisfiesVersion(pkg.version, entry.range)) {
 			return entry;
 		}
 	}
@@ -30,7 +31,7 @@ export function matchThreats(input: MatcherInput): ThreatMatch[] {
 		const matchingPackages = input.packages.filter(
 			p =>
 				p.name === item.package &&
-				Bun.semver.satisfies(p.version, item.range) &&
+				satisfiesVersion(p.version, item.range) &&
 				!isAllowed(p, input.allowlist),
 		);
 

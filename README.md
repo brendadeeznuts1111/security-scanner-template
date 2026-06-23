@@ -188,11 +188,13 @@ const ThreatFeedItemSchema = z.object({
 Bun provides several built-in APIs that are particularly useful for security scanner:
 
 - [**Security scanner API Reference**](https://bun.com/docs/install/security-scanner-api): Complete API documentation for security scanners
-- [**`Bun.semver.satisfies()`**](https://bun.com/docs/api/semver): Essential for checking if package versions match vulnerability ranges. No external dependencies needed.
+- [**Bun semver**](https://bun.com/docs/runtime/semver): `semver.satisfies()` and `semver.order()` — node-semver compatible, no external dependency. This template wraps them in `src/semver/index.ts` for threat-feed and supply-chain range checks.
 
   ```typescript
-  if (Bun.semver.satisfies(version, '>=1.0.0 <1.2.5')) {
-  	// Version is vulnerable
+  import {semver} from 'bun';
+
+  if (semver.satisfies(version, '>=1.0.0 <1.2.5')) {
+  	// Version matches the advisory range
   }
   ```
 
@@ -422,7 +424,7 @@ The feed can be a plain array of rules (legacy format) or a structured policy do
 }
 ```
 
-- `range` is a semver range matched with `Bun.semver.satisfies`.
+- `range` is a semver range matched with `semver.satisfies()` (via `satisfiesVersion()` in `src/semver/index.ts`).
 - `categories` determines the advisory level:
   - `fatal`: `malware`, `backdoor`, `botnet`
   - `warn`: `protestware`, `adware`, `deprecated`
@@ -445,7 +447,7 @@ Example:
 SCANNER_LOG_STDERR=1 bun install
 ```
 
-Stderr output is colorized via [`Bun.color`](https://bun.com/docs/api/color) and auto-detects terminal color support (respects `NO_COLOR`). The log file (`SCANNER_LOG_PATH`) always receives plain JSON for machine consumption.
+Stderr output is colorized via [`Bun.color`](https://bun.com/docs/runtime/color) and auto-detects terminal color support (respects `NO_COLOR`). The log file (`SCANNER_LOG_PATH`) always receives plain JSON for machine consumption.
 
 ## Testing
 

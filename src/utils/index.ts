@@ -1,7 +1,6 @@
 export {
 	createRateLimiter,
 	exponentialBackoffMs,
-	sleep,
 	type RateLimitOptions,
 	type RateLimiter,
 } from './rate-limit.ts';
@@ -12,7 +11,28 @@ export {
 	type SecurityToolName,
 	type ToolDetection,
 } from './tool-detector.ts';
-export {randomUUIDv7} from './uuid.ts';
+export {
+	BUN_UUID_GUIDE_URL,
+	BUN_UUID_V7_DOCS_URL,
+	randomUUID,
+	randomUUIDv7,
+	correlationId,
+	scratchId,
+	isUUIDv4,
+	isUUIDv7,
+	isUUIDv7Available,
+} from './uuid.ts';
+export {
+	BUN_MARKDOWN_DOCS_URL,
+	DEFAULT_REPORT_MARKDOWN_OPTIONS,
+	isMarkdownAvailable,
+	markdownToAnsi,
+	markdownToHtml,
+	markdownToPlaintext,
+	renderMarkdown,
+	type MarkdownHtmlOptions,
+	type MarkdownRenderCallbacks,
+} from '../markdown/index.ts';
 export {
 	stringWidth,
 	stripAnsi,
@@ -23,19 +43,45 @@ export {
 	type WrapAnsiOptions,
 } from './terminal.ts';
 export {
+	BUN_DEEP_EQUALS_DOCS_URL,
+	BUN_DEEP_EQUALS_GUIDE_URL,
+	deepEquals,
+	deepEqualsStrict,
+	isDeepEqualAvailable,
+} from './deep-equal.ts';
+export {
+	BUN_ESCAPE_HTML_DOCS_URL,
+	BUN_ESCAPE_HTML_GUIDE_URL,
+	escapeHtml,
+	isEscapeHtmlAvailable,
+	type EscapeHtmlInput,
+} from './escape-html.ts';
+export {
+	BUN_NANOSECONDS_DOCS_URL,
+	BUN_NANOSECONDS_GUIDE_URL,
+	isNanosecondsAvailable,
+	nanoseconds,
+} from './nanoseconds.ts';
+export {
+	BUN_PEEK_DOCS_URL,
+	isPeekAvailable,
+	peekValue,
+	peekStatus,
+	type PeekStatus,
+} from './peek.ts';
+export {
+	BUN_UTILS_DOCS_URL,
 	getRuntimeInfo,
 	isMainModule,
 	filePathFromModuleUrl,
 	moduleUrlFromPath,
-	deepEquals,
-	nanoseconds,
-	peekValue,
-	peekStatus,
-	escapeHtml,
+	sleep,
+	sleepSync,
+	which,
 	validateBunRuntime,
 	type BunRuntimeInfo,
 	type BunRuntimeValidation,
-	type PeekStatus,
+	type WhichOptions,
 } from './runtime.ts';
 export {createTimer, type Timer} from './timing.ts';
 export {
@@ -59,7 +105,12 @@ export {
 	type BenchmarkRunMetadata,
 } from './bench-metadata.ts';
 export {createDebouncer, createAsyncDebouncer} from './debounce.ts';
-export {formatTable, formatValue} from './inspect.ts';
+export {
+	BUN_INSPECT_DOCS_URL,
+	formatTable,
+	formatValue,
+	isInspectAvailable,
+} from './inspect.ts';
 export {cloneStructured, deserializeStructured, serializeStructured} from './jsc.ts';
 export {runCliIfMain} from './cli.ts';
 export {
@@ -78,6 +129,7 @@ export {
 export {
 	BUN_SPAWN_DOCS_URL,
 	BUN_SPAWN_GUIDE_URL,
+	isSpawnAvailable,
 	BUN_SPAWN_STDERR_DOCS_URL,
 	BUN_SPAWN_STDOUT_DOCS_URL,
 	BUN_TERMINAL_DOCS_URL,
@@ -133,7 +185,10 @@ export {
 } from './process.ts';
 export {
 	BUN_CTRL_C_DOCS_URL,
+	BUN_CTRL_C_GUIDE_URL,
 	BUN_OS_SIGNALS_DOCS_URL,
+	BUN_OS_SIGNALS_GUIDE_URL,
+	isSignalHandlingAvailable,
 	INTERRUPT_SIGNALS,
 	SIGNAL_BEHAVIOR,
 	formatSignalBehaviorTable,
@@ -171,6 +226,64 @@ export {
 	type DoctorUtilityRuntime,
 } from './doctor-diagnostics.ts';
 export {
+	BUN_INSTALL_CPU_VALUES,
+	BUN_INSTALL_DOCS_URL,
+	BUN_INSTALL_OS_VALUES,
+	INSTALL_BACKENDS,
+	INSTALL_BEHAVIOR,
+	INSTALL_ISSUE_CODES,
+	analyzeLockfilePlatformStats,
+	auditInstallState,
+	defaultInstallBackend,
+	detectLockfileState,
+	extractInstallPackageConfig,
+	formatInstallBehaviorTable,
+	formatInstallRuntimeInspect,
+	formatInstallRuntimeTable,
+	formatInstallTargetCommand,
+	getInstallRuntimeInfo,
+	installRuntimeInspectable,
+	installWatchPaths,
+	isValidInstallCpu,
+	isValidInstallOs,
+	parseLockfileConfigVersion,
+	parseLockfileVersion,
+	resolveInstallWatchPaths,
+	validateInstallTarget,
+	type BunInstallCpu,
+	type BunInstallOs,
+	type InstallAuditFinding,
+	type InstallBackend,
+	type InstallPackageConfig,
+	type InstallRuntimeInfo,
+	type InstallRuntimeInspectable,
+	type InstallTargetOverride,
+	type InstallTargetValidation,
+	type LockfilePlatformStats,
+	type LockfileState,
+} from './install-runtime.ts';
+export {
+	BUN_JSON5_DOCS_URL,
+	BUN_TOML_DOCS_URL,
+	CONFIG_FORMAT_BEHAVIOR,
+	CONFIG_FORMAT_ISSUE_CODES,
+	FORMAT_SEPARATION,
+	auditConfigFormats,
+	configFormatRuntimeInspectable,
+	detectPolicyDrift,
+	discoverInvalidConfigFiles,
+	discoverVaultFiles,
+	formatConfigFormatBehaviorTable,
+	formatConfigFormatRuntimeInspect,
+	formatConfigFormatRuntimeTable,
+	getConfigFormatRuntimeInfo,
+	type ConfigFormatAuditFinding,
+	type ConfigFormatRuntimeInfo,
+	type ConfigFormatRuntimeInspectable,
+	type InvalidConfigFile,
+	type PolicyDriftEntry,
+} from './config-format-runtime.ts';
+export {
 	EVAL_TOP_LEVEL_AWAIT_NOTE,
 	getTerminalIORuntimeInfo,
 	isPagerFriendlyPipeline,
@@ -178,8 +291,23 @@ export {
 	MIN_BUN_PIPELINE_PAGER_FIX,
 	PIPELINE_PAGER_NOTE,
 	WINDOWS_CONPTY_NOTE,
+	WINDOWS_CONPTY_NOTES,
+	formatWindowsConptyNotes,
 	type TerminalIORuntimeInfo,
 } from './terminal-io.ts';
+export {
+	auditBunRuntimeCatalog,
+	BUN_RUNTIME_CATALOG,
+	BUN_RUNTIME_CATALOG_INDEX_URL,
+	getBunRuntimeCatalogEntry,
+	type BunRuntimeCatalogAudit,
+	type BunRuntimeCatalogEntry,
+	type BunRuntimeCatalogStatus,
+} from './bun-runtime-catalog.ts';
+export {
+	runBunPm,
+	type BunPmResult,
+} from './install-runtime.ts';
 export {
 	CROSS_REF_CATALOG,
 	getCrossRef,
@@ -205,11 +333,23 @@ export {
 	isValidColor,
 	isValidConfigColor,
 	toCss,
+	toHex,
+	toRgb,
+	toRgba,
+	toHsl,
+	toRgbObject,
 	toRgbaObject,
+	toRgbArray,
+	toRgbaArray,
+	toColorNumber,
 	ansiCode,
 	severityColor,
 	cssVariables,
 	type ColorInput,
 	type BunColorFormat,
 	type AnsiColorDepth,
+	type RgbObject,
+	type RgbaObject,
+	type RgbArray,
+	type RgbaArray,
 } from '../color/index.ts';

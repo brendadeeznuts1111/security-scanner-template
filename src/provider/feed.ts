@@ -192,3 +192,6 @@ export async function loadThreatFeed(config: FeedConfig = {}): Promise<LoadedFee
 
 	return loadDefaultRules();
 }
+
+export type {ThreatFeedEntry} from './feed-types.ts';
+export {threatEntryFromFeedItem} from './feed-types.ts';

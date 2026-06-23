@@ -204,6 +204,25 @@ export async function loadDomainSecurity(
 }
 
 /**
+ * Load one domain config by its `domain` field (does not load sibling domains).
+ */
+export async function loadSingleDomain(
+	root: string,
+	domainName: string,
+): Promise<LoadedDomain> {
+	for (const filePath of discoverDomainFiles(root)) {
+		const file = Bun.file(filePath);
+		const text = await file.text();
+		const parsed = Bun.JSON5.parse(text) as {domain?: string};
+		if (parsed.domain !== domainName) {
+			continue;
+		}
+		return loadDomainFile(filePath);
+	}
+	throw new Error(`Domain not found: ${domainName}`);
+}
+
+/**
  * Load all domain configs from a project root.
  */
 export async function loadAllDomains(root: string): Promise<LoadedDomain[]> {

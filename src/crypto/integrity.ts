@@ -60,9 +60,4 @@ export async function verifyDigest(
 	return actual === expectedHex.toLowerCase();
 }
 
-/**
- * Match a package version against a semver range from a threat feed rule.
- */
-export function satisfiesVersion(version: string, range: string): boolean {
-	return Bun.semver.satisfies(version, range);
-}
+export {satisfiesVersion} from '../semver/index.ts';

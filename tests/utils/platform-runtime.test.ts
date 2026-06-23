@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {satisfiesVersion} from '../../src/semver/index.ts';
 import {
 	checkPlatformPathLength,
 	estimateWindowsPathUtf16Length,
@@ -40,7 +41,7 @@ test('readProjectBunTypesVersion reads devDependency from package.json', async (
 test('bunTypesSupportsTsgo reflects installed bun-types version', async () => {
 	const info = await getPlatformRuntimeInfo(`${import.meta.dir}/../../package.json`);
 	const version = info.bunTypesVersion?.replace(/^[\^~]/, '') ?? '0.0.0';
-	const expected = Bun.semver.satisfies(version, `>=${MIN_BUN_TYPES_FFI_TSGo_FIX}`);
+	const expected = satisfiesVersion(version, `>=${MIN_BUN_TYPES_FFI_TSGo_FIX}`);
 	expect(info.bunTypesTsgoCompatible).toBe(expected);
 });
 
@@ -51,7 +52,7 @@ test('getPlatformRuntimeInfo reports Windows and tsgo compatibility flags', asyn
 	if (process.platform === 'win32') {
 		expect(info.maxPathUtf16).toBe(WINDOWS_MAX_PATH_UTF16);
 		expect(info.windowsRuntimeSafe).toBe(
-			Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`),
+			satisfiesVersion(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`),
 		);
 	} else {
 		expect(info.windowsRuntimeSafe).toBe(true);

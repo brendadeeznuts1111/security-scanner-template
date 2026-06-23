@@ -46,11 +46,11 @@ export function createRateLimiter(options: RateLimitOptions): RateLimiter {
 	};
 }
 
-/**
- * Sleep for a number of milliseconds using Bun.sleep.
- */
-export function sleep(ms: number): Promise<void> {
-	return Bun.sleep(ms);
+import {sleep as bunSleep} from './runtime.ts';
+
+/** Sleep for a number of milliseconds using `Bun.sleep`. */
+export function sleep(ms: number | Date): Promise<void> {
+	return bunSleep(ms);
 }
 
 /**

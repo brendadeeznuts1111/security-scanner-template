@@ -9,6 +9,10 @@ import {
 	severityColor,
 	TERMINAL,
 	toCss,
+	toColorNumber,
+	toRgbArray,
+	toRgbObject,
+	toRgbaArray,
 	toRgbaObject,
 } from '../../src/color/index.ts';
 
@@ -33,8 +37,22 @@ test('toCss returns compact CSS color strings', () => {
 	expect(toCss('#0A84FF')).toBe('#0a84ff');
 });
 
-test('toRgbaObject extracts channels', () => {
+test('toRgbaObject extracts channels with css-style alpha', () => {
 	expect(toRgbaObject('red')).toEqual({r: 255, g: 0, b: 0, a: 1});
+	expect(toRgbaObject('hsl(0, 0%, 50%)')).toEqual({r: 128, g: 128, b: 128, a: 1});
+});
+
+test('toRgbObject omits alpha channel', () => {
+	expect(toRgbObject('red')).toEqual({r: 255, g: 0, b: 0});
+});
+
+test('toRgbaArray uses 0-255 alpha per Bun.color docs', () => {
+	expect(toRgbaArray('red')).toEqual([255, 0, 0, 255]);
+	expect(toRgbArray('red')).toEqual([255, 0, 0]);
+});
+
+test('toColorNumber returns 24-bit integer', () => {
+	expect(toColorNumber('red')).toBe(0xff0000);
 });
 
 test('ansiCode returns a string for valid colors', () => {

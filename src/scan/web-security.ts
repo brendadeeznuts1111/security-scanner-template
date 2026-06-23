@@ -6,6 +6,7 @@ import type {ImageInspection} from '../visual/metadata.ts';
 import {ImagePipeline} from '../visual/pipeline.ts';
 import {PlaceholderGenerator} from '../visual/placeholder.ts';
 import {ThumbnailGenerator, thumbnailPathFor} from '../visual/thumb.ts';
+import {randomUUID} from '../utils/uuid.ts';
 import {scanHtmlResponse, type HtmlFinding} from './html.ts';
 
 export type WebSecurityFindingType =
@@ -113,7 +114,7 @@ export async function processWebScreenshot(
 
 	if (isImageAvailable()) {
 		try {
-			const id = options.screenshotId ?? crypto.randomUUID();
+			const id = options.screenshotId ?? randomUUID();
 			const normalizedDest = options.screenshotDir
 				? path.join(options.screenshotDir, `${id}.webp`)
 				: undefined;
@@ -138,7 +139,7 @@ export async function processWebScreenshot(
 	}
 
 	if (options.screenshotDir) {
-		const id = options.screenshotId ?? crypto.randomUUID();
+		const id = options.screenshotId ?? randomUUID();
 		await mkdir(options.screenshotDir, {recursive: true});
 
 		if (artifact.normalizedPath) {

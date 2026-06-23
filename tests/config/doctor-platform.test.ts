@@ -1,5 +1,6 @@
 import {expect, test} from 'bun:test';
 import {checkAllDomains} from '../../src/config/doctor.ts';
+import {satisfiesVersion} from '../../src/semver/index.ts';
 import {
 	MIN_BUN_TYPES_FFI_TSGo_FIX,
 	MIN_BUN_WINDOWS_RUNTIME_FIX,
@@ -12,7 +13,7 @@ test('checkAllDomains includes platform runtime in report', async () => {
 
 	if (
 		process.platform === 'win32' &&
-		!Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`)
+		!satisfiesVersion(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`)
 	) {
 		expect(result.crossDomainIssues.some(i => i.code === 'WINDOWS_RUNTIME_UPGRADE')).toBe(true);
 	}
@@ -28,7 +29,7 @@ test('checkAllDomains documents pipeline pager fix in terminalIO when piped', as
 	const result = await checkAllDomains(process.cwd());
 	if (result.runtime.terminalIO.pipelineProducer) {
 		expect(result.runtime.terminalIO.pipelinePagerSafe).toBe(
-			Bun.semver.satisfies(Bun.version, '>=1.3.14'),
+			satisfiesVersion(Bun.version, '>=1.3.14'),
 		);
 	}
 });

@@ -33,6 +33,9 @@
 		"CHANGELOG.md",
 		"SECURITY.md"
 	],
+	"bin": {
+		"supply-chain": "./src/cli/supply-chain.ts"
+	},
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
 	"homepage": "https://github.com/brendadeeznuts1111/security-scanner-template#readme",
@@ -66,6 +69,7 @@
 		"master-key": "bun run src/cli/master-key.ts",
 		"csrf": "bun run src/cli/csrf.ts",
 		"scan": "bun run src/cli/scan.ts",
+		"supply-chain": "bun run src/cli/supply-chain.ts",
 		"report": "bun run src/cli/report.ts",
 		"sp": "bun run src/cli/sp.ts",
 		"qr": "bun run src/cli/qr.ts",

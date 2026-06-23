@@ -8,11 +8,13 @@ export interface ToolDetection {
 	path: string | null;
 }
 
+import {which, type WhichOptions} from './runtime.ts';
+
 /**
- * Locate an executable on PATH using Bun.which.
+ * Locate an executable on PATH using `Bun.which`.
  */
-export function detectTool(name: string): string | null {
-	return Bun.which(name);
+export function detectTool(name: string, options?: WhichOptions): string | null {
+	return which(name, options);
 }
 
 /**

@@ -1,3 +1,16 @@
+/**
+ * Thin wrappers around Bun runtime utilities.
+ *
+ * @see https://bun.com/docs/runtime/utils
+ * Source: `oven-sh/bun` → `docs/runtime/utils.mdx`
+ */
+import {
+	auditBunRuntimeCatalog,
+	type BunRuntimeCatalogAudit,
+} from './bun-runtime-catalog.ts';
+
+export const BUN_UTILS_DOCS_URL = 'https://bun.com/docs/runtime/utils';
+
 export interface BunRuntimeInfo {
 	version: string;
 	revision: string;
@@ -8,6 +21,7 @@ export interface BunRuntimeValidation {
 	ok: boolean;
 	missing: string[];
 	info: BunRuntimeInfo;
+	wrapperCatalog: BunRuntimeCatalogAudit;
 }
 
 const REQUIRED_RUNTIME_APIS = [
@@ -30,6 +44,26 @@ const REQUIRED_RUNTIME_APIS = [
 	'color',
 	'CSRF',
 ] as const;
+
+/** `Bun.sleep(ms)` or `Bun.sleep(date)` — async delay. */
+export function sleep(ms: number | Date): Promise<void> {
+	return Bun.sleep(ms);
+}
+
+/** `Bun.sleepSync(ms)` — blocking delay (avoid on the main thread in servers). */
+export function sleepSync(ms: number): void {
+	Bun.sleepSync(ms);
+}
+
+export interface WhichOptions {
+	PATH?: string;
+	cwd?: string;
+}
+
+/** Resolve an executable on `PATH` (`Bun.which`). */
+export function which(bin: string, options?: WhichOptions): string | null {
+	return options ? Bun.which(bin, options) : Bun.which(bin);
+}
 
 /**
  * Snapshot of the active Bun runtime (version, git revision, entrypoint).
@@ -63,43 +97,11 @@ export function moduleUrlFromPath(filePath: string): URL {
 	return Bun.pathToFileURL(filePath);
 }
 
-/**
- * Deep structural equality check (used by bun:test expect().toEqual()).
- */
-export function deepEquals(a: unknown, b: unknown, strict = false): boolean {
-	return Bun.deepEquals(a, b, strict);
-}
+export {deepEquals} from './deep-equal.ts';
 
-/**
- * High-resolution monotonic timer in nanoseconds since process start.
- */
-export function nanoseconds(): number {
-	return Bun.nanoseconds();
-}
-
-export type PeekStatus = 'pending' | 'fulfilled' | 'rejected';
-
-/**
- * Read a settled promise without awaiting; returns the value, error, or the
- * pending promise itself when not yet settled.
- */
-export function peekValue<T>(promise: Promise<T>): T | Promise<T> {
-	return Bun.peek(promise);
-}
-
-/**
- * Read promise settlement status without resolving it.
- */
-export function peekStatus<T>(promise: Promise<T>): PeekStatus {
-	return Bun.peek.status(promise);
-}
-
-/**
- * Escape dynamic text for safe HTML embedding.
- */
-export function escapeHtml(text: string): string {
-	return Bun.escapeHTML(text);
-}
+export {nanoseconds} from './nanoseconds.ts';
+export {peekValue, peekStatus, type PeekStatus} from './peek.ts';
+export {escapeHtml, type EscapeHtmlInput} from './escape-html.ts';
 
 function isRuntimeApiAvailable(api: (typeof REQUIRED_RUNTIME_APIS)[number]): boolean {
 	if (api === 'CSRF') {
@@ -118,9 +120,14 @@ function isRuntimeApiAvailable(api: (typeof REQUIRED_RUNTIME_APIS)[number]): boo
  */
 export function validateBunRuntime(): BunRuntimeValidation {
 	const missing = REQUIRED_RUNTIME_APIS.filter(api => !isRuntimeApiAvailable(api));
+	const wrapperCatalog = auditBunRuntimeCatalog();
+	const wrapperMissing = wrapperCatalog.missing.filter(
+		api => api !== 'Bun.markdown' && api !== 'Bun.randomUUIDv7',
+	);
 	return {
-		ok: missing.length === 0,
-		missing: [...missing],
+		ok: missing.length === 0 && wrapperMissing.length === 0,
+		missing: [...missing, ...wrapperMissing],
 		info: getRuntimeInfo(),
+		wrapperCatalog,
 	};
 }

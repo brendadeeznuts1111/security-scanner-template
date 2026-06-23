@@ -140,6 +140,20 @@ export interface DomainServiceTls {
 	ca?: string;
 }
 
+/** Layer 4.5 — Bun.Transpiler supply-chain scanning (code at rest). */
+export interface DomainServiceScanTranspiler {
+	enabled?: boolean;
+	includePaths?: string[];
+	excludePatterns?: string[];
+	rules?: string[];
+	rulesPath?: string;
+	verifyIntegrity?: boolean;
+}
+
+export interface DomainServiceScan {
+	transpiler?: DomainServiceScanTranspiler;
+}
+
 export interface DomainService {
 	/**
 	 * Enable Bun.Terminal PTY for external scanner orchestration (`scan interactive`, REPL `scan`).
@@ -154,6 +168,8 @@ export interface DomainService {
 	/** Serve HTTP/1.1 alongside HTTP/3 (default true). */
 	http1?: boolean;
 	tls?: DomainServiceTls;
+	/** Supply-chain scanning (transpiler bundle scan, etc.). */
+	scan?: DomainServiceScan;
 }
 
 export interface DomainAuditBackendConfig {
@@ -168,12 +184,32 @@ export interface DomainAuditConfig {
 	sqlite?: DomainAuditBackendConfig;
 }
 
+export interface DomainIntelSemverConfig {
+	/** Minimum threat-feed schema/API version required for this domain. */
+	feedMinVersion?: string;
+	/** Required secure version ranges per package name. */
+	packageRanges?: Record<string, string>;
+}
+
+export interface DomainIntelEndpointProbe {
+	/** Absolute URL (`/meta`, `/health`, etc.). */
+	url: string;
+	label?: string;
+	method?: 'GET' | 'HEAD';
+	expectStatus?: number;
+	requireHeaders?: string[];
+}
+
 export interface DomainIntelConfig {
 	dns?: {
 		blocklist?: string[];
 		requireResolution?: boolean;
 		suspiciousTtlThreshold?: number;
 	};
+	/** Bun.semver constraints for feed and installed packages. */
+	semver?: DomainIntelSemverConfig;
+	/** HTTP endpoints for deep meta/security probes (`bun sp scan packages --deep --probe`). */
+	endpoints?: DomainIntelEndpointProbe[];
 }
 
 /** Client-side TLS inspection settings (remote endpoint scans). */

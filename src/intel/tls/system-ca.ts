@@ -1,4 +1,5 @@
 import tls from 'node:tls';
+import {satisfiesVersion} from '../../semver/index.ts';
 
 /** Bun release with unconditional `tls.getCACertificates('system')` (no --use-system-ca). */
 export const MIN_BUN_SYSTEM_CA_FIX = '1.3.14';
@@ -44,7 +45,7 @@ export interface SystemCARuntimeInfoOptions {
 }
 
 function bunSupportsMacosSystemCAFix(): boolean {
-	return Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_SYSTEM_CA_FIX}`);
+	return satisfiesVersion(Bun.version, `>=${MIN_BUN_SYSTEM_CA_FIX}`);
 }
 
 /**

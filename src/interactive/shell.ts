@@ -22,6 +22,7 @@ import {
 	type FeatureName,
 } from '../features/index.ts';
 import {domainQrMessages, printDomainQrMessages, runDomainQr} from '../cli/qr.ts';
+import {correlationId} from '../utils/uuid.ts';
 import {printTlsProfileTo, runTlsScan} from '../cli/tls.ts';
 import {Service} from '../service/index.ts';
 
@@ -580,7 +581,7 @@ export class SecurityShell {
 		});
 
 		await service.audit({
-			id: crypto.randomUUID(),
+			id: correlationId(),
 			package: tool,
 			version: result.exitCode === 0 ? 'ok' : 'failed',
 			requestedRange: '*',

@@ -6,7 +6,9 @@ import {applyDefaults} from './defaults.ts';
 import {detectConfigDrift} from './drift.ts';
 import {loadTemplate, TEMPLATE_PATH, type LoadedDomain} from './loader.ts';
 import {resolveEncryptedStorePath} from './vault-paths.ts';
-import {ERROR_CODES, getErrorCode} from '../color/codes.ts';
+import {getErrorCode} from '../color/codes.ts';
+import {emitDoctorResultIssues} from '../logging/operator-log.ts';
+import {enrichDoctorIssue} from '../logging/issue-catalog.ts';
 import {hasMasterKey} from './master-key.ts';
 import {hasEncryptedStore} from './encrypted-store.ts';
 import {createVaultDomain} from '../domains/vault.ts';
@@ -68,10 +70,29 @@ import {extractPackageMetadata, type PackageMetadata} from './package-metadata.t
 import {
 	buildDoctorSnapshotDocument,
 	compareDoctorSnapshots,
+	compareDoctorSnapshotsPerDomain,
+	domainSnapshotPath,
 	loadPreviousDoctorSnapshotIndex,
+	resolveSnapshotRoot,
 	writeDoctorSnapshots,
 	type DoctorSnapshotDocument,
+	type DoctorSnapshotPerDomainResult,
 } from '../domain/doctor-snapshot.ts';
+import {
+	evaluateSnapshotCompatibilityGate,
+	evaluateSnapshotDriftGate,
+	parseSnapshotDriftSections,
+	type SnapshotCompatibilityGateResult,
+	type SnapshotDriftGateResult,
+} from '../domain/doctor-snapshot-gate.ts';
+import {collectDoctorSnapshotEnrichment} from '../domain/doctor-snapshot-deep.ts';
+import {loadRootProjectPolicy} from '../domain/policy-bridge.ts';
+import {computeBundleSnapshotsParallel} from '../domain/doctor-snapshot-parallel.ts';
+import type {DoctorSnapshotEnrichment} from '../domain/doctor-snapshot-deep.ts';
+import {newSnapshotHistoryId, SnapshotHistoryStore} from '../domain/snapshot-history.ts';
+import {snapshotPolicyFromDocument} from '../policy/engine.ts';
+import {collectSemverDoctorIssues} from '../intel/semver-checks.ts';
+import {resolveScannerVersion} from '../intel/scanner-version.ts';
 import {getBunSnapshotRuntimeInfo, type BunSnapshotRuntimeInfo} from '../utils/snapshot-runtime.ts';
 
 export interface DoctorIssue {
@@ -82,6 +103,16 @@ export interface DoctorIssue {
 	severity: 'error' | 'warning';
 	/** Machine-readable issue code (e.g. IMPLICIT_OPTIONAL_PEER). */
 	code?: string;
+	/** `domain` = reverse-DNS scoped; `core` = lib/install/runtime (set by catalog or emit). */
+	scope?: 'domain' | 'core';
+	/** Config field, glob, or module anchor — for pane filters. */
+	location?: string;
+	/** Concern channel (vault, ops, supplyChain, …). */
+	channel?: string;
+	/** Core log subdirectory when scope is `core`. */
+	coreSegment?: string;
+	/** Resolved `.security/<segment>/` path key. */
+	logSegment?: string;
 }
 
 export interface DoctorRuntimeReport extends BunRuntimeInfo {
@@ -118,6 +149,10 @@ export interface DoctorDomainReport {
 	matrix?: DomainFieldValueRow[];
 	/** Secret inventory names only (no values) for snapshot metadata. */
 	secretInventoryNames?: string[];
+	/** Vault / policy / concerns enrichment for v2 per-domain snapshots. */
+	snapshotEnrichment?: DoctorSnapshotEnrichment;
+	/** Layer 4.5 bundle aggregate snapshot (spec §16). */
+	bundleSnapshot?: import('../domain/doctor-snapshot-bundles.ts').BundleSnapshot | null;
 }
 
 export interface DoctorMatrixReport {
@@ -135,6 +170,14 @@ export interface DoctorSnapshotReport {
 	missing: string[];
 	changed: string[];
 	extra: string[];
+	/** Per-domain snapshot compare against baseline `<domain>.json`. */
+	perDomain: DoctorSnapshotPerDomainResult[];
+	/** Resolved baseline directory (default `.security/snapshots/doctor` or `--baseline-dir`). */
+	snapshotRoot: string;
+	/** CI gate result when `--fail-on-drift` is set. */
+	driftGate?: SnapshotDriftGateResult;
+	/** Scanner/schema compatibility gate when `--fail-on-drift` is set. */
+	compatibilityGate?: SnapshotCompatibilityGateResult;
 	document?: DoctorSnapshotDocument;
 }
 
@@ -149,11 +192,19 @@ export interface DoctorCheckOptions {
 	snapshot?: boolean;
 	/** Write snapshot files (`bun test --update-snapshots` compatible flag). */
 	updateSnapshots?: boolean;
+	/** Override snapshot baseline directory (e.g. `.baseline`). */
+	baselineDir?: string;
+	/** Exit non-zero when critical sections drift (CI gate). */
+	failOnDrift?: boolean;
+	/** Comma-separated critical sections for drift gate (default: vault,policy,concerns,templateDrift). */
+	driftSections?: string;
 	argv?: readonly string[];
 	/** Preview `bun install --cpu` target (doctor cross-build diagnostics). */
 	installCpu?: string;
 	/** Preview `bun install --os` target (doctor cross-build diagnostics). */
 	installOs?: string;
+	/** Worker count for parallel snapshot bundle hashing (default: 4 when >= 4 domains). */
+	workers?: number;
 }
 
 export interface DoctorResult {
@@ -343,7 +394,15 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 		severity: 'error' | 'warning' = 'error',
 		code?: string,
 	) => {
-		issues.push({domain: config.domain, path: loaded.path, field, message, severity, code});
+		const issue = enrichDoctorIssue({
+			domain: config.domain,
+			path: loaded.path,
+			field,
+			message,
+			severity,
+			code,
+		});
+		issues.push(issue);
 	};
 
 	if (!config.domain || config.domain.length === 0) {
@@ -480,7 +539,12 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 
 	for (const code of Object.keys(config.errorOverrides)) {
 		if (!getErrorCode(code)) {
-			report(`errorOverrides.${code}`, `Unknown error code "${code}"`, 'warning');
+			report(
+				`errorOverrides.${code}`,
+				`Unknown error code "${code}"`,
+				'warning',
+				'UNKNOWN_ERROR_OVERRIDE',
+			);
 		}
 	}
 
@@ -633,17 +697,20 @@ export async function checkAllDomains(
 	const {applyDefaults} = await import('./defaults.ts');
 	const files = discoverDomainFiles(root);
 
-	const collectMatrix = options.matrix === true || options.snapshot === true;
-	const collectSnapshot = options.snapshot === true;
+	const collectMatrix =
+		options.matrix === true || options.snapshot === true || options.failOnDrift === true;
+	const collectSnapshot = options.snapshot === true || options.failOnDrift === true;
 	const snapshotRuntime = getBunSnapshotRuntimeInfo(options.argv);
 	const updateSnapshots = options.updateSnapshots === true || snapshotRuntime.updateRequested;
 	const matrixSection = options.matrixSection;
 	const packageMetadata = await extractPackageMetadata(`${root}/package.json`);
+	const rootPolicyDocument = collectSnapshot ? await loadRootProjectPolicy(root) : null;
 	const domains: DoctorDomainReport[] = [];
 	let errors = 0;
 	let warnings = 0;
 	const secretNamesByDomain = new Map<string, Set<string>>();
 	const matrixDomains: Record<string, DomainFieldValueRow[]> = {};
+	const bundleSnapshotJobs: Array<{domain: string; config: import('./types.ts').DomainConfig}> = [];
 
 	const templateCoverageRaw = await validateTemplateFieldCoverage();
 	const templateCoverage: DoctorTemplateCoverage = {
@@ -771,6 +838,8 @@ export async function checkAllDomains(
 		let branding: DomainBrandingProfile | undefined;
 		let matrix: DomainFieldValueRow[] | undefined;
 		let secretInventoryNames: string[] | undefined;
+		let snapshotEnrichment: DoctorSnapshotEnrichment | undefined;
+		let bundleSnapshot: DoctorDomainReport['bundleSnapshot'];
 		if (loaded) {
 			branding = domainBrandingProfile(loaded.config);
 			secretInventoryNames = loaded.config.secrets.inventory
@@ -779,6 +848,25 @@ export async function checkAllDomains(
 			if (collectMatrix) {
 				matrix = domainFieldValueRows(loaded.config, {section: matrixSection});
 				matrixDomains[domainName] = matrix;
+			}
+			if (collectSnapshot) {
+				snapshotEnrichment = await collectDoctorSnapshotEnrichment(
+					root,
+					domainName,
+					filePath,
+					loaded.config,
+					{privateExists, policyDocument: rootPolicyDocument},
+				);
+				bundleSnapshotJobs.push({domain: domainName, config: loaded.config});
+			}
+			for (const semverIssue of await collectSemverDoctorIssues(
+				root,
+				domainName,
+				filePath,
+				loaded.config,
+				rootPolicyDocument,
+			)) {
+				issues.push(enrichDoctorIssue(semverIssue));
 			}
 		}
 
@@ -792,7 +880,20 @@ export async function checkAllDomains(
 			branding,
 			matrix,
 			secretInventoryNames,
+			snapshotEnrichment,
+			bundleSnapshot,
 		});
+	}
+
+	if (collectSnapshot && bundleSnapshotJobs.length > 0) {
+		const bundleSnapshots = await computeBundleSnapshotsParallel(root, bundleSnapshotJobs, {
+			workerCount: options.workers,
+		});
+		for (const domainReport of domains) {
+			if (bundleSnapshots.has(domainReport.domain)) {
+				domainReport.bundleSnapshot = bundleSnapshots.get(domainReport.domain) ?? null;
+			}
+		}
 	}
 
 	if (files.length === 0) {
@@ -803,7 +904,7 @@ export async function checkAllDomains(
 		warnings += result.issues.filter(i => i.severity === 'warning').length;
 	}
 
-	const crossDomainIssues = runCrossDomainChecks(secretNamesByDomain);
+	let crossDomainIssues = runCrossDomainChecks(secretNamesByDomain);
 
 	if (!templateCoverage.ok) {
 		crossDomainIssues.push({
@@ -915,6 +1016,22 @@ export async function checkAllDomains(
 		warnings += 1;
 	}
 
+	if (
+		terminalIO.platform === 'win32' &&
+		terminalIO.terminalApiAvailable &&
+		terminalIO.interactiveSession
+	) {
+		crossDomainIssues.push({
+			domain: '*',
+			path: runtimeValidation.info.main,
+			field: 'runtime.terminalIO',
+			message: `${terminalIO.platformNote} Kill child processes before terminal.close(); prefer terminal.resize() over SIGWINCH.`,
+			severity: 'warning',
+			code: 'WINDOWS_CONPTY_INTERACTIVE',
+		});
+		warnings += 1;
+	}
+
 	if (terminalIO.pipelineProducer && !terminalIO.pipelinePagerSafe) {
 		crossDomainIssues.push({
 			domain: '*',
@@ -944,13 +1061,16 @@ export async function checkAllDomains(
 	}
 
 	if (!runtimeValidation.ok) {
-		crossDomainIssues.push({
-			domain: '*',
-			path: runtimeValidation.info.main,
-			field: 'runtime',
-			message: `Missing Bun APIs: ${runtimeValidation.missing.join(', ')}`,
-			severity: 'error',
-		});
+		crossDomainIssues.push(
+			enrichDoctorIssue({
+				domain: '*',
+				path: runtimeValidation.info.main,
+				field: 'runtime',
+				message: `Missing Bun APIs: ${runtimeValidation.missing.join(', ')}`,
+				severity: 'error',
+				code: 'RUNTIME_API_MISSING',
+			}),
+		);
 		errors += 1;
 	}
 
@@ -970,6 +1090,7 @@ export async function checkAllDomains(
 
 	let snapshotReport: DoctorSnapshotReport | undefined;
 	if (collectSnapshot) {
+		const snapshotRoot = resolveSnapshotRoot(root, options.baselineDir);
 		const document = buildDoctorSnapshotDocument(
 			{
 				ok: errors === 0 && files.length > 0,
@@ -987,21 +1108,37 @@ export async function checkAllDomains(
 			{packageMetadata, snapshotRuntime, includeMatrix: collectMatrix},
 		);
 
-		const previous = await loadPreviousDoctorSnapshotIndex(root);
+		const snapshotPolicy = snapshotPolicyFromDocument(rootPolicyDocument);
+		const scannerVersion = await resolveScannerVersion(root);
+		const previous = updateSnapshots ? null : await loadPreviousDoctorSnapshotIndex(snapshotRoot);
 		const comparison = previous
 			? compareDoctorSnapshots(document, previous)
 			: {ok: true, missing: [], changed: [], extra: []};
+		const perDomain: DoctorSnapshotPerDomainResult[] = updateSnapshots
+			? document.domains.map(domain => ({
+					domain: domain.id,
+					path: domainSnapshotPath(snapshotRoot, domain.id),
+					ok: true,
+					missing: false,
+					changed: false,
+					fingerprint: domain.fingerprint,
+					changedSections: [] as string[],
+				}))
+			: await compareDoctorSnapshotsPerDomain(document, snapshotRoot, {
+					policy: snapshotPolicy,
+					scannerVersion,
+				});
 
 		let written: string[] = [];
 		if (updateSnapshots) {
-			written = await writeDoctorSnapshots(root, document);
-		} else if (!previous) {
+			written = await writeDoctorSnapshots(snapshotRoot, document, {scannerVersion});
+		} else if (!previous && perDomain.every(entry => entry.missing)) {
 			crossDomainIssues.push({
 				domain: '*',
-				path: `${root}/.security/snapshots/doctor`,
+				path: snapshotRoot,
 				field: 'snapshot.index',
 				message:
-					'No doctor snapshot index found — run with --update-snapshots (or -u) to create baseline',
+					'No doctor snapshot baseline found — run with --update-snapshots (or -u) to create per-domain baselines',
 				severity: 'warning',
 				code: 'DOCTOR_SNAPSHOT_MISSING',
 			});
@@ -1014,29 +1151,114 @@ export async function checkAllDomains(
 			].filter(Boolean);
 			crossDomainIssues.push({
 				domain: '*',
-				path: `${root}/.security/snapshots/doctor/index.json`,
+				path: path.join(snapshotRoot, 'index.json'),
 				field: 'snapshot.drift',
-				message: `Doctor snapshot drift detected (${parts.join('; ')}) — run with --update-snapshots to refresh`,
+				message: `Doctor snapshot index drift detected (${parts.join('; ')}) — run with --update-snapshots to refresh`,
 				severity: 'warning',
 				code: 'DOCTOR_SNAPSHOT_DRIFT',
 			});
 			warnings += 1;
 		}
 
+		const allPerDomainMissing = perDomain.every(entry => entry.missing);
+
+		if (!updateSnapshots) {
+			for (const entry of perDomain) {
+				if (entry.missing) {
+					if (!previous && allPerDomainMissing) {
+						continue;
+					}
+					crossDomainIssues.push({
+						domain: entry.domain,
+						path: entry.path,
+						field: 'snapshot.domain',
+						message:
+							'No per-domain doctor snapshot baseline — run with --update-snapshots (or -u) to create',
+						severity: 'warning',
+						code: 'DOCTOR_SNAPSHOT_DOMAIN_MISSING',
+					});
+					warnings += 1;
+					continue;
+				}
+				if (entry.snapshotVersionWarning) {
+					crossDomainIssues.push({
+						domain: entry.domain,
+						path: entry.path,
+						field: 'snapshot.version',
+						message: entry.snapshotVersionWarning,
+						severity: 'warning',
+						code: 'DOCTOR_SNAPSHOT_VERSION_INCOMPATIBLE',
+					});
+					warnings += 1;
+				}
+				if (entry.changed) {
+					const sections =
+						entry.changedSections.length > 0 ? ` (${entry.changedSections.join(', ')})` : '';
+					const issueNote =
+						entry.issueDelta && (entry.issueDelta.added > 0 || entry.issueDelta.removed > 0)
+							? `; issues +${entry.issueDelta.added}/-${entry.issueDelta.removed}`
+							: '';
+					crossDomainIssues.push({
+						domain: entry.domain,
+						path: entry.path,
+						field: 'snapshot.domain',
+						message: `Per-domain snapshot drift${sections}${issueNote} — run with --update-snapshots to refresh`,
+						severity: 'warning',
+						code: 'DOCTOR_SNAPSHOT_DOMAIN_DRIFT',
+					});
+					warnings += 1;
+				}
+			}
+		}
+
+		const perDomainOk = perDomain.every(entry => entry.ok);
+		const driftGate =
+			options.failOnDrift && !updateSnapshots
+				? evaluateSnapshotDriftGate(perDomain, parseSnapshotDriftSections(options.driftSections), {
+						policy: snapshotPolicy,
+					})
+				: undefined;
+		const compatibilityGate =
+			options.failOnDrift && !updateSnapshots
+				? evaluateSnapshotCompatibilityGate(perDomain)
+				: undefined;
+
+		const historyStore = await SnapshotHistoryStore.open(snapshotRoot);
+		try {
+			const timestamp = new Date().toISOString();
+			for (const entry of perDomain) {
+				historyStore.append({
+					id: newSnapshotHistoryId(),
+					domain: entry.domain,
+					fingerprint: entry.fingerprint,
+					previousFingerprint: entry.previousFingerprint,
+					changedSections: entry.changedSections,
+					operation: updateSnapshots ? 'write' : 'compare',
+					timestamp,
+				});
+			}
+		} finally {
+			historyStore.close();
+		}
+
 		snapshotReport = {
-			ok: comparison.ok || updateSnapshots,
+			ok: (comparison.ok && perDomainOk) || updateSnapshots,
 			updateRequested: updateSnapshots,
 			matcherAvailable: snapshotRuntime.matcherAvailable,
 			written,
-			compared: !updateSnapshots && previous !== null,
+			compared: !updateSnapshots && (previous !== null || perDomain.some(entry => !entry.missing)),
 			missing: comparison.missing,
 			changed: comparison.changed,
 			extra: comparison.extra,
+			perDomain,
+			snapshotRoot,
+			driftGate,
+			compatibilityGate,
 			document,
 		};
 	}
 
-	return {
+	const result = {
 		ok: errors === 0 && files.length > 0,
 		domains,
 		errors,
@@ -1050,6 +1272,12 @@ export async function checkAllDomains(
 		snapshotRuntime: collectSnapshot ? snapshotRuntime : undefined,
 		snapshot: snapshotReport,
 	};
+
+	const logged = await emitDoctorResultIssues(root, domains, crossDomainIssues, peerMetaIssues);
+	crossDomainIssues = logged.crossDomainIssues;
+	peerMetaIssues = logged.peerMetaIssues;
+
+	return {...result, crossDomainIssues, peerMetaIssues};
 }
 
 function runCrossDomainChecks(domainSecrets: Map<string, Set<string>>): DoctorIssue[] {
@@ -1066,17 +1294,20 @@ function runCrossDomainChecks(domainSecrets: Map<string, Set<string>>): DoctorIs
 
 	for (const [name, domains] of nameDomains) {
 		if (domains.length > 1) {
-			issues.push({
-				domain: '*',
-				path: '.vault',
-				field: `secrets.inventory.${name}`,
-				message: `Secret name "${name}" is defined in multiple domains: ${domains.join(', ')}`,
-				severity: 'warning',
-			});
+			issues.push(
+				enrichDoctorIssue({
+					domain: '*',
+					path: '.vault',
+					field: `secrets.inventory.${name}`,
+					message: `Secret name "${name}" is defined in multiple domains: ${domains.join(', ')}`,
+					severity: 'warning',
+					code: 'CROSS_DOMAIN_SECRET_DUPLICATE',
+				}),
+			);
 		}
 	}
 
 	return issues;
 }
 
-export {ERROR_CODES};
+export {ERROR_CODES, ISSUE_CATALOG, getIssueCatalogEntry} from '../logging/issue-catalog.ts';

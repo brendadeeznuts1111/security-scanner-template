@@ -3,9 +3,13 @@
  * Bun.stringWidth, and Bun.inspect.custom formatters.
  */
 
+import {
+	auditBunRuntimeCatalog,
+	type BunRuntimeCatalogAudit,
+} from './bun-runtime-catalog.ts';
 import {formatTable} from './inspect.ts';
-import {formatInspectCustom, withInspectCustom} from './inspect-custom.ts';
-import {getProcessRuntimeInfo, type ProcessRuntimeInfo} from './process.ts';
+import {formatInspectCustom, withInspectCustom, isInspectCustomAvailable} from './inspect-custom.ts';
+import {getProcessRuntimeInfo, isSpawnAvailable, type ProcessRuntimeInfo} from './process.ts';
 import {
 	BUN_CTRL_C_DOCS_URL,
 	BUN_OS_SIGNALS_DOCS_URL,
@@ -13,7 +17,10 @@ import {
 	type SignalRuntimeInfo,
 } from './signals.ts';
 import {stringWidth} from './terminal.ts';
-import {nanoseconds} from './runtime.ts';
+import {isNanosecondsAvailable, nanoseconds} from './nanoseconds.ts';
+import {isDeepEqualAvailable} from './deep-equal.ts';
+import {isEscapeHtmlAvailable} from './escape-html.ts';
+import {isPeekAvailable} from './peek.ts';
 import {shouldColorize} from './process.ts';
 
 export interface DoctorProcessSnapshot {
@@ -27,6 +34,9 @@ export interface DoctorProcessSnapshot {
 }
 
 export interface DoctorUtilityRuntime {
+	deepEqualsAvailable: boolean;
+	peekAvailable: boolean;
+	escapeHtmlAvailable: boolean;
 	nanosecondsAvailable: boolean;
 	stringWidthAvailable: boolean;
 	inspectCustomAvailable: boolean;
@@ -36,6 +46,7 @@ export interface DoctorDiagnostics {
 	process: DoctorProcessSnapshot;
 	signals: SignalRuntimeInfo;
 	utilities: DoctorUtilityRuntime;
+	bunWrappers: BunRuntimeCatalogAudit;
 }
 
 export interface DoctorTimingSnapshot {
@@ -44,12 +55,15 @@ export interface DoctorTimingSnapshot {
 	monotonicNs: number;
 }
 
-/** Snapshot Bun.nanoseconds / Bun.stringWidth / inspect.custom availability. */
+/** Snapshot aligned Bun utility wrapper availability. */
 export function getDoctorUtilityRuntime(): DoctorUtilityRuntime {
 	return {
-		nanosecondsAvailable: typeof Bun.nanoseconds === 'function',
+		deepEqualsAvailable: isDeepEqualAvailable(),
+		peekAvailable: isPeekAvailable(),
+		escapeHtmlAvailable: isEscapeHtmlAvailable(),
+		nanosecondsAvailable: isNanosecondsAvailable(),
 		stringWidthAvailable: typeof Bun.stringWidth === 'function',
-		inspectCustomAvailable: typeof Bun.inspect === 'function',
+		inspectCustomAvailable: isInspectCustomAvailable(),
 	};
 }
 
@@ -59,7 +73,7 @@ export function collectDoctorDiagnostics(
 ): DoctorDiagnostics {
 	return {
 		process: {
-			spawnAvailable: processInfo.spawnAvailable,
+			spawnAvailable: isSpawnAvailable(),
 			spawnSyncAvailable: processInfo.spawnSyncAvailable,
 			interactiveSession: processInfo.interactiveSession,
 			stdinIsTTY: processInfo.stdinIsTTY,
@@ -69,6 +83,7 @@ export function collectDoctorDiagnostics(
 		},
 		signals: getSignalRuntimeInfo(),
 		utilities: getDoctorUtilityRuntime(),
+		bunWrappers: auditBunRuntimeCatalog(),
 	};
 }
 
@@ -136,6 +151,13 @@ export function formatDoctorDiagnosticsTable(
 			api: 'Ctrl+C docs',
 			value: BUN_CTRL_C_DOCS_URL.replace('https://', ''),
 		},
+		...diagnostics.bunWrappers.entries.map(entry => ({
+			area: 'wrapper',
+			api: entry.bunApi,
+			value: entry.available
+				? (entry.guideUrl ?? entry.docsUrl).replace('https://', '')
+				: 'missing',
+		})),
 	];
 
 	const colWidths = {

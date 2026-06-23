@@ -1,9 +1,12 @@
 /**
  * Bun.inspect custom formatters via Symbol.for('nodejs.util.inspect.custom').
- * @see https://bun.sh/docs/api/utils#bun-inspect
+ * @see https://bun.com/docs/runtime/utils#bun-inspect-custom
  */
 
+import {BUN_INSPECT_DOCS_URL} from './inspect.ts';
 import {shouldColorize} from './process.ts';
+
+export {BUN_INSPECT_DOCS_URL};
 
 /** Node/Bun inspect custom symbol (same as `util.inspect.custom`). */
 export const INSPECT_CUSTOM = Symbol.for('nodejs.util.inspect.custom');

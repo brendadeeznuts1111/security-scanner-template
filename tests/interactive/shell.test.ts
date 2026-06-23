@@ -12,7 +12,9 @@ function testRegistry(configs: DomainConfig[]): DomainRegistry {
 	const byDomain = new Map(configs.map(config => [config.domain, config]));
 
 	return {
+		root: process.cwd(),
 		async loadAll() {},
+		async ensureDomain() {},
 		get(domain: string) {
 			const config = byDomain.get(domain);
 			if (!config) throw new Error(`Unknown domain: ${domain}`);
@@ -32,6 +34,22 @@ function testRegistry(configs: DomainConfig[]): DomainRegistry {
 		},
 		watch() {},
 		unwatch() {},
+		async checkPackageVersions() {
+			return [];
+		},
+		async scanPatterns() {
+			return [];
+		},
+		async loadThreatFeed() {},
+		checkPackageThreats() {
+			return [];
+		},
+		checkPackagesThreats() {
+			return new Map();
+		},
+		getLoadedThreats() {
+			return [];
+		},
 		async reloadDomain() {
 			return null;
 		},
