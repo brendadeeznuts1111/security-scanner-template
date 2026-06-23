@@ -6,6 +6,7 @@ import {loadPackageSnapshot, toSecurityPackage} from '../domains/snapshot.ts';
 import * as supplyChain from '../domains/supply-chain.ts';
 import type {ReportFormat} from '../report/index.ts';
 import {createAsyncDebouncer} from '../utils/debounce.ts';
+import {onInterruptSignals, waitForInterruptSignal} from '../utils/signals.ts';
 import {createTimer} from '../utils/timing.ts';
 
 export interface WatchOptions {
@@ -18,6 +19,8 @@ export interface WatchOptions {
 interface WatchSession {
 	watchers: FSWatcher[];
 	abort: () => void;
+	/** Remove SIGINT/SIGTERM listeners registered by {@link startWatch}. */
+	disposeSignals: () => void;
 }
 
 export {createDebouncer, createAsyncDebouncer} from '../utils/debounce.ts';
@@ -124,10 +127,9 @@ export function startWatch(options: WatchOptions = {}): WatchSession {
 		console.error('[watch] shutting down.');
 	};
 
-	process.on('SIGINT', shutdown);
-	process.on('SIGTERM', shutdown);
+	const disposeSignals = onInterruptSignals(shutdown);
 
-	return {watchers, abort: shutdown};
+	return {watchers, abort: shutdown, disposeSignals};
 }
 
 /**
@@ -135,12 +137,10 @@ export function startWatch(options: WatchOptions = {}): WatchSession {
  */
 export async function watchSupplyChain(options: WatchOptions = {}): Promise<void> {
 	const session = startWatch(options);
-	await new Promise<void>(resolve => {
-		const onExit = () => {
-			session.abort();
-			resolve();
-		};
-		process.once('SIGINT', onExit);
-		process.once('SIGTERM', onExit);
-	});
+	try {
+		await waitForInterruptSignal();
+	} finally {
+		session.abort();
+		session.disposeSignals();
+	}
 }
