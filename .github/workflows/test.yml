@@ -44,7 +44,7 @@ jobs:
 
       - name: Run quality checks
         if: matrix.script == 'check'
-        run: bun run lint && bun run typecheck && bun run test:junit
+        run: bun run lint && bun run typecheck && bun run ground-truth:gate && bun run test:junit
 
       - name: Upload JUnit report
         if: matrix.script == 'check'

@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "entryCount": 16,
+  "refCount": 37,
+  "requiredXrefIds": [
+    "workflow.loop",
+    "service.network",
+    "intel.semver",
+    "scan.patterns",
+    "feature.intel-dns",
+    "utils.signals",
+    "intel.tls",
+    "ground-truth.catalog",
+    "repo.bun",
+    "repo.effect"
+  ],
+  "entries": [
+    {
+      "xrefId": "workflow.loop",
+      "refPaths": [
+        "bun:docs/guides/process/nanoseconds.mdx",
+        "bun:docs/guides/process/os-signals.mdx",
+        "bun:docs/runtime/watch.mdx",
+        "effect:packages/effect/src/Layer.ts",
+        "effect:packages/effect/src/Schedule.ts",
+        "effect:packages/platform/src/Command.ts"
+      ],
+      "localModules": [
+        "src/cli/workflow.ts",
+        "src/workflow/loop.ts",
+        "src/workflow/output.ts",
+        "src/workflow/scanners.ts"
+      ]
+    },
+    {
+      "xrefId": "service.network",
+      "refPaths": [
+        "bun:docs/runtime/http/server.mdx",
+        "bun:docs/runtime/watch.mdx",
+        "effect:packages/effect/src/Deferred.ts",
+        "effect:packages/effect/src/Schedule.ts"
+      ],
+      "localModules": [
+        "src/cli/network.ts",
+        "src/network/loop.ts",
+        "src/network/tick.ts"
+      ]
+    },
+    {
+      "xrefId": "intel.semver",
+      "refPaths": [
+        "bun:docs/cli/install.mdx",
+        "bun:docs/runtime/semver.mdx",
+        "effect:packages/effect/src/ParseResult.ts"
+      ],
+      "localModules": [
+        "src/cli/scan-packages.ts",
+        "src/intel/semver-checks.ts",
+        "src/provider/semver-matcher.ts"
+      ]
+    },
+    {
+      "xrefId": "scan.patterns",
+      "refPaths": [
+        "bun:docs/api/transpiler.mdx",
+        "bun:docs/bundler/plugins.mdx"
+      ],
+      "localModules": [
+        "src/cli/scan-patterns.ts",
+        "src/scan/patterns/index.ts"
+      ]
+    },
+    {
+      "xrefId": "feature.intel-dns",
+      "refPaths": [
+        "bun:docs/api/dns.mdx",
+        "effect:packages/effect/src/Effect.ts"
+      ],
+      "localModules": [
+        "src/intel/dns-threat.ts",
+        "src/threat-intel/dns.ts"
+      ]
+    },
+    {
+      "xrefId": "utils.signals",
+      "refPaths": [
+        "bun:docs/guides/process/ctrl-c.mdx",
+        "bun:docs/guides/process/os-signals.mdx"
+      ],
+      "localModules": [
+        "src/utils/signals.ts",
+        "src/workflow/loop.ts"
+      ]
+    },
+    {
+      "xrefId": "intel.tls",
+      "refPaths": [
+        "bun:docs/api/tls.mdx",
+        "bun:packages/bun-types/docs/api/tls.md"
+      ],
+      "localModules": [
+        "src/cli/tls.ts",
+        "src/intel/tls/inspector.ts"
+      ]
+    },
+    {
+      "xrefId": "bun.transpiler",
+      "refPaths": [
+        "bun:docs/api/transpiler.mdx",
+        "bun:docs/bundler/plugins.mdx"
+      ],
+      "localModules": [
+        "src/build/security-plugin.ts",
+        "src/scan/transpiler.ts"
+      ]
+    },
+    {
+      "xrefId": "bun.spawn",
+      "refPaths": [
+        "bun:docs/guides/process/spawn.mdx",
+        "bun:docs/runtime/child-process.mdx"
+      ],
+      "localModules": [
+        "src/scan/tools.ts",
+        "src/utils/process.ts"
+      ]
+    },
+    {
+      "xrefId": "bun.install",
+      "refPaths": [
+        "bun:docs/cli/install.mdx",
+        "bun:docs/pm/cli/install.mdx"
+      ],
+      "localModules": [
+        "src/intel/semver-checks.ts",
+        "src/utils/install-runtime.ts"
+      ]
+    },
+    {
+      "xrefId": "bun.test",
+      "refPaths": [
+        "bun:docs/test/writing-tests.mdx",
+        "bun:packages/bun-types/docs/test.md"
+      ],
+      "localModules": [
+        "src/utils/bun-test-catalog.ts"
+      ]
+    },
+    {
+      "xrefId": "utils.doctor-diagnostics",
+      "refPaths": [
+        "bun:docs/runtime/utils.mdx",
+        "effect:packages/effect/src/Inspectable.ts"
+      ],
+      "localModules": [
+        "src/utils/doctor-diagnostics.ts",
+        "src/utils/runtime.ts"
+      ]
+    },
+    {
+      "xrefId": "xref.loop",
+      "refPaths": [
+        "bun:docs/runtime/templating/create.mdx",
+        "effect:packages/effect/src/Graph.ts"
+      ],
+      "localModules": [
+        "src/xref/index.ts",
+        "src/xref/loop-cli.ts"
+      ]
+    },
+    {
+      "xrefId": "repo.bun",
+      "refPaths": [
+        "bun:README.md"
+      ],
+      "localModules": [
+        "src/utils/ground-truth-catalog.ts",
+        "src/utils/runtime.ts"
+      ]
+    },
+    {
+      "xrefId": "repo.effect",
+      "refPaths": [
+        "effect:README.md"
+      ],
+      "localModules": [
+        "src/utils/ground-truth-catalog.ts"
+      ]
+    },
+    {
+      "xrefId": "ground-truth.catalog",
+      "refPaths": [
+        "bun:docs/runtime/utils.mdx",
+        "effect:packages/effect/README.md"
+      ],
+      "localModules": [
+        "src/utils/ground-truth-catalog.ts"
+      ]
+    }
+  ],
+  "timestamp": "2026-06-23T09:35:51.001Z",
+  "fingerprint": "a96d45b11e7ef49cbd733d61138ce27251581c6c21ee04f3d8bebd1e98cb7dd5",
+  "goalOk": true
+}
