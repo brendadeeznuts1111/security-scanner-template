@@ -4,6 +4,7 @@ import {validateBunRuntime, type BunRuntimeInfo} from '../utils/runtime.ts';
 import {validateCrossRefApis, type CrossRefValidation} from '../xref/index.ts';
 import {detectConfigDrift} from './drift.ts';
 import {loadTemplate, TEMPLATE_PATH, type LoadedDomain} from './loader.ts';
+import {resolveEncryptedStorePath} from './vault-paths.ts';
 import {ERROR_CODES, getErrorCode} from '../color/codes.ts';
 import {hasMasterKey} from './master-key.ts';
 import {hasEncryptedStore} from './encrypted-store.ts';
@@ -43,6 +44,18 @@ import {
 	type DomainFieldSection,
 	type DomainFieldValueRow,
 } from '../domain/field-matrix.ts';
+import {extractPackageMetadata, type PackageMetadata} from './package-metadata.ts';
+import {
+	buildDoctorSnapshotDocument,
+	compareDoctorSnapshots,
+	loadPreviousDoctorSnapshotIndex,
+	writeDoctorSnapshots,
+	type DoctorSnapshotDocument,
+} from '../domain/doctor-snapshot.ts';
+import {
+	getBunSnapshotRuntimeInfo,
+	type BunSnapshotRuntimeInfo,
+} from '../utils/snapshot-runtime.ts';
 
 export interface DoctorIssue {
 	domain: string;
@@ -80,12 +93,26 @@ export interface DoctorDomainReport {
 	branding?: DomainBrandingProfile;
 	/** Resolved field values when matrix collection is enabled. */
 	matrix?: DomainFieldValueRow[];
+	/** Secret inventory names only (no values) for snapshot metadata. */
+	secretInventoryNames?: string[];
 }
 
 export interface DoctorMatrixReport {
 	template: DomainFieldValueRow[];
 	domains: Record<string, DomainFieldValueRow[]>;
 	layerCounts: ReturnType<typeof matrixLayerCounts>;
+}
+
+export interface DoctorSnapshotReport {
+	ok: boolean;
+	updateRequested: boolean;
+	matcherAvailable: boolean;
+	written: string[];
+	compared: boolean;
+	missing: string[];
+	changed: string[];
+	extra: string[];
+	document?: DoctorSnapshotDocument;
 }
 
 export interface DoctorCheckOptions {
@@ -95,6 +122,11 @@ export interface DoctorCheckOptions {
 	matrix?: boolean;
 	/** Optional matrix section filter. */
 	matrixSection?: DomainFieldSection;
+	/** Build doctor snapshot metadata (always when true). */
+	snapshot?: boolean;
+	/** Write snapshot files (`bun test --update-snapshots` compatible flag). */
+	updateSnapshots?: boolean;
+	argv?: readonly string[];
 }
 
 export interface DoctorResult {
@@ -107,6 +139,9 @@ export interface DoctorResult {
 	runtime: DoctorRuntimeReport;
 	templateCoverage: DoctorTemplateCoverage;
 	matrix?: DoctorMatrixReport;
+	packageMetadata?: PackageMetadata | null;
+	snapshotRuntime?: BunSnapshotRuntimeInfo;
+	snapshot?: DoctorSnapshotReport;
 }
 
 const SUPPORTED_PASSWORD_ALGORITHMS = new Set(['bcrypt', 'argon2id', 'argon2i', 'argon2d']);
@@ -195,7 +230,7 @@ async function validatePrivateFile(
 	const hasPhaseA = Array.isArray(privateRaw.secrets?.inventory);
 
 	if (hasPhaseB) {
-		const storePath = path.resolve(path.dirname(publicPath), privateRaw.encryptedStore as string);
+		const storePath = resolveEncryptedStorePath(privatePath, privateRaw.encryptedStore as string);
 		if (!(await hasEncryptedStore(storePath))) {
 			report('encryptedStore', `Encrypted store not found at ${storePath}`, 'error');
 		}
@@ -447,8 +482,12 @@ export async function checkAllDomains(
 	const {applyDefaults} = await import('./defaults.ts');
 	const files = discoverDomainFiles(root);
 
-	const collectMatrix = options.matrix === true;
+	const collectMatrix = options.matrix === true || options.snapshot === true;
+	const collectSnapshot = options.snapshot === true;
+	const snapshotRuntime = getBunSnapshotRuntimeInfo(options.argv);
+	const updateSnapshots = options.updateSnapshots === true || snapshotRuntime.updateRequested;
 	const matrixSection = options.matrixSection;
+	const packageMetadata = await extractPackageMetadata(`${root}/package.json`);
 	const domains: DoctorDomainReport[] = [];
 	let errors = 0;
 	let warnings = 0;
@@ -580,8 +619,12 @@ export async function checkAllDomains(
 
 		let branding: DomainBrandingProfile | undefined;
 		let matrix: DomainFieldValueRow[] | undefined;
+		let secretInventoryNames: string[] | undefined;
 		if (loaded) {
 			branding = domainBrandingProfile(loaded.config);
+			secretInventoryNames = loaded.config.secrets.inventory
+				.map(entry => entry.name)
+				.filter(name => name.length > 0);
 			if (collectMatrix) {
 				matrix = domainFieldValueRows(loaded.config, {section: matrixSection});
 				matrixDomains[domainName] = matrix;
@@ -597,6 +640,7 @@ export async function checkAllDomains(
 			issues,
 			branding,
 			matrix,
+			secretInventoryNames,
 		});
 	}
 
@@ -727,6 +771,74 @@ export async function checkAllDomains(
 		};
 	}
 
+	let snapshotReport: DoctorSnapshotReport | undefined;
+	if (collectSnapshot) {
+		const document = buildDoctorSnapshotDocument(
+			{
+				ok: errors === 0 && files.length > 0,
+				domains,
+				errors,
+				warnings,
+				crossDomainIssues: [],
+				peerMetaIssues: [],
+				runtime: {} as DoctorRuntimeReport,
+				templateCoverage,
+				matrix: matrixReport,
+				packageMetadata,
+				snapshotRuntime,
+			},
+			{packageMetadata, snapshotRuntime, includeMatrix: collectMatrix},
+		);
+
+		const previous = await loadPreviousDoctorSnapshotIndex(root);
+		const comparison = previous
+			? compareDoctorSnapshots(document, previous)
+			: {ok: true, missing: [], changed: [], extra: []};
+
+		let written: string[] = [];
+		if (updateSnapshots) {
+			written = await writeDoctorSnapshots(root, document);
+		} else if (!previous) {
+			crossDomainIssues.push({
+				domain: '*',
+				path: `${root}/.security/snapshots/doctor`,
+				field: 'snapshot.index',
+				message:
+					'No doctor snapshot index found — run with --update-snapshots (or -u) to create baseline',
+				severity: 'warning',
+				code: 'DOCTOR_SNAPSHOT_MISSING',
+			});
+			warnings += 1;
+		} else if (!comparison.ok) {
+			const parts = [
+				comparison.missing.length ? `missing: ${comparison.missing.join(', ')}` : '',
+				comparison.changed.length ? `changed: ${comparison.changed.join(', ')}` : '',
+				comparison.extra.length ? `extra: ${comparison.extra.join(', ')}` : '',
+			].filter(Boolean);
+			crossDomainIssues.push({
+				domain: '*',
+				path: `${root}/.security/snapshots/doctor/index.json`,
+				field: 'snapshot.drift',
+				message: `Doctor snapshot drift detected (${parts.join('; ')}) — run with --update-snapshots to refresh`,
+				severity: 'warning',
+				code: 'DOCTOR_SNAPSHOT_DRIFT',
+			});
+			warnings += 1;
+		}
+
+		snapshotReport = {
+			ok: comparison.ok || updateSnapshots,
+			updateRequested: updateSnapshots,
+			matcherAvailable: snapshotRuntime.matcherAvailable,
+			written,
+			compared: !updateSnapshots && previous !== null,
+			missing: comparison.missing,
+			changed: comparison.changed,
+			extra: comparison.extra,
+			document,
+		};
+	}
+
 	return {
 		ok: errors === 0 && files.length > 0,
 		domains,
@@ -737,6 +849,9 @@ export async function checkAllDomains(
 		runtime,
 		templateCoverage,
 		matrix: matrixReport,
+		packageMetadata,
+		snapshotRuntime: collectSnapshot ? snapshotRuntime : undefined,
+		snapshot: snapshotReport,
 	};
 }
 

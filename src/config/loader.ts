@@ -6,6 +6,7 @@ import {getMasterKey} from './master-key.ts';
 import {masterKeyLookup} from '../domain/secrets-service.ts';
 import {loadEncryptedStore} from './encrypted-store.ts';
 import {createDomainSecurity, type DomainSecurity} from './security.ts';
+import {privateInventoryPath, resolveEncryptedStorePath} from './vault-paths.ts';
 import type {DomainConfig, LoadedDomain, SecretEntry} from './types.ts';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -36,10 +37,6 @@ interface PrivateInventoryMetadata {
 	secrets?: {
 		inventory?: SecretEntry[];
 	};
-}
-
-function privateInventoryPath(domainFilePath: string, domain: string): string {
-	return path.resolve(path.dirname(domainFilePath), '..', '.vault', `${domain}.inventory.json5`);
 }
 
 function parsePrivateInventory(raw: unknown): PrivateInventoryMetadata {
@@ -76,7 +73,7 @@ async function loadPrivateInventory(
 
 	// Phase B: encrypted store backed by a Bun.secrets master key.
 	if (metadata.encryptedStore && metadata.masterKeyName) {
-		const storePath = path.resolve(path.dirname(domainFilePath), metadata.encryptedStore);
+		const storePath = resolveEncryptedStorePath(privatePath, metadata.encryptedStore);
 		const lookup = masterKeyLookup(config, metadata.masterKeyName);
 		const masterKey = await getMasterKey(lookup);
 		if (!masterKey) {

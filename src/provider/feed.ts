@@ -1,6 +1,6 @@
 import type {FeedFetchProtocol} from '../config/types.ts';
 import {FEATURE_FEED_WEBSOCKET, FEATURE_INTEL_DNS} from '../features/index.ts';
-import {getCachedFeed, type CacheOptions} from './cache.ts';
+import {getCachedFeed, type CacheFetcher, type CacheOptions} from './cache.ts';
 import {loadWebSocketFeed} from './feed-websocket.ts';
 import {isJSONLSource, parseJSONLFeed, streamJSONLFeed} from './feed-jsonl.ts';
 import {resolveFeedProtocol} from '../net/protocol.ts';
@@ -69,13 +69,16 @@ async function buildAuthHeaders(config: FeedConfig): Promise<Record<string, stri
 	return headers;
 }
 
-function buildRemoteFeedFetcher(config: FeedConfig): () => Promise<Response> {
-	return async () => {
+function buildRemoteFeedFetcher(config: FeedConfig): CacheFetcher {
+	return async init => {
 		const limit = FEED_RATE_LIMITER.attempt();
 		if (!limit.allowed) {
 			throw new Error(`Threat feed rate limit exceeded; retry after ${limit.retryAfterMs}ms`);
 		}
 		const headers = await buildAuthHeaders(config);
+		if (init?.ifNoneMatch) {
+			headers['If-None-Match'] = init.ifNoneMatch;
+		}
 		const protocol = resolveFeedProtocol(config.protocol);
 		return fetchWithRetry(config.remote!, {headers, protocol});
 	};

@@ -80,6 +80,61 @@ test('refetches when TTL is expired', async () => {
 	expect(calls).toBe(2);
 });
 
+test('sends If-None-Match when refetching stale cache with etag', async () => {
+	let ifNoneMatch: string | undefined;
+	const fetcher = async (init?: {ifNoneMatch?: string}) => {
+		ifNoneMatch = init?.ifNoneMatch;
+		return feedResponse({rules: []});
+	};
+
+	await getCachedFeed(TEST_URL, {ttlMs: 60_000, cachePath: currentCachePath}, fetcher);
+
+	const file = Bun.file(currentCachePath);
+	const {decompressText, compressText} = await import('../../src/crypto/compress.ts');
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	const entry = JSON.parse(decompressText(bytes)) as {fetchedAt: number; etag?: string};
+	entry.fetchedAt = Date.now() - 120_000;
+	entry.etag = '"abc123"';
+	await Bun.write(currentCachePath, compressText(JSON.stringify(entry), 'zstd'));
+
+	await getCachedFeed(TEST_URL, {ttlMs: 60_000, cachePath: currentCachePath}, fetcher);
+	expect(ifNoneMatch).toBe('"abc123"');
+});
+
+test('keeps cached data on 304 Not Modified', async () => {
+	let calls = 0;
+	const fetcher = async (init?: {ifNoneMatch?: string}) => {
+		calls++;
+		if (init?.ifNoneMatch) {
+			return new Response(null, {status: 304, headers: {etag: '"abc123"'}});
+		}
+		return feedResponse({generation: 1});
+	};
+
+	const first = await getCachedFeed(
+		TEST_URL,
+		{ttlMs: 60_000, cachePath: currentCachePath},
+		fetcher,
+	);
+	expect(first).toEqual({generation: 1});
+
+	const file = Bun.file(currentCachePath);
+	const {decompressText, compressText} = await import('../../src/crypto/compress.ts');
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	const entry = JSON.parse(decompressText(bytes)) as {fetchedAt: number; etag?: string};
+	entry.fetchedAt = Date.now() - 120_000;
+	entry.etag = '"abc123"';
+	await Bun.write(currentCachePath, compressText(JSON.stringify(entry), 'zstd'));
+
+	const second = await getCachedFeed(
+		TEST_URL,
+		{ttlMs: 60_000, cachePath: currentCachePath},
+		fetcher,
+	);
+	expect(second).toEqual({generation: 1});
+	expect(calls).toBe(2);
+});
+
 test('isolates caches by domain', async () => {
 	let callsA = 0;
 	let callsB = 0;

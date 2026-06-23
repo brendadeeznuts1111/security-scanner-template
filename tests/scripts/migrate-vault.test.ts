@@ -2,9 +2,11 @@ import {mkdtempSync, mkdirSync, rmSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {migrate} from '../../scripts/migrate-vault.ts';
-import {getMasterKey} from '../../src/config/master-key.ts';
+import {checkAllDomains} from '../../src/config/doctor.ts';
 import {loadEncryptedStore} from '../../src/config/encrypted-store.ts';
+import {loadDomainFile} from '../../src/config/loader.ts';
+import {getMasterKey} from '../../src/config/master-key.ts';
+import {migrate} from '../../scripts/migrate-vault.ts';
 
 const TEST_DIR = mkdtempSync(path.join(tmpdir(), 'migrate-vault-test-'));
 
@@ -99,6 +101,16 @@ test('migrate splits inline inventory into encrypted store and metadata', async 
 		secrets?: {inventory?: unknown};
 	};
 	expect(publicRaw.secrets?.inventory).toBeUndefined();
+
+	const loaded = await loadDomainFile(domainFile);
+	expect(loaded.config.secrets.inventory.map(entry => entry.name)).toEqual([
+		'api-key',
+		'db-password',
+	]);
+
+	const doctor = await checkAllDomains(TEST_DIR, {peerMeta: false});
+	const domainReport = doctor.domains.find(entry => entry.domain === domain);
+	expect(domainReport?.issues.filter(issue => issue.severity === 'error')).toHaveLength(0);
 });
 
 function json5Stringify(value: unknown): string {

@@ -21,6 +21,12 @@ export interface CacheOptions extends CachePathOptions {
 	ttlMs: number;
 }
 
+export interface CacheFetcherInit {
+	ifNoneMatch?: string;
+}
+
+export type CacheFetcher = (init?: CacheFetcherInit) => Promise<Response>;
+
 function defaultCacheDir(): string {
 	const xdg = process.env.XDG_CACHE_HOME;
 	if (xdg) return path.join(xdg, 'bun-security-planner');
@@ -121,18 +127,14 @@ async function revalidateAsync(
 	}
 }
 
-async function fetchWithConditionalGet(
-	fetcher: () => Promise<Response>,
-	etag?: string,
-): Promise<Response> {
-	if (!etag) return fetcher();
-	return fetcher();
+async function fetchWithConditionalGet(fetcher: CacheFetcher, etag?: string): Promise<Response> {
+	return fetcher(etag ? {ifNoneMatch: etag} : undefined);
 }
 
 export async function getCachedFeed(
 	url: string,
 	options: CacheOptions,
-	fetcher: () => Promise<Response>,
+	fetcher: CacheFetcher,
 ): Promise<unknown> {
 	const ttlMs = options.ttlMs;
 	if (ttlMs <= 0) {
@@ -150,6 +152,11 @@ export async function getCachedFeed(
 	}
 
 	const response = await fetchWithConditionalGet(fetcher, entry?.etag);
+	if (response.status === 304 && entry) {
+		await writeCacheEntry(url, {...entry, fetchedAt: now}, options);
+		return entry.data;
+	}
+
 	const data = await response.json();
 	await writeCacheEntry(
 		url,
@@ -157,7 +164,7 @@ export async function getCachedFeed(
 			url,
 			fetchedAt: now,
 			data,
-			etag: response.headers.get('etag') ?? undefined,
+			etag: response.headers.get('etag') ?? entry?.etag,
 		},
 		options,
 	);
