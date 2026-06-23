@@ -35,6 +35,12 @@ test('getBunRuntimeCatalogEntry resolves deepEquals and spawn entries', () => {
 	expect(getBunRuntimeCatalogEntry('runFilter')?.guideUrl).toBe(
 		'https://bun.com/docs/runtime#filtering',
 	);
+	expect(getBunRuntimeCatalogEntry('bunInit')?.docsUrl).toBe(
+		'https://bun.com/docs/runtime/templating/init',
+	);
+	expect(getBunRuntimeCatalogEntry('bunCreate')?.docsUrl).toBe(
+		'https://bun.com/docs/runtime/templating/create',
+	);
 });
 
 test('catalog index URL points at runtime utils docs', () => {

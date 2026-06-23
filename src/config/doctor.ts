@@ -955,7 +955,7 @@ export async function checkAllDomains(
 		systemCA,
 		terminalIO,
 		platform,
-		diagnostics: collectDoctorDiagnostics(),
+		diagnostics: await collectDoctorDiagnostics(undefined, root),
 		install,
 		configFormat,
 	};

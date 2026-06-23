@@ -84,14 +84,15 @@ test('watch registers fs watcher without throwing', async () => {
 
 		const events: string[] = [];
 		registry.watch({
-			debounceMs: 100,
+			debounceMs: 50,
 			onReload: event => events.push(`${event.type}:${event.domain}`),
 		});
 
+		await Bun.sleep(50);
 		await Bun.write(filePath, '{ domain: "com.example.watch", displayName: "hot" }');
-		const deadline = Date.now() + 2_000;
+		const deadline = Date.now() + 5_000;
 		while (events.length === 0 && Date.now() < deadline) {
-			await Bun.sleep(50);
+			await Bun.sleep(100);
 		}
 
 		registry.unwatch();

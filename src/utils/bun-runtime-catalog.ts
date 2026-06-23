@@ -32,6 +32,8 @@ import {
 } from './signals.ts';
 import {BUN_JSON5_DOCS_URL, isJson5Available} from './json5-config.ts';
 import {BUN_TEST_API_REFERENCE_URL, isBunTestAvailable} from './bun-test-catalog.ts';
+import {BUN_CREATE_DOCS_URL, isBunCreateArtifactSpecAvailable} from './bun-create-catalog.ts';
+import {BUN_INIT_DOCS_URL, isBunInitCatalogAvailable} from '../domain/bun-init-catalog.ts';
 import {
 	BUN_PM_FILTER_DOCS_URL,
 	BUN_RUNTIME_FILTER_DOCS_URL,
@@ -186,6 +188,37 @@ export const BUN_RUNTIME_CATALOG: readonly BunRuntimeCatalogEntry[] = [
 			'isBunTestAvailable',
 		],
 		isAvailable: isBunTestAvailable,
+	},
+	{
+		id: 'bunInit',
+		bunApi: 'bun init',
+		module: 'src/domain/bun-init-catalog.ts',
+		guideUrl: BUN_INIT_DOCS_URL,
+		docsUrl: BUN_INIT_DOCS_URL,
+		exports: [
+			'discoverDomainPackageInits',
+			'planDomainPackageInit',
+			'validateDomainPackageInits',
+			'auditDomainPackageInits',
+			'formatBunInitCommand',
+			'buildDomainPackageJson',
+		],
+		isAvailable: isBunInitCatalogAvailable,
+	},
+	{
+		id: 'bunCreate',
+		bunApi: 'bun create',
+		module: 'src/utils/bun-create-catalog.ts',
+		guideUrl: BUN_CREATE_DOCS_URL,
+		docsUrl: BUN_CREATE_DOCS_URL,
+		exports: [
+			'BUN_CREATE_ARTIFACT_SPEC',
+			'walkArtifactSpecLoop',
+			'planArtifactSpecLoop',
+			'validateArtifactSpecCatalog',
+			'auditBunCreateArtifactSpec',
+		],
+		isAvailable: isBunCreateArtifactSpecAvailable,
 	},
 ] as const;
 

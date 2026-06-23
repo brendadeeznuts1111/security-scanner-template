@@ -428,7 +428,7 @@ async function peerMetaDoctorResult(
 			systemCA: getSystemCARuntimeInfo(),
 			terminalIO: getTerminalIORuntimeInfo(),
 			platform: await getPlatformRuntimeInfo(`${root}/package.json`),
-			diagnostics: collectDoctorDiagnostics(),
+			diagnostics: await collectDoctorDiagnostics(undefined, root),
 			install: await getInstallRuntimeInfo(root, installOverride),
 			configFormat: await getConfigFormatRuntimeInfo(root),
 		},

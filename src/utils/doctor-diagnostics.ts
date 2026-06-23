@@ -8,6 +8,8 @@ import {
 	type BunRuntimeCatalogAudit,
 } from './bun-runtime-catalog.ts';
 import {auditBunTestCatalog, type BunTestCatalogAudit} from './bun-test-catalog.ts';
+import {auditBunCreateArtifactSpec, type BunCreateArtifactAudit} from './bun-create-catalog.ts';
+import {auditDomainPackageInits, type DomainPackageInitAudit} from '../domain/bun-init-catalog.ts';
 import {formatTable} from './inspect.ts';
 import {formatInspectCustom, withInspectCustom, isInspectCustomAvailable} from './inspect-custom.ts';
 import {getProcessRuntimeInfo, isSpawnAvailable, type ProcessRuntimeInfo} from './process.ts';
@@ -49,6 +51,8 @@ export interface DoctorDiagnostics {
 	utilities: DoctorUtilityRuntime;
 	bunWrappers: BunRuntimeCatalogAudit;
 	bunTest: BunTestCatalogAudit;
+	bunCreate: BunCreateArtifactAudit;
+	bunInit: DomainPackageInitAudit;
 }
 
 export interface DoctorTimingSnapshot {
@@ -70,9 +74,10 @@ export function getDoctorUtilityRuntime(): DoctorUtilityRuntime {
 }
 
 /** Collect process, signal, and utility diagnostics for doctor / CLI JSON. */
-export function collectDoctorDiagnostics(
+export async function collectDoctorDiagnostics(
 	processInfo: ProcessRuntimeInfo = getProcessRuntimeInfo(),
-): DoctorDiagnostics {
+	root: string = process.cwd(),
+): Promise<DoctorDiagnostics> {
 	return {
 		process: {
 			spawnAvailable: isSpawnAvailable(),
@@ -87,6 +92,8 @@ export function collectDoctorDiagnostics(
 		utilities: getDoctorUtilityRuntime(),
 		bunWrappers: auditBunRuntimeCatalog(),
 		bunTest: auditBunTestCatalog(),
+		bunCreate: auditBunCreateArtifactSpec(root),
+		bunInit: await auditDomainPackageInits(root),
 	};
 }
 
@@ -115,9 +122,7 @@ function padVisibleColumn(text: string, width: number): string {
 /**
  * Terminal table of doctor diagnostics with Bun.stringWidth column padding.
  */
-export function formatDoctorDiagnosticsTable(
-	diagnostics: DoctorDiagnostics = collectDoctorDiagnostics(),
-): string {
+export function formatDoctorDiagnosticsTable(diagnostics: DoctorDiagnostics): string {
 	const rows = [
 		{
 			area: 'spawn',
@@ -168,6 +173,20 @@ export function formatDoctorDiagnosticsTable(
 				? `${group.apis.length} apis`
 				: 'missing',
 		})),
+		{
+			area: 'template',
+			api: 'bun create artifacts',
+			value: diagnostics.bunCreate.ok
+				? `${diagnostics.bunCreate.entries.length} specs`
+				: `${diagnostics.bunCreate.missing.length} missing`,
+		},
+		{
+			area: 'template',
+			api: 'bun init domains',
+			value: diagnostics.bunInit.ok
+				? `${diagnostics.bunInit.domainCount} packages`
+				: `${diagnostics.bunInit.validation.findings.length} findings`,
+		},
 	];
 
 	const colWidths = {
@@ -190,7 +209,7 @@ export type DoctorDiagnosticsInspectable = DoctorDiagnostics & Record<symbol, un
 
 /** Doctor diagnostics object with Bun.inspect.custom table rendering. */
 export function doctorDiagnosticsInspectable(
-	diagnostics: DoctorDiagnostics = collectDoctorDiagnostics(),
+	diagnostics: DoctorDiagnostics,
 ): DoctorDiagnosticsInspectable {
 	return withInspectCustom(diagnostics, depth => {
 		if (depth < 0) {
@@ -201,9 +220,7 @@ export function doctorDiagnosticsInspectable(
 }
 
 /** Render diagnostics via inspect.custom (human doctor footer). */
-export function formatDoctorDiagnosticsInspect(
-	diagnostics: DoctorDiagnostics = collectDoctorDiagnostics(),
-): string {
+export function formatDoctorDiagnosticsInspect(diagnostics: DoctorDiagnostics): string {
 	return formatInspectCustom(doctorDiagnosticsInspectable(diagnostics));
 }
 

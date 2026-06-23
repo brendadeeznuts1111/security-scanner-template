@@ -7,11 +7,11 @@ import {isMainModule} from '../utils/runtime.ts';
 import {spawnInheritAndExit} from '../utils/process.ts';
 
 const BENCH_DIR = path.join(import.meta.dir, '../../bench');
-const SUITES = ['doctor', 'field-matrix', 'domain-load', 'all'] as const;
+const SUITES = ['doctor', 'field-matrix', 'domain-load', 'artifact-spec', 'all'] as const;
 type BenchSuite = (typeof SUITES)[number];
 
 const HELP = `Usage:
-  bun run bench [--suite doctor|field-matrix|domain-load|all] [--json] [--root <path>]
+  bun run bench [--suite doctor|field-matrix|domain-load|artifact-spec|all] [--json] [--root <path>]
   bun sp bench [--suite <name>] [--json] [--root <path>]
 
 Microbenchmarks use mitata (see bench/ and https://bun.sh/docs/project/benchmarking).

@@ -28,7 +28,7 @@ const HELP = `Usage:
   bun sp tls --domain <name> --host <hostname> [--use-system-ca|--no-use-system-ca] [--deep] [--port 443] [--json]
   bun sp doctor [--snapshot] [--update-snapshots|-u] [--fail-on-drift] [--sections vault,policy,concerns,templateDrift,bundles] [--workers <n>] [--baseline-dir <path>] [--matrix] [--branding] [--matrix-section <name>] [--json] [--benchmark] [--install-cpu <arch>] [--install-os <os>] [--root <path>]
   bun sp doctor --json | fx    # piped pagers work on Bun >= 1.3.14
-  bun sp bench [--suite doctor|field-matrix|domain-load|all] [--json] [--root <path>]
+  bun sp bench [--suite doctor|field-matrix|domain-load|artifact-spec|all] [--json] [--root <path>]
   bun sp scan --domain <name> [--tool trivy] [--json] [-- <scanner-args...>]
   bun sp scan packages --domain <name> [--root <path>] [--deep] [--probe] [--transitive] [--path src/] [--threat-feed] [--feed-url <url>] [--fix] [--json]
   bun sp scan source --domain <name> [--path src/] [--root <path>] [--fix] [--json]
@@ -392,7 +392,7 @@ async function main(): Promise<void> {
 			await runBenchCli({
 				suite:
 					typeof values.suite === 'string' &&
-					['doctor', 'field-matrix', 'domain-load', 'all'].includes(values.suite)
+					['doctor', 'field-matrix', 'domain-load', 'artifact-spec', 'all'].includes(values.suite)
 						? (values.suite as import('./bench.ts').BenchSuite)
 						: 'all',
 				json: values.json === true,

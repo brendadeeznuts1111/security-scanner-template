@@ -2,7 +2,6 @@ import {parseArgs} from 'util';
 import {colorize, TERMINAL} from '../color/index.ts';
 import {
 	CROSS_REF_CATALOG,
-	crossRefIds,
 	getCrossRef,
 	getCrossRefsByCli,
 	getCrossRefsByConfigField,
@@ -12,11 +11,11 @@ import {
 	getFeatureCrossRefMap,
 	getRelatedCrossRefs,
 	listCrossRefs,
-	planCrossRefLoop,
 	validateCrossRefApis,
-	walkCrossRefLoop,
 	type IntegrationLayer,
 } from '../xref/index.ts';
+import {getArtifactSpecEntry} from '../utils/bun-create-catalog.ts';
+import {executeLoopCli, formatLoopCliJson, type LoopKind} from '../xref/loop-cli.ts';
 import {ALL_FEATURES, type FeatureName} from '../features/index.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 
@@ -64,6 +63,15 @@ async function main(): Promise<void> {
 			depth: {type: 'string'},
 			bidirectional: {type: 'boolean'},
 			validate: {type: 'boolean'},
+			'dry-run': {type: 'boolean'},
+			dryrun: {type: 'boolean'},
+			'steps-only': {type: 'boolean'},
+			'no-include-start': {type: 'boolean'},
+			benchmark: {type: 'boolean'},
+			quiet: {type: 'boolean', short: 'q'},
+			count: {type: 'boolean'},
+			kind: {type: 'string'},
+			root: {type: 'string'},
 			json: {type: 'boolean'},
 			help: {type: 'boolean', short: 'h'},
 		},
@@ -75,7 +83,9 @@ async function main(): Promise<void> {
   bun run xref list [--layer <layer>] [--feature <name>] [--module <path>]
   bun run xref get --id <cross-ref-id>
   bun run xref related --id <cross-ref-id>
-  bun run xref loop --id <cross-ref-id> [--depth <n>] [--bidirectional]
+  bun run xref loop --id <id> [--kind xref|artifact] [--depth <n>] [--bidirectional]
+      [--dry-run] [--steps-only] [--no-include-start] [--validate] [--benchmark]
+      [--count] [--quiet] [--json] [--root <path>]
   bun run xref features [--json]
   bun run xref config --config <field>
   bun run xref cli --cli <command>
@@ -90,7 +100,7 @@ Features: ${ALL_FEATURES.join(', ')}`);
 
 	const command = positionals[0] ?? 'list';
 
-	if (command === 'validate' || values.validate) {
+	if (command === 'validate' || (values.validate === true && command !== 'loop')) {
 		const result = validateCrossRefApis();
 		if (values.json) {
 			console.log(JSON.stringify(result, null, 2));
@@ -179,47 +189,114 @@ Features: ${ALL_FEATURES.join(', ')}`);
 			process.exit(1);
 		}
 
-		const maxDepth = values.depth ? Number.parseInt(values.depth, 10) : Number.POSITIVE_INFINITY;
-		const loopOptions = {
-			maxDepth: Number.isFinite(maxDepth) ? maxDepth : Number.POSITIVE_INFINITY,
+		const kindRaw = typeof values.kind === 'string' ? values.kind : 'xref';
+		if (kindRaw !== 'xref' && kindRaw !== 'artifact') {
+			console.error(
+				colorize(TERMINAL.scannerFatal, `[xref] --kind must be xref or artifact (got "${kindRaw}")`),
+			);
+			process.exit(1);
+		}
+
+		const maxDepth = values.depth ? Number.parseInt(values.depth, 10) : undefined;
+		const dryRun = values['dry-run'] === true || values.dryrun === true;
+		const quiet = values.quiet === true;
+		const result = executeLoopCli({
+			id,
+			kind: kindRaw as LoopKind,
+			maxDepth,
 			bidirectional: values.bidirectional ?? false,
-			includeStart: true,
-		};
+			includeStart: values['no-include-start'] !== true,
+			dryRun,
+			stepsOnly: values['steps-only'] === true,
+			validate: values.validate === true,
+			benchmark: values.benchmark === true,
+			quiet,
+			count: values.count === true,
+			json: values.json === true,
+			root: typeof values.root === 'string' ? values.root : process.cwd(),
+		});
+
+		if (values.count === true && !values.json) {
+			console.log(String(result.count));
+			process.exit(result.validation && !result.validation.ok ? 1 : 0);
+		}
 
 		if (values.json) {
-			console.log(
-				JSON.stringify(
-					{
-						startId: id,
-						steps: planCrossRefLoop(id, loopOptions),
-						entries: walkCrossRefLoop(id, loopOptions),
-					},
-					null,
-					2,
-				),
-			);
-		} else {
-			const steps = planCrossRefLoop(id, loopOptions);
+			console.log(formatLoopCliJson(result));
+			process.exit(result.validation && !result.validation.ok ? 1 : 0);
+		}
+
+		if (values['steps-only'] === true) {
+			for (const step of result.steps) {
+				console.log(step.id);
+			}
+			process.exit(result.validation && !result.validation.ok ? 1 : 0);
+		}
+
+		if (!quiet) {
+			const mode = dryRun ? 'dry-run' : result.kind;
+			const depthNote = values.bidirectional ? ' (bidirectional)' : '';
+			const benchNote =
+				result.benchmarkNs !== undefined ? ` · ${result.benchmarkNs}ns` : '';
 			console.log(
 				colorize(
 					TERMINAL.muted,
-					`[xref] loop from ${id} — ${steps.length} step(s)${values.bidirectional ? ' (bidirectional)' : ''}`,
+					`[xref] loop ${mode} from ${id} — ${result.count} step(s)${depthNote}${benchNote}`,
 				),
 			);
-			for (const step of steps) {
-				const entry = getCrossRef(step.id);
-				if (!entry) continue;
-				const via = step.via ? ` via ${step.via}` : '';
-				console.log(
-					colorize(TERMINAL.scannerInfo, `${'  '.repeat(step.depth)}${step.id}`) +
-						` (depth ${step.depth}${via})`,
-				);
-				console.log(`    ${entry.name} — ${entry.layer}`);
-			}
-			console.log('');
-			console.log(colorize(TERMINAL.muted, `[xref] neighbours: ${crossRefIds(getRelatedCrossRefs(id)).join(', ') || 'none'}`));
 		}
-		process.exit(0);
+
+		for (const step of result.steps) {
+			const via = step.via ? ` via ${step.via}` : '';
+			const prefix = `${'  '.repeat(step.depth)}${step.id} (depth ${step.depth}${via})`;
+			if (dryRun) {
+				console.log(colorize(TERMINAL.scannerInfo, prefix));
+				continue;
+			}
+
+			const entry =
+				result.kind === 'xref' ? getCrossRef(step.id) : getArtifactSpecEntry(step.id);
+			if (!entry) {
+				console.log(colorize(TERMINAL.scannerWarn, prefix));
+				continue;
+			}
+
+			console.log(colorize(TERMINAL.scannerInfo, prefix));
+			if (result.kind === 'xref' && 'name' in entry) {
+				console.log(`    ${entry.name} — ${entry.layer}`);
+			} else if ('path' in entry) {
+				console.log(`    ${entry.path} — ${entry.kind}`);
+			}
+		}
+
+		if (!dryRun && !quiet && result.neighbours) {
+			console.log('');
+			console.log(
+				colorize(
+					TERMINAL.muted,
+					`[xref] neighbours: ${result.neighbours.join(', ') || 'none'}`,
+				),
+			);
+		}
+
+		if (result.validation) {
+			if (!quiet) {
+				console.log('');
+			}
+			const label = result.validation.ok
+				? colorize(TERMINAL.scannerOk, '[xref] loop validation ok')
+				: colorize(TERMINAL.scannerFatal, '[xref] loop validation failed');
+			if (!quiet || !result.validation.ok) {
+				console.log(label);
+			}
+			for (const finding of result.validation.findings) {
+				const color =
+					finding.severity === 'error' ? TERMINAL.scannerFatal : TERMINAL.scannerWarn;
+				console.error(colorize(color, `  ${finding.id}: ${finding.message}`));
+			}
+		}
+
+		process.exit(result.validation && !result.validation.ok ? 1 : 0);
 	}
 
 	if (command === 'related') {

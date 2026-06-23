@@ -337,6 +337,24 @@ export {
 	type WorkspacePackageEntry,
 } from './bun-run-filter.ts';
 export {
+	artifactSpecIds,
+	auditBunCreateArtifactSpec,
+	BUN_CREATE_ARTIFACT_SPEC,
+	BUN_CREATE_DOCS_URL,
+	BUN_INIT_DOCS_URL,
+	getArtifactSpecEntry,
+	isBunCreateArtifactSpecAvailable,
+	planArtifactSpecLoop,
+	validateArtifactSpecCatalog,
+	walkArtifactSpecLoop,
+	type ArtifactSpecCatalogFinding,
+	type ArtifactSpecCatalogValidation,
+	type ArtifactSpecLoopOptions,
+	type ArtifactSpecLoopStep,
+	type BunCreateArtifactAudit,
+	type BunCreateArtifactEntry,
+} from './bun-create-catalog.ts';
+export {
 	runBunPm,
 	type BunPmResult,
 } from './install-runtime.ts';
