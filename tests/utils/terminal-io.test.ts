@@ -18,7 +18,7 @@ test('getTerminalIORuntimeInfo reports stdio TTY flags', () => {
 	expect(info.spawnAvailable).toBe(typeof Bun.spawn === 'function');
 	expect(info.terminalApiAvailable).toBe(typeof Bun.Terminal === 'function');
 	expect(info.interactiveSession).toBe(Boolean(process.stdin.isTTY && process.stdout.isTTY));
-	expect(info.spawnDocsUrl).toContain('bun.com/docs');
+	expect(info.spawnDocsUrl).toContain('bun.sh/docs/runtime/child-process');
 	expect(info.pipelinePagerSafe).toBe(
 		Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_PIPELINE_PAGER_FIX}`),
 	);

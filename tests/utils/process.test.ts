@@ -8,10 +8,14 @@ import {
 	FORCE_COLOR_ENV,
 	INTERACTIVE_FORCE_ENV,
 	NO_COLOR_ENV,
+	SPAWN_BEHAVIOR,
 	SPAWN_STDIO_DEFAULTS,
 	exitIfNotInteractive,
 	formatRuntimeInfoTable,
+	formatSpawnBehaviorTable,
 	getProcessRuntimeInfo,
+	getSpawnExitState,
+	killSpawn,
 	isInteractiveForced,
 	isInteractiveSession,
 	readSpawnStdout,
@@ -26,8 +30,11 @@ import {
 	spawnInherit,
 	spawnStdoutCaptured,
 	spawnStdoutText,
+	spawnSyncCaptured,
+	unrefSpawn,
 	writeJsonStdout,
 	type SpawnOnExitHandler,
+	type SpawnProc,
 } from '../../src/utils/process.ts';
 
 test('getProcessRuntimeInfo reports Bun spawn and terminal APIs', () => {
@@ -37,6 +44,7 @@ test('getProcessRuntimeInfo reports Bun spawn and terminal APIs', () => {
 	expect(info.platform).toBe(process.platform);
 	expect(info.docsUrl).toBe(BUN_SPAWN_DOCS_URL);
 	expect(info.spawnGuideUrl).toBe(BUN_SPAWN_GUIDE_URL);
+	expect(info.spawnSyncAvailable).toBe(typeof Bun.spawnSync === 'function');
 	expect(info.interactiveSession).toBe(isInteractiveSession());
 	expect(info.bunVersion).toBe(Bun.version);
 	expect(info.bunRevision).toBe(Bun.revision);
@@ -81,11 +89,19 @@ test('resolveSpawnStdout matches stdout TTY state', () => {
 	expect(resolveSpawnStdout()).toBe(process.stdout.isTTY ? 'inherit' : 'pipe');
 });
 
-test('SPAWN_STDIO_DEFAULTS matches Bun spawn guide', () => {
+test('SPAWN_STDIO_DEFAULTS matches Bun.spawn API', () => {
+	expect(SPAWN_STDIO_DEFAULTS.stdin).toBeNull();
 	expect(SPAWN_STDIO_DEFAULTS.stdout).toBe('pipe');
 	expect(SPAWN_STDIO_DEFAULTS.stderr).toBe('inherit');
-	expect(BUN_SPAWN_GUIDE_URL).toContain('/guides/process/spawn');
-	expect(BUN_SPAWN_STDOUT_DOCS_URL).toContain('spawn-stdout');
+	expect(BUN_SPAWN_DOCS_URL).toContain('spawn-a-process-bun-spawn');
+	expect(SPAWN_BEHAVIOR.completion).toBe('await proc.exited');
+});
+
+test('formatSpawnBehaviorTable documents stdio defaults', () => {
+	const table = formatSpawnBehaviorTable();
+	expect(table).toContain('stdin');
+	expect(table).toContain('pipe');
+	expect(table).toContain('inherit');
 });
 
 test('shouldColorize honors FORCE_COLOR and NO_COLOR', () => {
@@ -252,6 +268,7 @@ test('spawnChild uses guide defaults and spawnAndWait awaits exited', async () =
 		expect(result.proc).toBeDefined();
 		expect(spawnOptions?.cwd).toBe('/tmp');
 		expect((spawnOptions?.env as Record<string, string>).FOO).toBe('bar');
+		expect(spawnOptions?.stdin).toBeNull();
 		expect(spawnOptions?.stdout).toBe('pipe');
 		expect(spawnOptions?.stderr).toBe('inherit');
 		expect(onExitCalled).toBe(true);
@@ -318,6 +335,56 @@ test('readSpawnStdout and spawnStdoutCaptured follow stdout guide', async () => 
 		expect(spawnOptions?.stdin).toBeNull();
 	} finally {
 		(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = originalSpawn;
+	}
+});
+
+test('killSpawn and unrefSpawn delegate to Subprocess', () => {
+	const state = {killed: false, signalCode: null as NodeJS.Signals | null, unrefCalled: false};
+	const proc = {
+		get killed() {
+			return state.killed;
+		},
+		exitCode: null,
+		get signalCode() {
+			return state.signalCode;
+		},
+		kill: (signal?: number | NodeJS.Signals) => {
+			state.killed = true;
+			state.signalCode = typeof signal === 'string' ? signal : 'SIGTERM';
+		},
+		unref: () => {
+			state.unrefCalled = true;
+		},
+	} as SpawnProc;
+
+	killSpawn(proc, 'SIGTERM');
+	expect(state.killed).toBe(true);
+	unrefSpawn(proc);
+	expect(state.unrefCalled).toBe(true);
+	expect(getSpawnExitState(proc).killed).toBe(true);
+});
+
+test('spawnSyncCaptured reads Buffer stdout/stderr', () => {
+	const original = Bun.spawnSync;
+	(Bun as unknown as {spawnSync: typeof Bun.spawnSync}).spawnSync = ((
+		_cmd: string[],
+		_options?: Record<string, unknown>,
+	) => ({
+		exitCode: 0,
+		signalCode: null,
+		success: true,
+		stdout: Buffer.from('sync-out\n'),
+		stderr: Buffer.from('sync-err\n'),
+		pid: 1,
+	})) as unknown as typeof Bun.spawnSync;
+
+	try {
+		const result = spawnSyncCaptured(['echo', 'hi'], {maxBuffer: 100});
+		expect(result.success).toBe(true);
+		expect(result.stdout).toBe('sync-out\n');
+		expect(result.stderr).toBe('sync-err\n');
+	} finally {
+		(Bun as unknown as {spawnSync: typeof Bun.spawnSync}).spawnSync = original;
 	}
 });
 
