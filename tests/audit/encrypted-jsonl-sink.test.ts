@@ -1,4 +1,5 @@
 import {expect, test, beforeEach, afterEach} from 'bun:test';
+import {createAuditEntry} from '../../src/audit/entry.ts';
 import {EncryptedJSONLSink, type AuditEntry} from '../../src/audit/encrypted-jsonl-sink.ts';
 
 const TEST_DIR = `/tmp/audit-sink-test-${crypto.randomUUID()}`;
@@ -16,19 +17,19 @@ afterEach(async () => {
 });
 
 function makeEntry(packageName: string): AuditEntry {
-	return {
+	return createAuditEntry({
 		package: packageName,
 		version: '1.0.0',
 		requestedRange: '^1.0.0',
 		advisories: [],
 		allowed: true,
 		decidedAt: new Date().toISOString(),
-	};
+	});
 }
 
 test('append and readAll round-trip', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
-	const sink = new EncryptedJSONLSink<AuditEntry>(path, 'test-key');
+	const sink = new EncryptedJSONLSink(path, 'test-key');
 
 	await sink.append(makeEntry('first'));
 	await sink.append(makeEntry('second'));
@@ -37,11 +38,12 @@ test('append and readAll round-trip', async () => {
 	expect(entries.length).toBe(2);
 	expect(entries[0]?.package).toBe('first');
 	expect(entries[1]?.package).toBe('second');
+	expect(entries[0]?.id).toMatch(/^[0-9a-f-]{36}$/i);
 });
 
 test('stream yields entries lazily', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
-	const sink = new EncryptedJSONLSink<AuditEntry>(path, 'test-key');
+	const sink = new EncryptedJSONLSink(path, 'test-key');
 
 	await sink.append(makeEntry('a'));
 	await sink.append(makeEntry('b'));
@@ -55,24 +57,23 @@ test('stream yields entries lazily', async () => {
 
 test('wrong master key fails to decrypt', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
-	const sink = new EncryptedJSONLSink<AuditEntry>(path, 'test-key');
+	const sink = new EncryptedJSONLSink(path, 'test-key');
 	await sink.append(makeEntry('secret'));
 
-	const evilSink = new EncryptedJSONLSink<AuditEntry>(path, 'wrong-key');
+	const evilSink = new EncryptedJSONLSink(path, 'wrong-key');
 	const entries = await evilSink.readAll();
 	expect(entries.length).toBe(0);
 });
 
 test('corrupted line is skipped without halting the stream', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
-	const sink = new EncryptedJSONLSink<AuditEntry>(path, 'test-key');
+	const sink = new EncryptedJSONLSink(path, 'test-key');
 
 	await sink.append(makeEntry('before'));
 	await sink.append(makeEntry('after'));
 
 	const text = await Bun.file(path).text();
 	const lines = text.split('\n').filter(line => line.trim().length > 0);
-	// Corrupt the middle line.
 	lines[1] = '{"iv":"aaaa","authTag":"bbbb","data":"cccc"}';
 	await Bun.write(path, lines.join('\n') + '\n');
 
@@ -81,9 +82,18 @@ test('corrupted line is skipped without halting the stream', async () => {
 	expect(entries[0]?.package).toBe('before');
 });
 
+test('compressed sink round-trips', async () => {
+	const path = `${TEST_DIR}/audit.jsonl.enc`;
+	const sink = new EncryptedJSONLSink(path, 'test-key', {compress: true});
+
+	await sink.append(makeEntry('compressed'));
+	const entries = await sink.readAll();
+	expect(entries[0]?.package).toBe('compressed');
+});
+
 test('parseChunk decrypts complete lines from a partial buffer', async () => {
 	const path = `${TEST_DIR}/audit.jsonl.enc`;
-	const sink = new EncryptedJSONLSink<AuditEntry>(path, 'test-key');
+	const sink = new EncryptedJSONLSink(path, 'test-key');
 
 	await sink.append(makeEntry('chunked'));
 	const text = await Bun.file(path).text();
