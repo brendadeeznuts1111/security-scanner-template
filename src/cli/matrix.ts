@@ -14,7 +14,13 @@ import {
 	validateTemplateFieldCoverage,
 	type DomainFieldSection,
 } from '../domain/field-matrix.ts';
-import {domainBrandingProfile} from '../domain/branding.ts';
+import {domainBrandingProfile, formatConcernColorTable} from '../domain/branding.ts';
+import {
+	CONCERN_COLOR_RULES,
+	concernRulesByTag,
+	resolveConcernColors,
+	type ConcernTag,
+} from '../domain/concern-colors.ts';
 import {isMainModule} from '../utils/runtime.ts';
 
 const SECTIONS = listFieldMatrixSections();
@@ -34,6 +40,8 @@ async function main(): Promise<void> {
 			'validate': {type: 'boolean'},
 			'description': {type: 'boolean'},
 			'only-set': {type: 'boolean'},
+			'concerns': {type: 'boolean'},
+			'tag': {type: 'string'},
 			'json': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
 		},
@@ -44,9 +52,11 @@ async function main(): Promise<void> {
 		console.log(`Usage:
   bun run matrix [--template] [--domain <reverse-dns>] [--section <name>]
   bun run matrix --branding --domain <reverse-dns>
+  bun run matrix --concerns [--domain <reverse-dns> | --template] [--tag vault]
   bun run matrix --validate
 
 Show the domain field matrix: template × domain × branding × service × secrets.
+Concern map: ast-grep-style tags → channels/colors with base + bright values.
 
 Sections: ${SECTIONS.join(', ')}`);
 		process.exit(0);
@@ -75,6 +85,44 @@ Sections: ${SECTIONS.join(', ')}`);
 	}
 
 	const section = values.section && isSection(values.section) ? values.section : undefined;
+
+	if (values.concerns) {
+		let config;
+		if (values.domain) {
+			await domainRegistry.loadAll();
+			config = domainRegistry.get(values.domain);
+		} else if (values.template) {
+			config = await loadTemplate();
+		} else {
+			console.error(
+				colorize(TERMINAL.scannerFatal, '[matrix] --concerns requires --domain or --template'),
+			);
+			process.exit(1);
+		}
+
+		const tag = values.tag as ConcernTag | undefined;
+		if (values.json) {
+			const payload = tag
+				? concernRulesByTag(tag)
+				: {rules: CONCERN_COLOR_RULES, resolved: resolveConcernColors(config)};
+			console.log(JSON.stringify(payload, null, 2));
+			process.exit(0);
+		}
+
+		if (tag) {
+			console.log(colorize(TERMINAL.scannerInfo, `concern rules tagged: ${tag}`));
+			for (const rule of concernRulesByTag(tag)) {
+				console.log(`${rule.id} → ${rule.colorPath} [${rule.tags.join(',')}]`);
+			}
+			process.exit(0);
+		}
+
+		console.log(
+			colorize(TERMINAL.scannerInfo, 'concern color map (id | concern | tags | base | bright)'),
+		);
+		console.log(formatConcernColorTable(config));
+		process.exit(0);
+	}
 
 	if (values.branding) {
 		let config;

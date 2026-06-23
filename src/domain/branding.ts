@@ -1,5 +1,10 @@
 import type {DomainChannels, DomainColors, DomainConfig} from '../config/types.ts';
-import {ansiCode, colorize, normalizeHex, toCss} from '../color/index.ts';
+import {ansiCode, brightenColor, colorize, normalizeHex, toCss} from '../color/index.ts';
+import {
+	formatConcernColorTable,
+	resolveConcernColors,
+	type ResolvedConcernColor,
+} from './concern-colors.ts';
 import {resolveSecretsService} from './secrets-service.ts';
 
 /** Reverse-DNS domain identifier pattern (matches config doctor). */
@@ -18,6 +23,8 @@ export interface ColorSwatch {
 	name: string;
 	hex: string;
 	css: string;
+	bright?: string;
+	tags?: string[];
 }
 
 /**
@@ -123,6 +130,7 @@ export function colorizeDomain(
  * List normalized domain colors for terminal swatch rendering.
  */
 export function domainColorSwatches(config: DomainConfig): ColorSwatch[] {
+	const byConcern = new Map(resolveConcernColors(config).map(row => [row.concern, row]));
 	const entries: [string, string][] = [
 		...(Object.entries(config.colors) as [string, string][]),
 		...Object.entries(config.channels).map(
@@ -135,18 +143,34 @@ export function domainColorSwatches(config: DomainConfig): ColorSwatch[] {
 		const hex = normalizeHex(value);
 		const css = toCss(value);
 		if (hex && css) {
-			swatches.push({name, hex, css});
+			const concernKey = name.startsWith('channel:') ? name.slice('channel:'.length) : name;
+			const mapped = byConcern.get(concernKey as ResolvedConcernColor['concern']);
+			swatches.push({
+				name,
+				hex,
+				css,
+				bright: mapped?.bright ?? brightenColor(hex) ?? undefined,
+				tags: mapped?.tags ? [...mapped.tags] : undefined,
+			});
 		}
 	}
 	return swatches;
 }
+
+export {formatConcernColorTable, resolveConcernColors};
+export type {ResolvedConcernColor};
 
 /**
  * Render a one-line ANSI color swatch for the REPL.
  */
 export function formatColorSwatch(swatch: ColorSwatch): string {
 	const block = ansiCode(swatch.hex, 'ansi-256') + '██' + '\x1b[0m';
-	return `${block} ${swatch.name}: ${swatch.hex}`;
+	const brightBlock = swatch.bright ? ansiCode(swatch.bright, 'ansi-256') + '██' + '\x1b[0m' : '';
+	const tags = swatch.tags?.length ? ` [${swatch.tags.join(',')}]` : '';
+	const bright = swatch.bright
+		? ` bright=${swatch.bright}${brightBlock ? ` ${brightBlock}` : ''}`
+		: '';
+	return `${block} ${swatch.name}: ${swatch.hex}${bright}${tags}`;
 }
 
 /**

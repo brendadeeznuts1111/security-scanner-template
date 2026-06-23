@@ -1,5 +1,7 @@
-import {colorize, severityColor, TERMINAL} from '../color/index.ts';
+import {colorize, TERMINAL} from '../color/index.ts';
 import {checkAllDomains, type DoctorIssue, type DoctorResult} from '../config/doctor.ts';
+import type {DomainBrandingProfile} from '../domain/branding.ts';
+import {resolveIssueColor} from '../domain/concern-colors.ts';
 import {formatBrandingShowcase, formatFieldMatrixTable} from '../domain/field-matrix.ts';
 import type {DomainFieldSection} from '../domain/field-matrix.ts';
 import {checkPeerDependenciesMeta} from '../supply-chain/peer-meta.ts';
@@ -8,11 +10,21 @@ import {getPlatformRuntimeInfo} from '../utils/platform-runtime.ts';
 import {getTerminalIORuntimeInfo} from '../utils/terminal-io.ts';
 import {getRuntimeInfo, validateBunRuntime} from '../utils/runtime.ts';
 import {validateCrossRefApis} from '../xref/index.ts';
-import {benchmark} from '../utils/benchmark.ts';
+import {benchmark, formatBenchmarkReport, type BenchmarkResult} from '../utils/benchmark.ts';
+import {collectBenchmarkRunMetadata} from '../utils/bench-metadata.ts';
 
-function formatIssue(issue: DoctorIssue): string {
+function formatIssue(issue: DoctorIssue, branding?: DomainBrandingProfile): string {
 	const label = issue.severity.toUpperCase();
-	return `${colorize(severityColor(issue.severity), label)} ${issue.domain} — ${issue.field}: ${issue.message}`;
+	const color = branding
+		? resolveIssueColor(
+				{colors: branding.colors, channels: branding.channels, errorOverrides: {}},
+				issue,
+				'bright',
+			)
+		: issue.severity === 'error'
+			? TERMINAL.fatal
+			: TERMINAL.warn;
+	return `${colorize(color, label)} ${issue.domain} — ${issue.field}: ${issue.message}`;
 }
 
 function formatBrandingLine(result: DoctorResult, domain: DoctorResult['domains'][number]): string {
@@ -103,7 +115,7 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 			}
 		}
 		for (const issue of domain.issues) {
-			lines.push(`  ${formatIssue(issue)}`);
+			lines.push(`  ${formatIssue(issue, domain.branding)}`);
 		}
 		if (options.matrix && domain.matrix?.length) {
 			lines.push(
@@ -283,10 +295,14 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 
 	const timed = options.checkPeerMeta
 		? options.benchmark
-			? await benchmark('doctor.checkPeerMeta', () => checkPeerDependenciesMeta(root))
+			? await benchmark('doctor.checkPeerMeta', () => checkPeerDependenciesMeta(root), {
+					captureHeap: true,
+				})
 			: {result: await checkPeerDependenciesMeta(root), durationMs: 0}
 		: options.benchmark
-			? await benchmark('doctor.checkAllDomains', () => checkAllDomains(root, doctorOptions))
+			? await benchmark('doctor.checkAllDomains', () => checkAllDomains(root, doctorOptions), {
+					captureHeap: true,
+				})
 			: {result: await checkAllDomains(root, doctorOptions), durationMs: 0};
 
 	const result = options.checkPeerMeta
@@ -297,11 +313,22 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 		: (timed.result as DoctorResult);
 
 	if (options.json) {
+		const benchmarkReport = options.benchmark
+			? formatBenchmarkReport(
+					timed as BenchmarkResult<unknown>,
+					await collectBenchmarkRunMetadata({
+						heap: true,
+						packageJsonPath: `${root}/package.json`,
+					}),
+				)
+			: undefined;
+
 		console.log(
 			JSON.stringify(
 				{
 					...result,
 					benchmarkMs: options.benchmark ? timed.durationMs : undefined,
+					benchmark: benchmarkReport,
 					packagesScanned: options.checkPeerMeta
 						? (timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>)
 								.packagesScanned

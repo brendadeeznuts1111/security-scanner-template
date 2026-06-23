@@ -22,6 +22,9 @@
 	},
 
 	// Channel color overrides for audit/log output.
+	// Concern map (ast-grep-style tags → channels): `bun run matrix --concerns --template`
+	// Tags: security, vault, identity, token, csrf, supply-chain, ops, severity, branding, terminal, doctor
+	// Each channel resolves base + bright tints for doctor/REPL output (see src/domain/concern-colors.ts).
 	channels: {
 		vault: '#0A84FF',
 		identity: '#30D158',

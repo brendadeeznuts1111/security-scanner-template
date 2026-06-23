@@ -130,6 +130,21 @@ export function severityColor(severity: string): string {
 /**
  * Emit CSS custom properties for a domain color map.
  */
+/**
+ * Lighten a config color toward white for bright terminal / badge accents.
+ */
+export function brightenColor(input: ColorInput, mix = 0.22): string | null {
+	const rgba = toRgbaObject(input);
+	if (!rgba) return null;
+
+	const blend = (channel: number) => Math.round(channel + (255 - channel) * mix);
+	return normalizeHex({
+		r: blend(rgba.r),
+		g: blend(rgba.g),
+		b: blend(rgba.b),
+	});
+}
+
 export function cssVariables(colors: Record<string, string>, prefix = '--domain'): string {
 	const lines: string[] = [];
 	for (const [name, value] of Object.entries(colors)) {
