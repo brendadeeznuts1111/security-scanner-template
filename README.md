@@ -6,7 +6,129 @@ A template for creating a security scanner for Bun's package installation
 process. Security scanners scan packages against your threat intelligence feeds
 and control whether installations proceed based on detected threats.
 
-📚 [**Full documentation**](https://bun.com/docs/install/security-scanner-api)
+The same repository also ships an **operator toolkit**: domain-aware JSON5
+configuration, encrypted audit logs, vault/secrets sync, an interactive CLI
+(`bun sp`), benchmarks, and supply-chain governance helpers. Requires
+**Bun >= 1.3.14**.
+
+📚 [**Bun security scanner API**](https://bun.com/docs/install/security-scanner-api)
+
+## Operator toolkit
+
+Use this when you run security services per product domain (reverse-DNS
+identifiers) rather than only as an install hook.
+
+### Quick start
+
+```bash
+bun install
+
+# Copy the golden template and edit for your domain
+cp templates/domain.template.json5 domains/com.example.service.security.json5
+
+# Set audit encryption (or put masterKey in domain config)
+export AUDIT_MASTER_KEY="$(bun run master-key)"
+
+# Validate config, vault, secrets, and audit paths
+bun sp doctor --json
+
+# Interactive operator REPL (domain, audit tail, scan, build, …)
+bun sp shell --domain com.example.service
+```
+
+Domain selection precedence: `--domain` flag → `SP_DOMAIN` or
+`SECURITY_SCANNER_DOMAIN` → sole file in `domains/` → interactive prompt.
+
+### Domain configuration
+
+Domain configs live in `domains/*.security.json5` and are parsed with
+[`Bun.JSON5.parse`](https://bun.com/docs/api/json5). Start from
+`templates/domain.template.json5` — only `domain` (reverse-DNS) is required;
+defaults are applied on load (audit paths, secrets service namespace, etc.).
+
+| Area                          | Purpose                                            |
+| ----------------------------- | -------------------------------------------------- |
+| `domain`                      | Reverse-DNS id and `Bun.secrets` service namespace |
+| `secrets`                     | Vault inventory synced to the OS credential store  |
+| `supplyChain`                 | Threat feeds, policy severity, scanner integration |
+| `audit`                       | Per-domain encrypted JSONL (default) or SQLite     |
+| `identity` / `token` / `csrf` | Auth and session policies                          |
+| `service`                     | `Bun.serve` runtime (port, HTTP/3, TLS)            |
+| `channels` / `colors`         | Terminal and concern-colored operator output       |
+
+Inspect every field (and concern color tags) with:
+
+```bash
+bun run matrix --template          # template field matrix
+bun run matrix --domain com.example.service
+bun run matrix --concerns          # ast-grep-style concern → channel map
+bun run xref                       # API / module cross-reference catalog
+```
+
+Encrypted vault artifacts default under `.vault/`; per-domain security state
+under `.security/<reverse-dns-segment>/`.
+
+### Operator CLI
+
+| Command                                    | Description                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `bun sp` / `bun sp shell`                  | Interactive security operator REPL                                 |
+| `bun sp start --domain <name>`             | Start domain `Bun.serve` service (`--watch` reloads configs)       |
+| `bun sp doctor`                            | Config doctor (`--json`, `--matrix`, `--benchmark`)                |
+| `bun sp bench`                             | Mitata benchmarks (`doctor`, `field-matrix`, `domain-load`, `all`) |
+| `bun sp scan --domain <name>`              | External scanner orchestration (e.g. Trivy)                        |
+| `bun sp tls --domain <name> --host <host>` | Remote TLS inspection                                              |
+| `bun sp qr` / `bun sp report`              | Operator QR codes and visual reports                               |
+| `bun run doctor`                           | Same as `bun sp doctor`                                            |
+| `bun run vault`                            | Vault CLI                                                          |
+| `bun run master-key`                       | Generate audit master key material                                 |
+| `bun run bench`                            | Same as `bun sp bench`                                             |
+
+Inside `bun sp shell`, run `help` for REPL commands (`domain`, `audit tail`,
+`features`, `profiles`, `build --profile agent|server|dev`, etc.).
+
+### Audit
+
+Per-domain encrypted JSONL is the default when `AUDIT_JSONL` is enabled:
+
+```
+./.security/<reverse-dns-segment>/audit.jsonl.enc
+```
+
+Set `audit.jsonl.masterKey` in the domain config or export `AUDIT_MASTER_KEY`.
+Tail recent events from the shell or one-shot:
+
+```bash
+bun sp shell --domain com.example.service
+# audit tail
+# audit tail --follow   # pipes cleanly to jq / fx on Bun >= 1.3.14
+```
+
+SQLite audit is available when built with `AUDIT_SQLITE` (see **Build profiles**
+below).
+
+### Build profiles and feature flags
+
+Compile-time features gate optional subsystems (audit backends, reports, external
+scanners, debug tooling). Tests enable all features via `bun test --feature=…`
+(see `package.json`).
+
+| Profile  | Features                                                                | Use case                 |
+| -------- | ----------------------------------------------------------------------- | ------------------------ |
+| `agent`  | `AUDIT_JSONL`, `INTEL_DNS`, `SCAN_EXTERNAL`                             | Lightweight edge runtime |
+| `server` | `AUDIT_SQLITE`, `REPORT_HTML`, `CACHE_REDIS`, `INTEL_DNS`               | Enterprise server        |
+| `dev`    | `DEBUG`, `MOCK_API`, `FEED_WEBSOCKET`, `AUDIT_JSONL`, `REPORT_MARKDOWN` | Local development        |
+
+```bash
+# Inside bun sp shell
+build --profile agent
+
+# Or standalone bundle build
+bun run build:bundle -- --profile agent --outdir dist
+```
+
+Override at runtime with `FEATURE_<NAME>=true|false` (e.g.
+`FEATURE_SCAN_EXTERNAL=false`). List active flags in the REPL with `features`.
 
 ## How It Works
 
@@ -446,8 +568,8 @@ bun link @acme/bun-security-scanner # this is the name in package.json of your s
 
 ## Contributing
 
-This is a template repository. Fork it and customize for your organization's
-security requirements.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, feature flags,
+domain/vault workflow, and pull request expectations.
 
 ## Support
 
