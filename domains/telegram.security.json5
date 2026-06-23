@@ -1,0 +1,15 @@
+{
+	domain: 'com.factory-wager.telegram',
+	displayName: 'Telegram',
+	colors: {
+		primary: '#24A1DE',
+		secondary: '#7ED6DF',
+		fatal: '#FF2E63',
+		warn: '#FF9F43',
+		info: '#24A1DE',
+		success: '#2ECC71',
+	},
+	channels: {
+		vault: '#24A1DE',
+	},
+}

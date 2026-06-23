@@ -1,0 +1,15 @@
+{
+	domain: 'com.factory-wager.toolchain',
+	displayName: 'Toolchain',
+	colors: {
+		primary: '#FF6B6B',
+		secondary: '#4ECDC4',
+		fatal: '#FF3838',
+		warn: '#FF9F43',
+		info: '#45B7D1',
+		success: '#2ECC71',
+	},
+	channels: {
+		vault: '#4ECDC4',
+	},
+}
