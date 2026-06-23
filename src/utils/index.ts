@@ -38,7 +38,26 @@ export {
 	type PeekStatus,
 } from './runtime.ts';
 export {createTimer, type Timer} from './timing.ts';
-export {benchmark, benchmarkAll, type BenchmarkResult} from './benchmark.ts';
+export {
+	benchmark,
+	benchmarkAll,
+	formatBenchmarkReport,
+	type BenchmarkOptions,
+	type BenchmarkReport,
+	type BenchmarkReportEntry,
+	type BenchmarkResult,
+} from './benchmark.ts';
+export {
+	BENCHMARK_PROFILING_HINTS,
+	BENCHMARK_RUNNER_ENV,
+	MIMALLOC_STATS_ENV,
+	captureBenchmarkHeapStats,
+	collectBenchmarkRunMetadata,
+	isBenchmarkRunnerMode,
+	type BenchmarkHeapSnapshot,
+	type BenchmarkProfilingHints,
+	type BenchmarkRunMetadata,
+} from './bench-metadata.ts';
 export {createDebouncer, createAsyncDebouncer} from './debounce.ts';
 export {formatTable, formatValue} from './inspect.ts';
 export {cloneStructured, deserializeStructured, serializeStructured} from './jsc.ts';
