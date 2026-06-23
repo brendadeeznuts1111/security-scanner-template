@@ -9,6 +9,7 @@ import {formatInspectCustom, withInspectCustom} from './inspect-custom.ts';
 import {spawnCaptured, shouldColorize} from './process.ts';
 
 export const BUN_INSTALL_DOCS_URL = 'https://bun.com/docs/pm/cli/install';
+export {BUN_PM_FILTER_DOCS_URL, BUN_RUNTIME_FILTER_DOCS_URL} from './bun-run-filter.ts';
 
 export const INSTALL_ISSUE_CODES = {
 	LEGACY_LOCKFILE: 'INSTALL_LEGACY_LOCKFILE',

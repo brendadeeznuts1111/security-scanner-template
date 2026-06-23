@@ -7,6 +7,7 @@ import {
 	auditBunRuntimeCatalog,
 	type BunRuntimeCatalogAudit,
 } from './bun-runtime-catalog.ts';
+import {auditBunTestCatalog, type BunTestCatalogAudit} from './bun-test-catalog.ts';
 import {formatTable} from './inspect.ts';
 import {formatInspectCustom, withInspectCustom, isInspectCustomAvailable} from './inspect-custom.ts';
 import {getProcessRuntimeInfo, isSpawnAvailable, type ProcessRuntimeInfo} from './process.ts';
@@ -47,6 +48,7 @@ export interface DoctorDiagnostics {
 	signals: SignalRuntimeInfo;
 	utilities: DoctorUtilityRuntime;
 	bunWrappers: BunRuntimeCatalogAudit;
+	bunTest: BunTestCatalogAudit;
 }
 
 export interface DoctorTimingSnapshot {
@@ -84,6 +86,7 @@ export function collectDoctorDiagnostics(
 		signals: getSignalRuntimeInfo(),
 		utilities: getDoctorUtilityRuntime(),
 		bunWrappers: auditBunRuntimeCatalog(),
+		bunTest: auditBunTestCatalog(),
 	};
 }
 
@@ -156,6 +159,13 @@ export function formatDoctorDiagnosticsTable(
 			api: entry.bunApi,
 			value: entry.available
 				? (entry.guideUrl ?? entry.docsUrl).replace('https://', '')
+				: 'missing',
+		})),
+		...diagnostics.bunTest.groups.map(group => ({
+			area: 'test',
+			api: `bun:test ${group.label}`,
+			value: diagnostics.bunTest.ok
+				? `${group.apis.length} apis`
 				: 'missing',
 		})),
 	];

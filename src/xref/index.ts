@@ -1,4 +1,8 @@
+import {existsSync} from 'fs';
+import path from 'path';
+import {heapStats} from 'bun:jsc';
 import {ALL_FEATURES, type FeatureName} from '../features/index.ts';
+import {BUN_RUNTIME_CATALOG} from '../utils/bun-runtime-catalog.ts';
 
 export type IntegrationLayer =
 	| 'runtime'
@@ -56,12 +60,43 @@ export interface CrossRefApiStatus {
 	featureEnabled: boolean;
 }
 
+export interface CrossRefCatalogFinding {
+	kind: 'unknown-related' | 'missing-module' | 'runtime-drift';
+	id: string;
+	message: string;
+	severity: 'error' | 'warning';
+}
+
+export interface CrossRefCatalogValidation {
+	ok: boolean;
+	findings: CrossRefCatalogFinding[];
+	unknownRelated: {from: string; to: string}[];
+	missingModules: {id: string; module: string}[];
+	runtimeDrift: string[];
+}
+
+export interface CrossRefLoopOptions {
+	/** Maximum hops from the start id (default: full component). */
+	maxDepth?: number;
+	/** Follow reverse `related` backlinks while walking. */
+	bidirectional?: boolean;
+	/** Include the start entry in the walk result. */
+	includeStart?: boolean;
+}
+
+export interface CrossRefLoopStep {
+	id: string;
+	depth: number;
+	via?: string;
+}
+
 export interface CrossRefValidation {
 	ok: boolean;
 	requiredMissing: string[];
 	optionalMissing: string[];
 	featureDisabled: string[];
 	entries: CrossRefApiStatus[];
+	catalog: CrossRefCatalogValidation;
 }
 
 export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
@@ -341,7 +376,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 			'Monotonic UUID v7 for audit/SQLite keys; v4 via crypto.randomUUID for scratch paths.',
 		modules: ['src/utils/uuid.ts', 'src/audit/entry.ts', 'src/domain/snapshot-history.ts'],
 		exports: ['randomUUID', 'randomUUIDv7', 'correlationId', 'scratchId'],
-		related: ['audit.jsonl', 'audit.sqlite'],
+		related: ['feature.audit-jsonl', 'feature.audit-sqlite'],
 	},
 	{
 		id: 'bun.which',
@@ -690,6 +725,52 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		docsUrl: 'https://bun.com/docs/guides/util/deep-equals',
 	},
 	{
+		id: 'bun.run.filter',
+		name: 'Workspace script filter',
+		layer: 'cli',
+		bunApi: 'bun run --filter',
+		description:
+			'Fan out package.json scripts across monorepo workspaces by name or path glob (`bun run --filter "pkg-*" test`).',
+		modules: [
+			'src/utils/bun-run-filter.ts',
+			'src/utils/install-runtime.ts',
+			'src/domain/test-layout.ts',
+		],
+		exports: [
+			'filterWorkspacePackages',
+			'formatBunRunFilterCommand',
+			'discoverWorkspacePackages',
+			'BUN_RUN_FILTER_FLAGS',
+		],
+		cliCommands: ['bun run --filter', 'bun run --workspaces', 'bun install --filter'],
+		related: ['bun.install', 'bun.test'],
+		docsUrl: 'https://bun.com/docs/runtime#filtering',
+	},
+	{
+		id: 'bun.test',
+		name: 'Built-in test runner',
+		layer: 'runtime',
+		bunApi: 'bun:test',
+		description:
+			'bun:test runner with expect matchers, lifecycle hooks, mocks, concurrentTestGlob, and frozen-clock helpers.',
+		modules: [
+			'src/utils/bun-test-catalog.ts',
+			'tests/setup.ts',
+			'tests/helpers.ts',
+			'tests/xref/xref.test.ts',
+		],
+		exports: [
+			'auditBunTestCatalog',
+			'BUN_TEST_CATALOG',
+			'BUN_TEST_CATALOG_GROUPS',
+			'withTestDir',
+			'freezeSystemTime',
+			'withFixedSystemTime',
+		],
+		related: ['bun.deepEquals', 'utils.doctor-diagnostics'],
+		docsUrl: 'https://bun.com/reference/bun/test',
+	},
+	{
 		id: 'bun.escapeHTML',
 		name: 'HTML escaping',
 		layer: 'runtime',
@@ -795,6 +876,25 @@ const catalogById = new Map<string, CrossRefEntry>(
 	CROSS_REF_CATALOG.map(entry => [entry.id, entry]),
 );
 
+const PROJECT_ROOT = path.join(import.meta.dir, '..', '..');
+
+/** Map entry ids from a cross-reference list. */
+export function crossRefIds(entries: readonly {id: string}[]): string[] {
+	return entries.map(entry => entry.id);
+}
+
+function buildReverseRelatedMap(): Map<string, string[]> {
+	const reverse = new Map<string, string[]>();
+	for (const entry of CROSS_REF_CATALOG) {
+		for (const relatedId of entry.related ?? []) {
+			const refs = reverse.get(relatedId) ?? [];
+			refs.push(entry.id);
+			reverse.set(relatedId, refs);
+		}
+	}
+	return reverse;
+}
+
 function matchesModule(entry: CrossRefEntry, module: string): boolean {
 	const needle = module.replace(/^\.\//, '');
 	return entry.modules.some(path => path.includes(needle) || needle.includes(path));
@@ -868,7 +968,7 @@ export function getCrossRefsByCli(command: string): CrossRefEntry[] {
 }
 
 /**
- * Resolve related cross-reference entries for an id.
+ * Resolve direct related cross-reference entries for an id.
  */
 export function getRelatedCrossRefs(id: string): CrossRefEntry[] {
 	const entry = getCrossRef(id);
@@ -876,6 +976,172 @@ export function getRelatedCrossRefs(id: string): CrossRefEntry[] {
 	return entry.related
 		.map(relatedId => getCrossRef(relatedId))
 		.filter((related): related is CrossRefEntry => related !== undefined);
+}
+
+/**
+ * Entries that declare `id` in their `related` list.
+ */
+export function getCrossRefsReferencing(id: string): CrossRefEntry[] {
+	return CROSS_REF_CATALOG.filter(entry => entry.related?.includes(id) ?? false);
+}
+
+/**
+ * Neighbour ids for graph walks (outgoing `related`, optional reverse backlinks).
+ */
+export function getCrossRefNeighbourIds(
+	id: string,
+	options: Pick<CrossRefLoopOptions, 'bidirectional'> = {},
+): string[] {
+	const neighbours = new Set(getCrossRef(id)?.related ?? []);
+	if (options.bidirectional) {
+		for (const ref of getCrossRefsReferencing(id)) {
+			neighbours.add(ref.id);
+		}
+	}
+	return [...neighbours];
+}
+
+/**
+ * Breadth-first walk across the cross-reference graph with cycle protection.
+ */
+export function walkCrossRefLoop(
+	startId: string,
+	options: CrossRefLoopOptions = {},
+): CrossRefEntry[] {
+	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = false} =
+		options;
+	const start = getCrossRef(startId);
+	if (!start) return [];
+
+	const visited = new Set<string>();
+	const ordered: CrossRefEntry[] = [];
+	const queue: CrossRefLoopStep[] = [{id: startId, depth: 0}];
+
+	while (queue.length > 0) {
+		const step = queue.shift()!;
+		if (visited.has(step.id)) continue;
+		visited.add(step.id);
+
+		const entry = getCrossRef(step.id);
+		if (!entry) continue;
+
+		if (includeStart || step.id !== startId) {
+			ordered.push(entry);
+		}
+		if (step.depth >= maxDepth) continue;
+
+		for (const nextId of getCrossRefNeighbourIds(step.id, {bidirectional})) {
+			if (!visited.has(nextId)) {
+				queue.push({id: nextId, depth: step.depth + 1, via: step.id});
+			}
+		}
+	}
+
+	return ordered;
+}
+
+/**
+ * Ordered loop steps (ids + depth) for CLI / diagnostics output.
+ */
+export function planCrossRefLoop(
+	startId: string,
+	options: CrossRefLoopOptions = {},
+): CrossRefLoopStep[] {
+	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} =
+		options;
+	const start = getCrossRef(startId);
+	if (!start) return [];
+
+	const visited = new Set<string>();
+	const steps: CrossRefLoopStep[] = [];
+	const queue: CrossRefLoopStep[] = [{id: startId, depth: 0}];
+
+	while (queue.length > 0) {
+		const step = queue.shift()!;
+		if (visited.has(step.id)) continue;
+		visited.add(step.id);
+
+		if (getCrossRef(step.id)) {
+			if (includeStart || step.id !== startId) {
+				steps.push(step);
+			}
+		}
+		if (step.depth >= maxDepth) continue;
+
+		for (const nextId of getCrossRefNeighbourIds(step.id, {bidirectional})) {
+			if (!visited.has(nextId)) {
+				queue.push({id: nextId, depth: step.depth + 1, via: step.id});
+			}
+		}
+	}
+
+	return steps;
+}
+
+/**
+ * Structural validation: related ids, module paths, and runtime-catalog drift.
+ */
+export function validateCrossRefCatalog(
+	catalog: readonly CrossRefEntry[] = CROSS_REF_CATALOG,
+	projectRoot: string = PROJECT_ROOT,
+): CrossRefCatalogValidation {
+	const ids = new Set(catalog.map(entry => entry.id));
+	const findings: CrossRefCatalogFinding[] = [];
+	const unknownRelated: {from: string; to: string}[] = [];
+	const missingModules: {id: string; module: string}[] = [];
+
+	for (const entry of catalog) {
+		for (const relatedId of entry.related ?? []) {
+			if (!ids.has(relatedId)) {
+				unknownRelated.push({from: entry.id, to: relatedId});
+				findings.push({
+					kind: 'unknown-related',
+					id: entry.id,
+					message: `unknown related id "${relatedId}"`,
+					severity: 'error',
+				});
+			}
+		}
+
+		for (const modulePath of entry.modules) {
+			if (!modulePath.startsWith('src/')) continue;
+			const fullPath = path.join(projectRoot, modulePath);
+			if (!existsSync(fullPath)) {
+				missingModules.push({id: entry.id, module: modulePath});
+				findings.push({
+					kind: 'missing-module',
+					id: entry.id,
+					message: `missing module "${modulePath}"`,
+					severity: 'warning',
+				});
+			}
+		}
+	}
+
+	const xrefBunApis = new Set(
+		catalog.filter(entry => entry.bunApi).map(entry => entry.bunApi as string),
+	);
+	const runtimeDrift = BUN_RUNTIME_CATALOG.filter(
+		entry => entry.bunApi !== 'bun:test' && !xrefBunApis.has(entry.bunApi),
+	).map(entry => entry.bunApi);
+
+	for (const bunApi of runtimeDrift) {
+		findings.push({
+			kind: 'runtime-drift',
+			id: bunApi,
+			message: `bun-runtime-catalog entry "${bunApi}" has no xref bunApi match`,
+			severity: 'warning',
+		});
+	}
+
+	const errors = findings.filter(finding => finding.severity === 'error');
+	return {
+		ok: errors.length === 0,
+		findings,
+		unknownRelated,
+		missingModules,
+		runtimeDrift,
+	};
 }
 
 /**
@@ -952,6 +1218,14 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof (Bun as {JSON5?: {parse?: unknown}}).JSON5?.parse === 'function';
 		case 'Bun.TOML.parse':
 			return typeof (Bun as {TOML?: {parse?: unknown}}).TOML?.parse === 'function';
+		case 'bun:test':
+			return typeof Bun !== 'undefined';
+		case 'bun run --filter':
+			return typeof Bun !== 'undefined';
+		case 'process.on':
+			return typeof process.on === 'function';
+		case 'bun:jsc.heapStats':
+			return typeof heapStats === 'function';
 		case 'bun install':
 			return typeof Bun.spawn === 'function';
 		default:
@@ -963,6 +1237,7 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
  * Validate Bun APIs referenced by the cross-reference catalog.
  */
 export function validateCrossRefApis(): CrossRefValidation {
+	const catalog = validateCrossRefCatalog();
 	const entries: CrossRefApiStatus[] = [];
 	const requiredMissing: string[] = [];
 	const optionalMissing: string[] = [];
@@ -996,10 +1271,11 @@ export function validateCrossRefApis(): CrossRefValidation {
 	}
 
 	return {
-		ok: requiredMissing.length === 0,
+		ok: requiredMissing.length === 0 && catalog.ok,
 		requiredMissing,
 		optionalMissing,
 		featureDisabled,
 		entries,
+		catalog,
 	};
 }

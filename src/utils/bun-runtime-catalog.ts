@@ -31,6 +31,12 @@ import {
 	isSignalHandlingAvailable,
 } from './signals.ts';
 import {BUN_JSON5_DOCS_URL, isJson5Available} from './json5-config.ts';
+import {BUN_TEST_API_REFERENCE_URL, isBunTestAvailable} from './bun-test-catalog.ts';
+import {
+	BUN_PM_FILTER_DOCS_URL,
+	BUN_RUNTIME_FILTER_DOCS_URL,
+	isBunRunFilterAvailable,
+} from './bun-run-filter.ts';
 import {BUN_UUID_GUIDE_URL, BUN_UUID_V7_DOCS_URL, isUUIDv7Available} from './uuid.ts';
 
 export interface BunRuntimeCatalogEntry {
@@ -150,6 +156,36 @@ export const BUN_RUNTIME_CATALOG: readonly BunRuntimeCatalogEntry[] = [
 			'isJson5Available',
 		],
 		isAvailable: isJson5Available,
+	},
+	{
+		id: 'runFilter',
+		bunApi: 'bun run --filter',
+		module: 'src/utils/bun-run-filter.ts',
+		guideUrl: BUN_RUNTIME_FILTER_DOCS_URL,
+		docsUrl: BUN_PM_FILTER_DOCS_URL,
+		exports: [
+			'BUN_RUN_FILTER_FLAGS',
+			'filterWorkspacePackages',
+			'formatBunRunFilterCommand',
+			'discoverWorkspacePackages',
+			'matchWorkspaceFilter',
+		],
+		isAvailable: isBunRunFilterAvailable,
+	},
+	{
+		id: 'bunTest',
+		bunApi: 'bun:test',
+		module: 'src/utils/bun-test-catalog.ts',
+		docsUrl: BUN_TEST_API_REFERENCE_URL,
+		exports: [
+			'BUN_TEST_API_REFERENCE_URL',
+			'BUN_TEST_CATALOG',
+			'BUN_TEST_CATALOG_GROUPS',
+			'auditBunTestCatalog',
+			'getBunTestCatalogEntry',
+			'isBunTestAvailable',
+		],
+		isAvailable: isBunTestAvailable,
 	},
 ] as const;
 

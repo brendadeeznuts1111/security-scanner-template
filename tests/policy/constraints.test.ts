@@ -1,6 +1,4 @@
-import {expect, test} from 'bun:test';
-import {mkdir, rm, writeFile} from 'fs/promises';
-import path from 'path';
+import {describe, expect, test} from 'bun:test';
 import {
 	extractConstraintsConfigFromToml,
 	hasPolicyConstraints,
@@ -13,16 +11,18 @@ import {
 	matchingBlockConstraint,
 } from '../../src/policy/constraints.ts';
 import {loadPolicy, DEFAULT_POLICY_FILE} from '../../src/policy/loader.ts';
+import {withTestDir, writeFileInDir} from '../helpers.ts';
 
-const TEST_DIR = `/tmp/policy-constraints-${Date.now()}`;
-
-test('matchesPackageGlob supports scope wildcards', () => {
+describe('matchesPackageGlob', () => {
+test('supports scope wildcards', () => {
 	expect(matchesPackageGlob('@acme/utils', '@acme/*')).toBe(true);
 	expect(matchesPackageGlob('lodash', '@acme/*')).toBe(false);
 	expect(matchesPackageGlob('event-stream', 'event-stream')).toBe(true);
 });
+});
 
-test('extractConstraintsConfigFromToml parses allow block and require', () => {
+describe('extractConstraintsConfigFromToml', () => {
+test('parses allow block and require', () => {
 	const config = extractConstraintsConfigFromToml({
 		constraints: {
 			strictAllowlist: true,
@@ -37,25 +37,29 @@ test('extractConstraintsConfigFromToml parses allow block and require', () => {
 	expect(config.require?.[0]?.range).toBe('>=4.17.21');
 	expect(hasPolicyConstraints(config)).toBe(true);
 });
+});
 
-test('loadPolicy merges constraints section', async () => {
-	await rm(TEST_DIR, {recursive: true, force: true});
-	await mkdir(TEST_DIR, {recursive: true});
-	await writeFile(
-		path.join(TEST_DIR, DEFAULT_POLICY_FILE),
-		`
+describe('loadPolicy constraints', () => {
+test('merges constraints section', async () => {
+	await withTestDir('policy-constraints', async root => {
+		await writeFileInDir(
+			root,
+			DEFAULT_POLICY_FILE,
+			`
 [[constraints.block]]
 package = "left-pad"
 reason = "Deprecated unpinned dependency"
 severity = "high"
 `,
-	);
+		);
 
-	const doc = await loadPolicy(path.join(TEST_DIR, DEFAULT_POLICY_FILE));
-	expect(doc.constraints?.block?.[0]?.package).toBe('left-pad');
-	await rm(TEST_DIR, {recursive: true, force: true});
+		const doc = await loadPolicy(`${root}/${DEFAULT_POLICY_FILE}`);
+		expect(doc.constraints?.block?.[0]?.package).toBe('left-pad');
+	});
+});
 });
 
+describe('constraint matching', () => {
 test('isPackageConstraintAllowed and matchingBlockConstraint resolve globs', () => {
 	const config = extractConstraintsConfigFromToml({
 		constraints: {
@@ -117,4 +121,5 @@ test('importConstraintRules maps blockImport to transpiler import rules', () => 
 	expect(rules[0]?.type).toBe('import');
 	expect(rules[0]?.importPattern).toBe('node:fs');
 	expect(rules[0]?.id).toBe('constraint-import:node:fs');
+});
 });
