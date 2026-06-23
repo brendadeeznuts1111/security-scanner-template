@@ -1,4 +1,8 @@
+import {existsSync} from 'fs';
+import path from 'path';
+import {heapStats} from 'bun:jsc';
 import {ALL_FEATURES, type FeatureName} from '../features/index.ts';
+import {BUN_RUNTIME_CATALOG} from '../utils/bun-runtime-catalog.ts';
 
 export type IntegrationLayer =
 	| 'runtime'
@@ -56,12 +60,43 @@ export interface CrossRefApiStatus {
 	featureEnabled: boolean;
 }
 
+export interface CrossRefCatalogFinding {
+	kind: 'unknown-related' | 'missing-module' | 'runtime-drift';
+	id: string;
+	message: string;
+	severity: 'error' | 'warning';
+}
+
+export interface CrossRefCatalogValidation {
+	ok: boolean;
+	findings: CrossRefCatalogFinding[];
+	unknownRelated: {from: string; to: string}[];
+	missingModules: {id: string; module: string}[];
+	runtimeDrift: string[];
+}
+
+export interface CrossRefLoopOptions {
+	/** Maximum hops from the start id (default: full component). */
+	maxDepth?: number;
+	/** Follow reverse `related` backlinks while walking. */
+	bidirectional?: boolean;
+	/** Include the start entry in the walk result. */
+	includeStart?: boolean;
+}
+
+export interface CrossRefLoopStep {
+	id: string;
+	depth: number;
+	via?: string;
+}
+
 export interface CrossRefValidation {
 	ok: boolean;
 	requiredMissing: string[];
 	optionalMissing: string[];
 	featureDisabled: string[];
 	entries: CrossRefApiStatus[];
+	catalog: CrossRefCatalogValidation;
 }
 
 export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
@@ -76,7 +111,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		exports: ['runTool', 'runAvailableTools', 'spawnChild', 'spawnAndWait', 'spawnStdoutText'],
 		cliCommands: ['scan interactive'],
 		related: ['bun.terminal', 'utils.process'],
-		docsUrl: 'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn',
+		docsUrl: 'https://bun.com/docs/guides/process/spawn',
 		required: true,
 	},
 	{
@@ -144,7 +179,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		],
 		cliCommands: ['sp shell', 'sp scan', 'scan interactive', 'build', 'sp doctor --json'],
 		related: ['bun.spawn', 'bun.terminal', 'utils.signals'],
-		docsUrl: 'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn',
+		docsUrl: 'https://bun.com/docs/runtime/child-process#spawn-a-process-bun-spawn',
 	},
 	{
 		id: 'utils.signals',
@@ -166,7 +201,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		],
 		cliCommands: ['watch', 'shell', 'scan interactive'],
 		related: ['utils.process'],
-		docsUrl: 'https://bun.sh/docs/guides/process/os-signals#listen-to-os-signals',
+		docsUrl: 'https://bun.com/docs/guides/process/os-signals',
 	},
 	{
 		id: 'utils.doctor-diagnostics',
@@ -188,8 +223,118 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 			'withInspectCustom',
 		],
 		cliCommands: ['sp doctor', 'sp doctor --json', 'sp doctor --benchmark'],
-		related: ['utils.signals', 'utils.process', 'bun.nanoseconds'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+		related: ['utils.signals', 'utils.process', 'bun.nanoseconds', 'xref.loop', 'workflow.loop'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-nanoseconds',
+	},
+	{
+		id: 'bun.install',
+		name: 'Bun install & lockfile',
+		layer: 'runtime',
+		bunApi: 'bun install',
+		description:
+			'Platform cpu/os lockfile targets, install backends, peer auto-install, pnpm migration, cache paths.',
+		modules: [
+			'src/utils/install-runtime.ts',
+			'src/supply-chain/peer-meta.ts',
+			'src/cli/watch.ts',
+			'src/cli/config-doctor.ts',
+		],
+		exports: [
+			'getInstallRuntimeInfo',
+			'detectLockfileState',
+			'validateInstallTarget',
+			'auditInstallState',
+			'formatInstallRuntimeTable',
+			'formatInstallRuntimeInspect',
+			'formatInstallTargetCommand',
+			'resolveInstallWatchPaths',
+			'installWatchPaths',
+			'checkPeerDependenciesMeta',
+		],
+		cliCommands: [
+			'sp doctor',
+			'sp doctor --check-peer-meta',
+			'sp doctor --install-cpu arm64 --install-os linux',
+			'watch',
+		],
+		related: ['utils.doctor-diagnostics'],
+		docsUrl: 'https://bun.sh/docs/cli/install',
+	},
+	{
+		id: 'bun.json5',
+		name: 'JSON5 domain configs',
+		layer: 'config',
+		bunApi: 'Bun.JSON5.parse',
+		description:
+			'Domain configs (*.security.json5) and vault inventory (.vault/*.inventory.json5) with comments and trailing commas.',
+		modules: [
+			'src/config/loader.ts',
+			'src/config/vault.ts',
+			'src/config/registry-watch.ts',
+			'src/utils/config-format-runtime.ts',
+		],
+		exports: [
+			'discoverDomainFiles',
+			'loadDomainFile',
+			'auditConfigFormats',
+			'getConfigFormatRuntimeInfo',
+			'formatConfigFormatRuntimeTable',
+		],
+		configFields: ['domain', 'supplyChain.policy'],
+		cliCommands: ['sp doctor', 'sp doctor --json', 'watch'],
+		related: ['bun.toml', 'utils.doctor-diagnostics', 'domain.policy-bridge'],
+		docsUrl: 'https://bun.sh/docs/runtime/json5',
+		required: true,
+	},
+	{
+		id: 'bun.toml',
+		name: 'TOML policy files',
+		layer: 'config',
+		bunApi: 'Bun.TOML.parse',
+		description:
+			'Project security.policy.toml severity defaults and override rules; parsed via config/toml.ts.',
+		modules: [
+			'src/config/toml.ts',
+			'src/policy/loader.ts',
+			'src/domain/policy-bridge.ts',
+			'src/utils/config-format-runtime.ts',
+		],
+		exports: [
+			'parseToml',
+			'loadPolicy',
+			'loadRootProjectPolicy',
+			'resolveSupplyChainConfig',
+			'resolvePolicyWatchPaths',
+			'discoverPolicyFiles',
+			'auditConfigFormats',
+			'getConfigFormatRuntimeInfo',
+		],
+		configFields: ['supplyChain.policy'],
+		cliCommands: ['sp doctor', 'sp doctor --json', 'watch'],
+		related: ['bun.json5', 'domain.policy-bridge'],
+		docsUrl: 'https://bun.sh/docs/runtime/toml',
+		required: true,
+	},
+	{
+		id: 'domain.policy-bridge',
+		name: 'TOML policy bridge',
+		layer: 'config',
+		description:
+			'Loads root security.policy.toml into supply-chain activate() as policyDocument with TOML-derived severity; hot-reloads on watch.',
+		modules: [
+			'src/domain/policy-bridge.ts',
+			'src/cli/watch.ts',
+			'src/domain/supply-chain-config.ts',
+		],
+		exports: [
+			'loadRootProjectPolicy',
+			'resolveSupplyChainConfig',
+			'resolvePolicyWatchPaths',
+			'supplyChainConfigFromDomain',
+		],
+		configFields: ['supplyChain.policy', 'supplyChain.enabled'],
+		cliCommands: ['watch'],
+		related: ['bun.toml', 'bun.json5'],
 	},
 	{
 		id: 'feature.scan-external',
@@ -222,14 +367,27 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		related: ['bun.bundle.features'],
 	},
 	{
+		id: 'bun.randomUUIDv7',
+		name: 'UUID generation',
+		layer: 'runtime',
+		bunApi: 'Bun.randomUUIDv7',
+		docsUrl: 'https://bun.com/docs/guides/util/javascript-uuid',
+		description:
+			'Monotonic UUID v7 for audit/SQLite keys; v4 via crypto.randomUUID for scratch paths.',
+		modules: ['src/utils/uuid.ts', 'src/audit/entry.ts', 'src/domain/snapshot-history.ts'],
+		exports: ['randomUUID', 'randomUUIDv7', 'correlationId', 'scratchId'],
+		related: ['feature.audit-jsonl', 'feature.audit-sqlite'],
+	},
+	{
 		id: 'bun.which',
 		name: 'Executable lookup',
 		layer: 'scanning',
 		bunApi: 'Bun.which',
 		description: 'Detect external scanners on PATH before spawning.',
 		modules: ['src/utils/tool-detector.ts', 'src/scan/tools.ts'],
-		exports: ['detectTool', 'detectTools'],
+		exports: ['detectTool', 'detectTools', 'which'],
 		related: ['bun.spawn'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-which',
 		required: true,
 	},
 	{
@@ -305,7 +463,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		modules: ['src/intel/dns-threat.ts', 'src/domain/index.ts', 'src/provider/feed.ts'],
 		exports: ['DNSThreatChecker', 'inspectFeedUrl'],
 		configFields: ['intel.dns.blocklist', 'intel.dns.requireResolution'],
-		related: ['bun.bundle.features'],
+		related: ['bun.bundle.features', 'workflow.loop'],
 	},
 	{
 		id: 'feature.report-markdown',
@@ -379,13 +537,42 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		required: true,
 	},
 	{
+		id: 'bun.markdown',
+		name: 'Markdown rendering',
+		layer: 'runtime',
+		bunApi: 'Bun.markdown',
+		docsUrl: 'https://bun.com/docs/runtime/markdown',
+		description:
+			'GFM Markdown → HTML for report summaries; custom render/ANSI/plaintext helpers (unstable API).',
+		modules: ['src/markdown/index.ts', 'src/report/html.ts'],
+		exports: [
+			'markdownToHtml',
+			'renderMarkdown',
+			'markdownToPlaintext',
+			'markdownToAnsi',
+			'isMarkdownAvailable',
+		],
+		related: ['feature.report-html', 'feature.report-markdown', 'bun.color'],
+	},
+	{
 		id: 'bun.color',
 		name: 'Terminal colors',
 		layer: 'runtime',
 		bunApi: 'Bun.color',
+		docsUrl: 'https://bun.com/docs/runtime/color',
 		description: 'ANSI and CSS color output for CLI, doctor, and HTML reports.',
 		modules: ['src/color/index.ts', 'src/cli/formatters.ts', 'src/report/html.ts'],
-		exports: ['colorize', 'TERMINAL', 'cssVariables', 'isValidConfigColor'],
+		exports: [
+			'colorize',
+			'TERMINAL',
+			'cssVariables',
+			'isValidConfigColor',
+			'toRgbaObject',
+			'toRgbObject',
+			'toRgbaArray',
+			'toRgbArray',
+			'toColorNumber',
+		],
 		configFields: ['colors.primary', 'colors.fatal', 'channels'],
 		related: ['feature.report-html'],
 		required: true,
@@ -401,15 +588,199 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		related: ['bun.terminal'],
 	},
 	{
+		id: 'service.network',
+		name: 'Network audit loop',
+		layer: 'cli',
+		description:
+			'Continuous dist audit, semver checks, health probes, and baseline drift monitoring.',
+		modules: [
+			'src/network/loop.ts',
+			'src/network/tick.ts',
+			'src/network/resolve-config.ts',
+			'src/cli/network.ts',
+		],
+		exports: ['NetworkLoop', 'runNetworkTick', 'probeNetworkHealth', 'runNetworkCli'],
+		configFields: [
+			'service.network.enabled',
+			'service.network.distPath',
+			'service.network.healthUrl',
+			'service.network.probeInterval',
+			'service.network.watch',
+			'service.network.failOnHealth',
+			'service.network.failOnDrift',
+		],
+		cliCommands: ['sp network start', 'sp network stop', 'sp network status'],
+		related: ['bun.transpiler', 'intel.semver', 'scan.patterns', 'workflow.loop'],
+	},
+	{
+		id: 'workflow.loop',
+		name: 'Workflow scanner orchestrator',
+		layer: 'cli',
+		description:
+			'Unified full-spectrum loop orchestrating network, semver, patterns, TLS, and DNS scanners with interval and watch scheduling.',
+		modules: [
+			'src/workflow/loop.ts',
+			'src/workflow/scanners.ts',
+			'src/workflow/output.ts',
+			'src/workflow/types.ts',
+			'src/cli/workflow.ts',
+			'src/service/index.ts',
+		],
+		exports: [
+			'WorkflowLoop',
+			'AVAILABLE_SCANNERS',
+			'WORKFLOW_SCANNER_IDS',
+			'runWorkflowCli',
+			'aggregateWorkflowReport',
+			'workflowExitCode',
+		],
+		configFields: [
+			'service.workflow.enabled',
+			'service.workflow.scanners',
+			'service.workflow.interval',
+			'service.workflow.watch',
+			'service.workflow.output',
+			'service.workflow.failOnIssue',
+			'service.workflow.failOnSeverity',
+		],
+		cliCommands: ['sp workflow run', 'sp workflow start', 'sp workflow status'],
+		related: [
+			'service.network',
+			'intel.semver',
+			'scan.patterns',
+			'intel.tls',
+			'feature.intel-dns',
+			'xref.loop',
+			'utils.doctor-diagnostics',
+			'ground-truth.catalog',
+			'repo.bun',
+			'repo.effect',
+		],
+	},
+	{
+		id: 'ground-truth.catalog',
+		name: 'Ground truth repo references',
+		layer: 'config',
+		description:
+			'Maps local xref integrations to canonical oven-sh/bun and Effect-TS/effect source paths for conformance and code review.',
+		modules: ['src/utils/ground-truth-catalog.ts', 'tests/conventions/bun/'],
+		exports: [
+			'GROUND_TRUTH_CATALOG',
+			'GROUND_TRUTH_REPOS',
+			'WORKFLOW_SCANNER_GROUND_TRUTH',
+			'auditGroundTruthCatalog',
+			'getGroundTruthForXref',
+			'getGroundTruthForWorkflowScanner',
+			'planGroundTruthLoop',
+			'formatRepoRefUrl',
+			'formatGroundTruthTable',
+			'formatGroundTruthLoopTable',
+			'evaluateGroundTruthGoal',
+			'collectGroundTruthSnapshot',
+			'evaluateGroundTruthSnapshotGate',
+		],
+		cliCommands: [
+			'xref ground-truth',
+			'xref ground-truth --goal',
+			'xref ground-truth --snapshot',
+			'xref ground-truth --fail-on-drift',
+			'sp bench --suite ground-truth',
+		],
+		related: ['repo.bun', 'repo.effect', 'xref.loop', 'workflow.loop', 'utils.doctor-diagnostics'],
+	},
+	{
+		id: 'repo.bun',
+		name: 'Bun runtime ground truth',
+		layer: 'runtime',
+		description:
+			'oven-sh/bun docs and runtime source — primary upstream for CLI loops, watch, TLS, and test parity.',
+		modules: [
+			'src/utils/runtime.ts',
+			'src/utils/ground-truth-catalog.ts',
+			'tests/conventions/bun/bun-utils-conformance.test.ts',
+		],
+		related: ['ground-truth.catalog', 'workflow.loop', 'bun.test', 'utils.signals'],
+		docsUrl: 'https://github.com/oven-sh/bun',
+	},
+	{
+		id: 'repo.effect',
+		name: 'Effect-TS ground truth',
+		layer: 'runtime',
+		description:
+			'Effect-TS/effect scheduling, layers, and graph patterns — reference for orchestrator design.',
+		modules: ['src/utils/ground-truth-catalog.ts'],
+		related: ['ground-truth.catalog', 'workflow.loop', 'xref.loop'],
+		docsUrl: 'https://github.com/Effect-TS/effect',
+	},
+	{
+		id: 'intel.semver',
+		name: 'Package semver policy',
+		layer: 'intelligence',
+		description: 'Installed dependency version checks against unified policy semver constraints.',
+		modules: [
+			'src/intel/semver-checks.ts',
+			'src/provider/semver-matcher.ts',
+			'src/cli/scan-packages.ts',
+		],
+		exports: [
+			'readProjectDependencyVersions',
+			'checkPackageVersionsAgainstPolicy',
+			'SemverMatcher',
+		],
+		cliCommands: ['sp scan packages'],
+		related: ['bun.install', 'workflow.loop', 'service.network'],
+	},
+	{
+		id: 'scan.patterns',
+		name: 'Source pattern scanner',
+		layer: 'scanning',
+		description: 'AST and regex pattern rules over src/ and dist/ trees.',
+		modules: ['src/scan/patterns/index.ts', 'src/cli/scan-patterns.ts'],
+		exports: ['scanPatterns'],
+		cliCommands: ['sp scan source'],
+		related: ['bun.transpiler', 'workflow.loop', 'service.network'],
+	},
+	{
+		id: 'intel.tls',
+		name: 'TLS certificate inspection',
+		layer: 'intelligence',
+		bunApi: 'tls.getCACertificates',
+		description: 'Remote TLS chain validation, expiry, and system CA trust checks.',
+		modules: ['src/intel/tls/index.ts', 'src/intel/tls/inspector.ts', 'src/cli/tls.ts'],
+		exports: ['TLSInspector', 'resolveUseSystemCA'],
+		configFields: ['tls.useSystemCA'],
+		cliCommands: ['sp tls'],
+		related: ['workflow.loop'],
+		docsUrl: 'https://bun.com/docs/api/tls',
+	},
+	{
 		id: 'bun.transpiler',
 		name: 'Source transpiler scan',
 		layer: 'scanning',
 		bunApi: 'Bun.Transpiler',
 		description:
 			'Transpile and scan JS/TS sources and bun build bundles for obfuscated or injected threats.',
-		modules: ['src/scan/transpiler.ts', 'src/provider/index.ts', 'src/build/security-plugin.ts'],
-		exports: ['scanSource', 'scanBundle', 'scanBundles', 'findingsToAdvisories'],
-		cliCommands: ['scan bundle', 'scan source'],
+		modules: [
+			'src/scan/transpiler.ts',
+			'src/scan/transpiler/analyzer.ts',
+			'src/scan/transpiler/bundle-scanner.ts',
+			'src/scan/transpiler/rule-engine.ts',
+			'src/scan/transpiler/reporter.ts',
+			'src/scan/transpiler/integrity.ts',
+			'src/provider/index.ts',
+			'src/build/security-plugin.ts',
+		],
+		exports: [
+			'scanSource',
+			'scanBundle',
+			'scanBundles',
+			'scanDirectory',
+			'BundleScanner',
+			'scanSourceWithRules',
+			'findingsToAdvisories',
+		],
+		cliCommands: ['scan bundle', 'scan source', 'sp scan bundle'],
+		configFields: ['service.scan.transpiler'],
 		related: ['bun.bundle.features', 'bun.plugin'],
 		docsUrl: 'https://bun.com/docs/api/transpiler',
 		required: true,
@@ -494,9 +865,30 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'runtime',
 		bunApi: 'Bun.peek',
 		description: 'Inspect pending promises without await — used in domain security cache.',
-		modules: ['src/utils/runtime.ts', 'src/config/registry.ts'],
-		exports: ['peekValue', 'peekStatus'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-peek',
+		modules: ['src/utils/peek.ts', 'src/config/registry.ts'],
+		exports: ['peekValue', 'peekStatus', 'isPeekAvailable'],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-peek',
+	},
+	{
+		id: 'bun.inspect',
+		name: 'Inspect formatting',
+		layer: 'runtime',
+		bunApi: 'Bun.inspect',
+		description: 'Doctor tables, debug output, and inspect.custom formatters.',
+		modules: [
+			'src/utils/inspect.ts',
+			'src/utils/inspect-custom.ts',
+			'src/utils/doctor-diagnostics.ts',
+		],
+		exports: [
+			'formatTable',
+			'formatValue',
+			'formatInspectCustom',
+			'withInspectCustom',
+			'isInspectAvailable',
+		],
+		docsUrl: 'https://bun.com/docs/runtime/utils#bun-inspect',
+		related: ['utils.process'],
 	},
 	{
 		id: 'bun.deepEquals',
@@ -504,9 +896,66 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'config',
 		bunApi: 'Bun.deepEquals',
 		description: 'Deep equality for config drift detection and test assertions.',
-		modules: ['src/utils/runtime.ts', 'src/config/drift.ts'],
-		exports: ['deepEquals'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-deepequals',
+		modules: ['src/utils/deep-equal.ts', 'src/config/drift.ts'],
+		exports: ['deepEquals', 'deepEqualsStrict', 'isDeepEqualAvailable'],
+		docsUrl: 'https://bun.com/docs/guides/util/deep-equals',
+	},
+	{
+		id: 'bun.run.filter',
+		name: 'Workspace script filter',
+		layer: 'cli',
+		bunApi: 'bun run --filter',
+		description:
+			'Fan out package.json scripts across monorepo workspaces by name or path glob (`bun run --filter "pkg-*" test`).',
+		modules: [
+			'src/utils/bun-run-filter.ts',
+			'src/utils/install-runtime.ts',
+			'src/domain/test-layout.ts',
+		],
+		exports: [
+			'filterWorkspacePackages',
+			'formatBunRunFilterCommand',
+			'discoverWorkspacePackages',
+			'BUN_RUN_FILTER_FLAGS',
+		],
+		cliCommands: ['bun run --filter', 'bun run --workspaces', 'bun install --filter'],
+		related: ['bun.install', 'bun.test'],
+		docsUrl: 'https://bun.com/docs/runtime#filtering',
+	},
+	{
+		id: 'bun.test',
+		name: 'Built-in test runner',
+		layer: 'runtime',
+		bunApi: 'bun:test',
+		description:
+			'bun:test runner with expect matchers, lifecycle hooks, mocks, concurrentTestGlob, and frozen-clock helpers.',
+		modules: [
+			'src/utils/bun-test-catalog.ts',
+			'tests/setup.ts',
+			'tests/helpers.ts',
+			'tests/xref/xref.test.ts',
+		],
+		exports: [
+			'auditBunTestCatalog',
+			'BUN_TEST_CATALOG',
+			'BUN_TEST_CATALOG_GROUPS',
+			'withTestDir',
+			'freezeSystemTime',
+			'withFixedSystemTime',
+		],
+		related: ['bun.deepEquals', 'utils.doctor-diagnostics'],
+		docsUrl: 'https://bun.com/reference/bun/test',
+	},
+	{
+		id: 'bun.escapeHTML',
+		name: 'HTML escaping',
+		layer: 'runtime',
+		bunApi: 'Bun.escapeHTML',
+		description: 'Escape dynamic text in HTML reports and advisory tables.',
+		modules: ['src/utils/escape-html.ts', 'src/report/safe.ts', 'src/report/generator.ts'],
+		exports: ['escapeHtml', 'isEscapeHtmlAvailable'],
+		docsUrl: 'https://bun.com/docs/guides/util/escape-html',
+		related: ['html.rewriter'],
 	},
 	{
 		id: 'bun.nanoseconds',
@@ -514,23 +963,94 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		layer: 'runtime',
 		bunApi: 'Bun.nanoseconds',
 		description: 'Nanosecond timers for scan, doctor, and mitata microbenchmarks.',
-		modules: ['src/utils/runtime.ts', 'src/utils/timing.ts', 'src/utils/benchmark.ts'],
-		exports: ['nanoseconds', 'createTimer', 'benchmark', 'benchmarkAll'],
-		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+		modules: ['src/utils/nanoseconds.ts', 'src/utils/timing.ts', 'src/utils/benchmark.ts'],
+		exports: ['nanoseconds', 'isNanosecondsAvailable', 'createTimer', 'benchmark', 'benchmarkAll'],
+		docsUrl: 'https://bun.com/docs/guides/process/nanoseconds',
 		related: ['bench.mitata', 'bun.jsc.heapStats'],
 		cliCommands: ['bench', 'doctor --benchmark', 'sp bench'],
+	},
+	{
+		id: 'bun.init',
+		name: 'Domain package init',
+		layer: 'config',
+		bunApi: 'bun init',
+		description:
+			'Per-domain workspace package init plans from domains/*.security.json5 (package.json scaffold + security dirs).',
+		modules: ['src/domain/bun-init-catalog.ts', 'src/config/loader.ts'],
+		exports: [
+			'discoverDomainPackageInits',
+			'planDomainPackageInit',
+			'validateDomainPackageInits',
+			'auditDomainPackageInits',
+			'formatBunInitCommand',
+		],
+		configFields: ['domain', 'displayName', 'secrets.service'],
+		related: ['bun.create', 'bun.json5', 'bench.mitata'],
+		docsUrl: 'https://bun.com/docs/runtime/templating/init',
+	},
+	{
+		id: 'bun.create',
+		name: 'Template artifact spec',
+		layer: 'config',
+		bunApi: 'bun create',
+		description:
+			'Golden template artifact catalog (domain, network-baseline, policy, transpiler) with spec loop validation.',
+		modules: [
+			'src/utils/bun-create-catalog.ts',
+			'templates/domain.template.json5',
+			'templates/security.policy.toml',
+		],
+		exports: [
+			'BUN_CREATE_ARTIFACT_SPEC',
+			'walkArtifactSpecLoop',
+			'planArtifactSpecLoop',
+			'validateArtifactSpecCatalog',
+			'auditBunCreateArtifactSpec',
+		],
+		related: ['bun.init', 'bun.json5', 'bench.mitata'],
+		docsUrl: 'https://bun.com/docs/runtime/templating/create',
 	},
 	{
 		id: 'bench.mitata',
 		name: 'Mitata microbenchmarks',
 		layer: 'cli',
 		description:
-			'Public mitata suites under bench/ (doctor, field-matrix, domain-load) with BENCHMARK_RUNNER JSON output.',
-		modules: ['bench/runner.mjs', 'bench/doctor/bench.mjs', 'src/cli/bench.ts'],
+			'Public mitata suites under bench/ (doctor, field-matrix, domain-load, artifact-spec, ground-truth) with BENCHMARK_RUNNER JSON output.',
+		modules: [
+			'bench/runner.mjs',
+			'bench/doctor/bench.mjs',
+			'bench/artifact-spec/bench.mjs',
+			'bench/ground-truth/bench.mjs',
+			'src/cli/bench.ts',
+		],
 		exports: ['runBenchCli'],
 		cliCommands: ['bench', 'sp bench'],
 		docsUrl: 'https://bun.sh/docs/project/benchmarking',
-		related: ['bun.nanoseconds', 'bun.jsc.heapStats'],
+		related: ['bun.nanoseconds', 'bun.jsc.heapStats', 'bun.create', 'bun.init', 'xref.loop'],
+	},
+	{
+		id: 'xref.loop',
+		name: 'DD-Loop graph walks',
+		layer: 'cli',
+		description:
+			'Canonical xref / artifact / domain-init loop planner with dry-run, validate, and benchmark flags.',
+		modules: ['src/xref/loop-cli.ts', 'src/cli/xref.ts'],
+		exports: [
+			'executeLoopCli',
+			'executeLoopCliAsync',
+			'auditDoctorLoops',
+			'DOCTOR_LOOP_SEEDS',
+			'formatDoctorLoopTable',
+		],
+		cliCommands: ['xref loop', 'xref loop --all', 'xref loop --dry-run'],
+		related: [
+			'bench.mitata',
+			'bun.init',
+			'bun.create',
+			'utils.doctor-diagnostics',
+			'workflow.loop',
+		],
+		docsUrl: 'https://bun.com/docs/runtime/templating/create',
 	},
 	{
 		id: 'bun.jsc.heapStats',
@@ -602,6 +1122,25 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 const catalogById = new Map<string, CrossRefEntry>(
 	CROSS_REF_CATALOG.map(entry => [entry.id, entry]),
 );
+
+const PROJECT_ROOT = path.join(import.meta.dir, '..', '..');
+
+/** Map entry ids from a cross-reference list. */
+export function crossRefIds(entries: readonly {id: string}[]): string[] {
+	return entries.map(entry => entry.id);
+}
+
+function buildReverseRelatedMap(): Map<string, string[]> {
+	const reverse = new Map<string, string[]>();
+	for (const entry of CROSS_REF_CATALOG) {
+		for (const relatedId of entry.related ?? []) {
+			const refs = reverse.get(relatedId) ?? [];
+			refs.push(entry.id);
+			reverse.set(relatedId, refs);
+		}
+	}
+	return reverse;
+}
 
 function matchesModule(entry: CrossRefEntry, module: string): boolean {
 	const needle = module.replace(/^\.\//, '');
@@ -676,7 +1215,7 @@ export function getCrossRefsByCli(command: string): CrossRefEntry[] {
 }
 
 /**
- * Resolve related cross-reference entries for an id.
+ * Resolve direct related cross-reference entries for an id.
  */
 export function getRelatedCrossRefs(id: string): CrossRefEntry[] {
 	const entry = getCrossRef(id);
@@ -684,6 +1223,174 @@ export function getRelatedCrossRefs(id: string): CrossRefEntry[] {
 	return entry.related
 		.map(relatedId => getCrossRef(relatedId))
 		.filter((related): related is CrossRefEntry => related !== undefined);
+}
+
+/**
+ * Entries that declare `id` in their `related` list.
+ */
+export function getCrossRefsReferencing(id: string): CrossRefEntry[] {
+	return CROSS_REF_CATALOG.filter(entry => entry.related?.includes(id) ?? false);
+}
+
+/**
+ * Neighbour ids for graph walks (outgoing `related`, optional reverse backlinks).
+ */
+export function getCrossRefNeighbourIds(
+	id: string,
+	options: Pick<CrossRefLoopOptions, 'bidirectional'> = {},
+): string[] {
+	const neighbours = new Set(getCrossRef(id)?.related ?? []);
+	if (options.bidirectional) {
+		for (const ref of getCrossRefsReferencing(id)) {
+			neighbours.add(ref.id);
+		}
+	}
+	return [...neighbours];
+}
+
+/**
+ * Breadth-first walk across the cross-reference graph with cycle protection.
+ */
+export function walkCrossRefLoop(
+	startId: string,
+	options: CrossRefLoopOptions = {},
+): CrossRefEntry[] {
+	const {
+		maxDepth = Number.POSITIVE_INFINITY,
+		bidirectional = false,
+		includeStart = false,
+	} = options;
+	const start = getCrossRef(startId);
+	if (!start) return [];
+
+	const visited = new Set<string>();
+	const ordered: CrossRefEntry[] = [];
+	const queue: CrossRefLoopStep[] = [{id: startId, depth: 0}];
+
+	while (queue.length > 0) {
+		const step = queue.shift()!;
+		if (visited.has(step.id)) continue;
+		visited.add(step.id);
+
+		const entry = getCrossRef(step.id);
+		if (!entry) continue;
+
+		if (includeStart || step.id !== startId) {
+			ordered.push(entry);
+		}
+		if (step.depth >= maxDepth) continue;
+
+		for (const nextId of getCrossRefNeighbourIds(step.id, {bidirectional})) {
+			if (!visited.has(nextId)) {
+				queue.push({id: nextId, depth: step.depth + 1, via: step.id});
+			}
+		}
+	}
+
+	return ordered;
+}
+
+/**
+ * Ordered loop steps (ids + depth) for CLI / diagnostics output.
+ */
+export function planCrossRefLoop(
+	startId: string,
+	options: CrossRefLoopOptions = {},
+): CrossRefLoopStep[] {
+	const {maxDepth = Number.POSITIVE_INFINITY, bidirectional = false, includeStart = true} = options;
+	const start = getCrossRef(startId);
+	if (!start) return [];
+
+	const visited = new Set<string>();
+	const steps: CrossRefLoopStep[] = [];
+	const queue: CrossRefLoopStep[] = [{id: startId, depth: 0}];
+
+	while (queue.length > 0) {
+		const step = queue.shift()!;
+		if (visited.has(step.id)) continue;
+		visited.add(step.id);
+
+		if (getCrossRef(step.id)) {
+			if (includeStart || step.id !== startId) {
+				steps.push(step);
+			}
+		}
+		if (step.depth >= maxDepth) continue;
+
+		for (const nextId of getCrossRefNeighbourIds(step.id, {bidirectional})) {
+			if (!visited.has(nextId)) {
+				queue.push({id: nextId, depth: step.depth + 1, via: step.id});
+			}
+		}
+	}
+
+	return steps;
+}
+
+/**
+ * Structural validation: related ids, module paths, and runtime-catalog drift.
+ */
+export function validateCrossRefCatalog(
+	catalog: readonly CrossRefEntry[] = CROSS_REF_CATALOG,
+	projectRoot: string = PROJECT_ROOT,
+): CrossRefCatalogValidation {
+	const ids = new Set(catalog.map(entry => entry.id));
+	const findings: CrossRefCatalogFinding[] = [];
+	const unknownRelated: {from: string; to: string}[] = [];
+	const missingModules: {id: string; module: string}[] = [];
+
+	for (const entry of catalog) {
+		for (const relatedId of entry.related ?? []) {
+			if (!ids.has(relatedId)) {
+				unknownRelated.push({from: entry.id, to: relatedId});
+				findings.push({
+					kind: 'unknown-related',
+					id: entry.id,
+					message: `unknown related id "${relatedId}"`,
+					severity: 'error',
+				});
+			}
+		}
+
+		for (const modulePath of entry.modules) {
+			if (!modulePath.startsWith('src/')) continue;
+			const fullPath = path.join(projectRoot, modulePath);
+			if (!existsSync(fullPath)) {
+				missingModules.push({id: entry.id, module: modulePath});
+				findings.push({
+					kind: 'missing-module',
+					id: entry.id,
+					message: `missing module "${modulePath}"`,
+					severity: 'warning',
+				});
+			}
+		}
+	}
+
+	const xrefBunApis = new Set(
+		catalog.filter(entry => entry.bunApi).map(entry => entry.bunApi as string),
+	);
+	const runtimeDrift = BUN_RUNTIME_CATALOG.filter(
+		entry => entry.bunApi !== 'bun:test' && !xrefBunApis.has(entry.bunApi),
+	).map(entry => entry.bunApi);
+
+	for (const bunApi of runtimeDrift) {
+		findings.push({
+			kind: 'runtime-drift',
+			id: bunApi,
+			message: `bun-runtime-catalog entry "${bunApi}" has no xref bunApi match`,
+			severity: 'warning',
+		});
+	}
+
+	const errors = findings.filter(finding => finding.severity === 'error');
+	return {
+		ok: errors.length === 0,
+		findings,
+		unknownRelated,
+		missingModules,
+		runtimeDrift,
+	};
 }
 
 /**
@@ -712,6 +1419,10 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof Bun.CSRF?.generate === 'function' && typeof Bun.CSRF?.verify === 'function';
 		case 'Bun.color':
 			return typeof Bun.color === 'function';
+		case 'Bun.markdown':
+			return typeof Bun.markdown?.html === 'function';
+		case 'Bun.randomUUIDv7':
+			return typeof Bun.randomUUIDv7 === 'function';
 		case 'Bun.secrets':
 			return typeof Bun.secrets?.get === 'function';
 		case 'Bun.redis':
@@ -738,8 +1449,12 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof Worker === 'function';
 		case 'Bun.peek':
 			return typeof Bun.peek === 'function';
+		case 'Bun.inspect':
+			return typeof Bun.inspect === 'function';
 		case 'Bun.deepEquals':
 			return typeof Bun.deepEquals === 'function';
+		case 'Bun.escapeHTML':
+			return typeof Bun.escapeHTML === 'function';
 		case 'Bun.nanoseconds':
 			return typeof Bun.nanoseconds === 'function';
 		case 'Bun.JSONL':
@@ -748,6 +1463,20 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 			return typeof (Bun as {FileSystemRouter?: unknown}).FileSystemRouter === 'function';
 		case 'Bun.plugin':
 			return typeof Bun.plugin === 'function';
+		case 'Bun.JSON5.parse':
+			return typeof (Bun as {JSON5?: {parse?: unknown}}).JSON5?.parse === 'function';
+		case 'Bun.TOML.parse':
+			return typeof (Bun as {TOML?: {parse?: unknown}}).TOML?.parse === 'function';
+		case 'bun:test':
+			return typeof Bun !== 'undefined';
+		case 'bun run --filter':
+			return typeof Bun !== 'undefined';
+		case 'process.on':
+			return typeof process.on === 'function';
+		case 'bun:jsc.heapStats':
+			return typeof heapStats === 'function';
+		case 'bun install':
+			return typeof Bun.spawn === 'function';
 		default:
 			return true;
 	}
@@ -757,6 +1486,7 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
  * Validate Bun APIs referenced by the cross-reference catalog.
  */
 export function validateCrossRefApis(): CrossRefValidation {
+	const catalog = validateCrossRefCatalog();
 	const entries: CrossRefApiStatus[] = [];
 	const requiredMissing: string[] = [];
 	const optionalMissing: string[] = [];
@@ -790,10 +1520,27 @@ export function validateCrossRefApis(): CrossRefValidation {
 	}
 
 	return {
-		ok: requiredMissing.length === 0,
+		ok: requiredMissing.length === 0 && catalog.ok,
 		requiredMissing,
 		optionalMissing,
 		featureDisabled,
 		entries,
+		catalog,
 	};
 }
+
+export {
+	auditDoctorLoops,
+	DOCTOR_LOOP_SEEDS,
+	executeLoopCli,
+	executeLoopCliAsync,
+	formatDoctorLoopTable,
+	formatLoopCliJson,
+	type DoctorLoopAudit,
+	type DoctorLoopSeed,
+	type DoctorLoopSeedResult,
+	type LoopCliOptions,
+	type LoopCliResult,
+	type LoopCliValidation,
+	type LoopKind,
+} from './loop-cli.ts';

@@ -39,6 +39,6 @@ exports[`doctor snapshot document shape matches inline snapshot 1`] = `
     "ok": true,
     "warnings": 0,
   },
-  "version": 1,
+  "version": 2,
 }
 `;

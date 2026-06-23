@@ -73,4 +73,4 @@ Rotates the per-domain csrf-secret in Bun.secrets, invalidating all CSRF tokens.
 	process.exit(1);
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

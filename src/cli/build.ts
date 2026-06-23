@@ -108,4 +108,4 @@ Examples:
 	await spawnInheritAndExit(['bun', ...buildArgs]);
 }
 
-await runCliIfMain(runBuild);
+await runCliIfMain(runBuild, import.meta.path);

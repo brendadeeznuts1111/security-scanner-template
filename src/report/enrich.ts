@@ -40,7 +40,9 @@ function registryForContext(ctx: DomainReportContext, registry?: DomainRegistry)
 	}
 
 	return {
+		root: process.cwd(),
 		async loadAll() {},
+		async ensureDomain() {},
 		get(domain: string) {
 			if (domain !== ctx.domain) {
 				throw new Error(`Unknown domain: ${domain}`);
@@ -61,6 +63,22 @@ function registryForContext(ctx: DomainReportContext, registry?: DomainRegistry)
 		},
 		watch() {},
 		unwatch() {},
+		async checkPackageVersions() {
+			return [];
+		},
+		async scanPatterns() {
+			return [];
+		},
+		async loadThreatFeed() {},
+		checkPackageThreats() {
+			return [];
+		},
+		checkPackagesThreats() {
+			return new Map();
+		},
+		getLoadedThreats() {
+			return [];
+		},
 		async reloadDomain() {
 			return null;
 		},

@@ -1,4 +1,4 @@
-import {escapeHtml as escapeHtmlText} from '../utils/runtime.ts';
+import {escapeHtml as escapeHtmlText} from '../utils/escape-html.ts';
 import type {ReportAdvisory, ReportOverride} from './types.ts';
 
 /**

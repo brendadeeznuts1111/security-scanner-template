@@ -9,6 +9,7 @@
  * @see https://bun.com/reference/bun/Terminal
  */
 
+import {satisfiesVersion} from '../semver/index.ts';
 import {
 	BUN_SPAWN_DOCS_URL,
 	BUN_TERMINAL_DOCS_URL,
@@ -28,8 +29,25 @@ export const PIPELINE_PAGER_NOTE =
 export const EVAL_TOP_LEVEL_AWAIT_NOTE =
 	'Bun >= 1.3.14: bun -p returns the final top-level await value (e.g. bun -p "(await 1) + 1" prints 2).';
 
-export const WINDOWS_CONPTY_NOTE =
-	'On Windows, Bun.Terminal uses ConPTY; termios flags are no-ops and setRawMode on the parent PTY does not affect the child console mode.';
+/** Windows ConPTY caveats from Bun terminal docs (Bun >= 1.3.14). */
+export const WINDOWS_CONPTY_NOTES = {
+	summary:
+		'On Windows, Bun.Terminal uses ConPTY (CreatePseudoConsole); POSIX termios is unavailable.',
+	details: [
+		'Bun.Terminal on Windows uses ConPTY — not POSIX openpty().',
+		'termios/ioctl flags are no-ops; setRawMode on the parent PTY does not change the child console mode.',
+		'Kill attached subprocesses before terminal.close() on Windows to avoid orphaned consoles.',
+		'SIGWINCH resize propagation may differ from POSIX — prefer explicit terminal.resize().',
+		'terminal.name sets PTY configuration only; set TERM in spawn env via spawnEnvWithTerm().',
+	],
+} as const;
+
+/** @deprecated Use {@link WINDOWS_CONPTY_NOTES.summary}. */
+export const WINDOWS_CONPTY_NOTE = WINDOWS_CONPTY_NOTES.summary;
+
+export function formatWindowsConptyNotes(): string {
+	return WINDOWS_CONPTY_NOTES.details.join(' ');
+}
 
 export interface TerminalIORuntimeInfo {
 	stdinIsTTY: boolean;
@@ -52,14 +70,16 @@ export interface TerminalIORuntimeInfo {
 	pipelineNote?: string;
 	evalNote?: string;
 	platformNote?: string;
+	/** Expanded ConPTY guidance when platform is win32. */
+	windowsConptyNotes?: readonly string[];
 }
 
 function bunSupportsPipelinePagerFix(): boolean {
-	return Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_PIPELINE_PAGER_FIX}`);
+	return satisfiesVersion(Bun.version, `>=${MIN_BUN_PIPELINE_PAGER_FIX}`);
 }
 
 function bunSupportsEvalTopLevelAwaitFix(): boolean {
-	return Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`);
+	return satisfiesVersion(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`);
 }
 
 /** Snapshot stdio TTY state and Bun pipeline/eval compatibility flags. */
@@ -93,7 +113,8 @@ export function getTerminalIORuntimeInfo(): TerminalIORuntimeInfo {
 	}
 
 	if (processInfo.platform === 'win32') {
-		info.platformNote = WINDOWS_CONPTY_NOTE;
+		info.platformNote = WINDOWS_CONPTY_NOTES.summary;
+		info.windowsConptyNotes = WINDOWS_CONPTY_NOTES.details;
 	}
 
 	return info;

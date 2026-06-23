@@ -140,6 +140,94 @@ export interface DomainServiceTls {
 	ca?: string;
 }
 
+/** Layer 4.5 — Bun.Transpiler supply-chain scanning (code at rest). */
+export interface DomainServiceScanTranspiler {
+	enabled?: boolean;
+	includePaths?: string[];
+	excludePatterns?: string[];
+	rules?: string[];
+	rulesPath?: string;
+	verifyIntegrity?: boolean;
+}
+
+export interface DomainServiceScan {
+	transpiler?: DomainServiceScanTranspiler;
+}
+
+/** Per-domain dist health and supply-chain monitor loop. */
+export interface DomainNetworkConfig {
+	enabled: boolean;
+	/** Path to dist/ directory (relative to project root). */
+	distPath?: string;
+	/** Health endpoint URL (`/health`, `/meta`, etc.). */
+	healthUrl?: string;
+	/**
+	 * Bun.secrets logical name (scoped to `supply-chain-{domain}` service).
+	 * Example: `health/prod` → service `supply-chain-com.example.app`, name `health/prod`.
+	 */
+	healthUrlSecret?: string;
+	/** Health probe interval in ms (default 8000). */
+	probeInterval?: number;
+	/** Poll dist fingerprint for changes and re-audit. */
+	watch?: boolean;
+	/** Dist watch interval in ms (default 750). */
+	watchInterval?: number;
+	/** Watch debounce in ms (default 500; falls back to ops.watch.debounceMs). */
+	debounceMs?: number;
+	/** Treat non-healthy probes as fatal (exit 1 in CLI). */
+	failOnHealth?: boolean;
+	/** Exit when endpoints drift from baseline. */
+	failOnDrift?: boolean;
+	/** Baseline JSON5 path (default `.security/<domain>/network-baseline.json5`). */
+	baselinePath?: string;
+	/** Persist current audit as baseline on start. */
+	updateBaseline?: boolean;
+	/** Emit NDJSON ticks to stdout (machine-readable). */
+	json?: boolean;
+	/** Emit herdr-doctor tab layout to stdout. */
+	herdrTab?: boolean;
+	/** Disable colored stderr dashboard (`NO_COLOR` also respected). */
+	noColor?: boolean;
+}
+
+/** Full-spectrum workflow loop orchestrating network, semver, patterns, TLS, and DNS scanners. */
+export interface DomainWorkflowConfig {
+	enabled?: boolean;
+	/** Scanner ids (default: all). */
+	scanners?: string[];
+	/** Periodic run interval in ms (default 60000). */
+	interval?: number;
+	/** Re-run when watched paths change. */
+	watch?: boolean;
+	/** Paths relative to project root (default dist, src, domains). */
+	watchPaths?: string[];
+	/** Debounce for watch triggers in ms. */
+	debounceMs?: number;
+	output?: 'table' | 'json' | 'ndjson' | 'herdr';
+	failOnIssue?: boolean;
+	failOnSeverity?: 'low' | 'medium' | 'high' | 'critical';
+	/** JSON5 golden-state seed loaded before each loop run. */
+	seedPath?: string;
+	/** Capture scanner metrics to this seed path after each run. */
+	seedWritePath?: string;
+	/** Exit non-zero when current state drifts from seed. */
+	failOnDrift?: boolean;
+	/** Extra drift/issue logs to stderr (default true). */
+	logEffects?: boolean;
+	/** Webhook URL for drift/issue alerts. */
+	alertUrl?: string;
+	/** Attempt semver auto-remediation for high/critical violations. */
+	fix?: boolean;
+	/** Write Markdown report each run (`true` → reports/<domain>-workflow.md). */
+	report?: boolean | string;
+	/** TLS material for outbound webhook alerts. */
+	tls?: import('../workflow/types.ts').WorkflowTlsConfig;
+	/** Include Bun runtime metadata in reports/alerts/drift (default true). */
+	includeBunVersion?: boolean;
+	/** Directory of custom workflow effect plugins (`.ts` files). */
+	effectsDir?: string;
+}
+
 export interface DomainService {
 	/**
 	 * Enable Bun.Terminal PTY for external scanner orchestration (`scan interactive`, REPL `scan`).
@@ -154,6 +242,12 @@ export interface DomainService {
 	/** Serve HTTP/1.1 alongside HTTP/3 (default true). */
 	http1?: boolean;
 	tls?: DomainServiceTls;
+	/** Supply-chain scanning (transpiler bundle scan, etc.). */
+	scan?: DomainServiceScan;
+	/** Continuous dist audit, semver, and health monitoring. */
+	network?: DomainNetworkConfig;
+	/** Unified security scanner workflow loop. */
+	workflow?: DomainWorkflowConfig;
 }
 
 export interface DomainAuditBackendConfig {
@@ -168,12 +262,32 @@ export interface DomainAuditConfig {
 	sqlite?: DomainAuditBackendConfig;
 }
 
+export interface DomainIntelSemverConfig {
+	/** Minimum threat-feed schema/API version required for this domain. */
+	feedMinVersion?: string;
+	/** Required secure version ranges per package name. */
+	packageRanges?: Record<string, string>;
+}
+
+export interface DomainIntelEndpointProbe {
+	/** Absolute URL (`/meta`, `/health`, etc.). */
+	url: string;
+	label?: string;
+	method?: 'GET' | 'HEAD';
+	expectStatus?: number;
+	requireHeaders?: string[];
+}
+
 export interface DomainIntelConfig {
 	dns?: {
 		blocklist?: string[];
 		requireResolution?: boolean;
 		suspiciousTtlThreshold?: number;
 	};
+	/** Bun.semver constraints for feed and installed packages. */
+	semver?: DomainIntelSemverConfig;
+	/** HTTP endpoints for deep meta/security probes (`bun sp scan packages --deep --probe`). */
+	endpoints?: DomainIntelEndpointProbe[];
 }
 
 /** Client-side TLS inspection settings (remote endpoint scans). */

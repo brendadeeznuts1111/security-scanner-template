@@ -13,6 +13,10 @@ beforeEach(async () => {
 			description: 'metadata extraction test',
 			license: 'MIT',
 			engines: {bun: '>=1.3.14'},
+			author: {
+				name: 'Metadata Author',
+				email: 'author@example.com',
+			},
 			dependencies: {zod: '^3.0.0'},
 			devDependencies: {'bun-types': '1.3.14'},
 		}),
@@ -32,5 +36,6 @@ test('extractPackageMetadata reads name, engines, and dependency counts', async 
 	expect(meta?.bunEngine).toBe('>=1.3.14');
 	expect(meta?.dependencyCount).toBe(1);
 	expect(meta?.devDependencyCount).toBe(1);
+	expect(meta?.author?.name).toBe('Metadata Author');
 	expect(meta?.fileSize).toBeGreaterThan(0);
 });

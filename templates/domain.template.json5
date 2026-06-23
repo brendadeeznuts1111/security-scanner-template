@@ -95,12 +95,52 @@
 
 	// Service runtime (Bun.serve + external scanner orchestration).
 	service: {
+		// Layer 4.5 — Bun.Transpiler bundle / dependency scanning.
+		// scan: {
+		// 	transpiler: {
+		// 		enabled: true,
+		// 		includePaths: ['dist/', 'node_modules/'],
+		// 		excludePatterns: ['**/*.min.js'],
+		// 		rules: ['hardcoded-secret', 'unsafe-eval'],
+		// 		verifyIntegrity: false,
+		// 	},
+		// },
 		interactive: false,
 		// port: 443,
 		// hostname: '0.0.0.0',
 		http3: false,
 		http1: true,
 		// tls: { cert: './certs/server.pem', key: './certs/server-key.pem', ca: './certs/ca.pem' },
+		// Continuous dist audit + health monitor (`bun sp network start --domain <name>`).
+		// network: {
+		// 	enabled: true,
+		// 	distPath: './dist/frontend',
+		// 	healthUrl: 'http://localhost:3000/health',
+		// 	healthUrlSecret: 'health/prod',
+		// 	probeInterval: 8000,
+		// 	watch: true,
+		// 	watchInterval: 750,
+		// 	debounceMs: 500,
+		// 	failOnHealth: false,
+		// 	failOnDrift: false,
+		// 	baselinePath: './.security/com.example.service/network-baseline.json5',
+		// 	updateBaseline: false,
+		// 	json: false,
+		// 	herdrTab: false,
+		// 	noColor: false,
+		// },
+		// Unified scanner orchestrator (`bun sp workflow start --domain <name>`).
+		// service.workflow: {
+		// 	enabled: true,
+		// 	scanners: ['network', 'semver', 'patterns', 'tls', 'dns'],
+		// 	interval: 60000,
+		// 	watch: true,
+		// 	watchPaths: ['./dist', './src', './domains'],
+		// 	debounceMs: 500,
+		// 	output: 'ndjson',
+		// 	failOnIssue: false,
+		// 	failOnSeverity: 'medium',
+		// },
 	},
 
 	// Visual artifacts (Bun.Image, operator QR).
@@ -148,11 +188,22 @@
 
 	// Threat intelligence.
 	intel: {
+		// Deep scan probes (`bun sp scan packages --domain <name> --deep --probe`).
+		// endpoints: [
+		// 	{ url: 'http://127.0.0.1:3000/meta', label: 'service-meta', expectStatus: 200 },
+		// ],
 		dns: {
 			blocklist: [],
 			requireResolution: true,
 			suspiciousTtlThreshold: 60,
 		},
+		// semver: {
+		// 	feedMinVersion: ">=2.3.0",
+		// 	packageRanges: {
+		// 		"lodash": ">=4.17.21",
+		// 		"axios": ">=1.0.0",
+		// 	},
+		// },
 	},
 
 	// Remote TLS inspection (`bun sp tls`, `bun scan tls`).

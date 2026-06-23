@@ -23,6 +23,8 @@ test('DOMAIN_FIELD_MATRIX covers core domain, branding, service, and secrets fie
 	expect(fields.has('secrets.service')).toBe(true);
 	expect(fields.has('service.interactive')).toBe(true);
 	expect(fields.has('service.http3')).toBe(true);
+	expect(fields.has('service.workflow.enabled')).toBe(true);
+	expect(fields.has('service.workflow.failOnSeverity')).toBe(true);
 	expect(fields.has('visual.qr.enabled')).toBe(true);
 	expect(fields.has('tls.useSystemCA')).toBe(true);
 	expect(DOMAIN_FIELD_MATRIX.length).toBeGreaterThanOrEqual(60);

@@ -12,10 +12,13 @@ export function cliBoolean(value: string | boolean | undefined): boolean | undef
 
 /**
  * Run a CLI entrypoint only when the module is executed directly (Bun.main).
+ *
+ * Pass `import.meta.path` from the CLI entry file — defaults cannot use the
+ * caller's path because default parameters bind to this module's scope.
  */
 export async function runCliIfMain(
 	main: () => void | Promise<void>,
-	modulePath: string = import.meta.path,
+	modulePath: string,
 ): Promise<void> {
 	if (!isMainModule(modulePath)) {
 		return;

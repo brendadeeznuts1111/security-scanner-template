@@ -1,4 +1,15 @@
+/**
+ * Bun.inspect helpers for doctor tables and debug output.
+ *
+ * @see https://bun.com/docs/runtime/utils#bun-inspect
+ */
 import {shouldColorize} from './process.ts';
+
+export const BUN_INSPECT_DOCS_URL = 'https://bun.com/docs/runtime/utils#bun-inspect';
+
+export function isInspectAvailable(): boolean {
+	return typeof Bun.inspect === 'function';
+}
 
 export interface InspectTableOptions {
 	colors?: boolean;

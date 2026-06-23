@@ -1,0 +1,13 @@
+// Per-domain network audit baseline (golden template).
+// Default path: .security/<reverse-dns-domain>/network-baseline.json5
+// Capture: bun run supply-chain network --path dist --update-baseline --domain com.example.service
+
+{
+	version: 1,
+	domain: 'com.example.service',
+	capturedAt: '2026-06-23T00:00:00.000Z',
+	bundlePath: 'dist',
+	endpoints: ['/api/health', 'https://api.example.com'],
+	healthRoutes: ['/api/health', '/health'],
+	health: 'healthy',
+}

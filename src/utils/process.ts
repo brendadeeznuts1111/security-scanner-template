@@ -1,8 +1,8 @@
 /**
  * Bun.spawn / stdio helpers aligned with
- * https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn
- * https://bun.sh/docs/guides/process/spawn
- * https://bun.sh/docs/runtime/child-process#terminal-pty-support
+ * https://bun.com/docs/runtime/child-process#spawn-a-process-bun-spawn
+ * https://bun.com/docs/guides/process/spawn
+ * https://bun.com/docs/runtime/child-process#terminal-pty-support
  */
 
 /** Default PTY `name` (set `TERM` separately via spawn `env`). */
@@ -11,13 +11,24 @@ export const DEFAULT_TERM_NAME = 'xterm-256color';
 /** Default `COLORTERM` for truecolor PTY children (Bun `terminal.name` does not set env). */
 export const DEFAULT_COLORTERM = 'truecolor';
 
-export const BUN_SPAWN_GUIDE_URL = 'https://bun.sh/docs/guides/process/spawn';
+/**
+ * Bun docs: `terminal.name` configures the PTY type only.
+ * Child `process.env.TERM` must be set explicitly on `Bun.spawn({ env })`.
+ */
+export const TERM_ENV_NOTE =
+	'terminal.name does not set TERM — spawnEnvWithTerm() merges TERM and COLORTERM into child env.';
+
+export const BUN_SPAWN_GUIDE_URL = 'https://bun.com/docs/guides/process/spawn';
 export const BUN_SPAWN_DOCS_URL =
-	'https://bun.sh/docs/runtime/child-process#spawn-a-process-bun-spawn';
+	'https://bun.com/docs/runtime/child-process#spawn-a-process-bun-spawn';
 export const BUN_SPAWN_STDOUT_DOCS_URL =
-	'https://bun.sh/docs/guides/process/spawn-stdout#read-stdout-from-a-child-process';
+	'https://bun.com/docs/guides/process/spawn-stdout#read-stdout-from-a-child-process';
 export const BUN_SPAWN_STDERR_DOCS_URL =
-	'https://bun.sh/docs/guides/process/spawn-stderr#read-stderr-from-a-child-process';
+	'https://bun.com/docs/guides/process/spawn-stderr#read-stderr-from-a-child-process';
+
+export function isSpawnAvailable(): boolean {
+	return typeof Bun.spawn === 'function';
+}
 export const BUN_TERMINAL_DOCS_URL = 'https://bun.com/reference/bun/Terminal';
 
 /**
@@ -473,8 +484,11 @@ export interface ProcessRuntimeInfo {
 	noColor: boolean;
 	term: string | undefined;
 	colorterm: string | undefined;
+	/** Default PTY name passed to Bun.spawn `terminal.name` (not the child TERM env). */
+	ptyTermName: string;
 	docsUrl: string;
 	spawnGuideUrl: string;
+	terminalDocsUrl: string;
 }
 
 /** Snapshot Bun process/spawn capabilities for doctor diagnostics. */
@@ -496,8 +510,10 @@ export function getProcessRuntimeInfo(): ProcessRuntimeInfo {
 		noColor: process.env[NO_COLOR_ENV] !== undefined,
 		term: process.env.TERM,
 		colorterm: process.env.COLORTERM,
+		ptyTermName: DEFAULT_TERM_NAME,
 		docsUrl: BUN_SPAWN_DOCS_URL,
 		spawnGuideUrl: BUN_SPAWN_GUIDE_URL,
+		terminalDocsUrl: BUN_TERMINAL_DOCS_URL,
 	};
 }
 
@@ -605,6 +621,16 @@ export function formatRuntimeInfoTable(info: ProcessRuntimeInfo = getProcessRunt
 			{
 				signal: 'COLORTERM',
 				value: info.colorterm ?? '(unset)',
+				api: 'spawnEnvWithTerm',
+			},
+			{
+				signal: 'terminal.name',
+				value: info.ptyTermName,
+				api: 'Bun.spawn terminal.name (not TERM env)',
+			},
+			{
+				signal: 'TERM env note',
+				value: TERM_ENV_NOTE,
 				api: 'spawnEnvWithTerm',
 			},
 		],

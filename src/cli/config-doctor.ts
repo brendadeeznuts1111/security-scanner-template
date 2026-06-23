@@ -18,6 +18,16 @@ import {
 	formatDoctorDiagnosticsInspect,
 	formatDoctorDiagnosticsTable,
 } from '../utils/doctor-diagnostics.ts';
+import {
+	formatConfigFormatRuntimeInspect,
+	formatConfigFormatRuntimeTable,
+	getConfigFormatRuntimeInfo,
+} from '../utils/config-format-runtime.ts';
+import {
+	formatInstallRuntimeInspect,
+	formatInstallRuntimeTable,
+	getInstallRuntimeInfo,
+} from '../utils/install-runtime.ts';
 import {createTimer} from '../utils/timing.ts';
 
 function formatIssue(issue: DoctorIssue, branding?: DomainBrandingProfile): string {
@@ -72,9 +82,65 @@ function formatSnapshotReport(result: DoctorResult): string[] {
 	if (snapshot.compared) {
 		lines.push(
 			snapshot.ok
-				? colorize(TERMINAL.success, '  snapshot index matches baseline')
+				? colorize(TERMINAL.success, '  snapshot index + per-domain baselines match')
 				: colorize(TERMINAL.warn, '  snapshot drift detected (see cross-domain checks)'),
 		);
+	}
+	if (snapshot.perDomain.length > 0) {
+		lines.push(colorize(TERMINAL.muted, '  per-domain snapshots:'));
+		for (const entry of snapshot.perDomain) {
+			const status = entry.ok
+				? colorize(TERMINAL.success, 'ok')
+				: entry.missing
+					? colorize(TERMINAL.warn, 'missing')
+					: colorize(TERMINAL.warn, 'drift');
+			const detail =
+				entry.changedSections.length > 0
+					? ` [${entry.changedSections.join(', ')}]`
+					: entry.fingerprint
+						? ` fp:${entry.fingerprint.slice(0, 8)}`
+						: '';
+			lines.push(colorize(TERMINAL.muted, `    ${entry.domain}: ${status}${detail}`));
+		}
+	}
+	if (snapshot.driftGate) {
+		const gate = snapshot.driftGate;
+		lines.push('');
+		lines.push(
+			gate.ok
+				? colorize(TERMINAL.success, `  drift gate: ok (sections: ${gate.sections.join(', ')})`)
+				: colorize(
+						TERMINAL.fatal,
+						`  drift gate: FAILED (${gate.violations.length} domain(s), sections: ${gate.sections.join(', ')})`,
+					),
+		);
+		for (const violation of gate.violations) {
+			const label = violation.missing ? 'missing baseline' : violation.changedSections.join(', ');
+			lines.push(
+				colorize(
+					TERMINAL.fatal,
+					`    ${violation.domain}: ${label} (fp:${violation.fingerprint.slice(0, 8)})`,
+				),
+			);
+		}
+	}
+	if (snapshot.compatibilityGate) {
+		const gate = snapshot.compatibilityGate;
+		lines.push('');
+		lines.push(
+			gate.ok
+				? colorize(TERMINAL.success, '  compatibility gate: ok')
+				: colorize(
+						TERMINAL.fatal,
+						`  compatibility gate: FAILED (${gate.violations.length} domain(s))`,
+					),
+		);
+		for (const violation of gate.violations) {
+			lines.push(colorize(TERMINAL.fatal, `    ${violation.domain}: ${violation.message}`));
+		}
+	}
+	if (snapshot.snapshotRoot) {
+		lines.push(colorize(TERMINAL.muted, `  baseline: ${snapshot.snapshotRoot}`));
 	}
 	return lines;
 }
@@ -203,6 +269,13 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 		lines.push(colorize(TERMINAL.muted, 'Terminal: interactive session (Bun.Terminal / REPL)'));
 	}
 
+	if (terminalIO?.windowsConptyNotes?.length) {
+		lines.push(colorize(TERMINAL.muted, `ConPTY: ${terminalIO.platformNote}`));
+		for (const note of terminalIO.windowsConptyNotes.slice(1, 3)) {
+			lines.push(colorize(TERMINAL.muted, `  ${note}`));
+		}
+	}
+
 	if (terminalIO && !terminalIO.terminalApiAvailable) {
 		lines.push(colorize(TERMINAL.muted, 'Warning: Bun.Terminal unavailable — PTY scans disabled'));
 	}
@@ -240,6 +313,58 @@ function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): 
 		lines.push(colorize(TERMINAL.muted, `  session: ${tty} | Ctrl+C → SIGINT`));
 	}
 
+	const install = result.runtime.install;
+	if (install) {
+		lines.push('');
+		lines.push(colorize(TERMINAL.warn, 'Bun install (platform / lockfile / peers)'));
+		lines.push(
+			formatInstallRuntimeTable(install)
+				.split('\n')
+				.map(line => (line.length > 0 ? `  ${line}` : line))
+				.join('\n'),
+		);
+		if (!install.targetValid) {
+			for (const error of install.targetErrors) {
+				lines.push(colorize(TERMINAL.fatal, `  ${error}`));
+			}
+		}
+		if (install.installCommand !== 'bun install') {
+			lines.push(colorize(TERMINAL.muted, `  cross-target: ${install.installCommand}`));
+		}
+	}
+
+	const configFormat = result.runtime.configFormat;
+	if (configFormat) {
+		lines.push('');
+		lines.push(colorize(TERMINAL.warn, 'Config formats (JSON5 domains / TOML policy)'));
+		lines.push(
+			formatConfigFormatRuntimeTable(configFormat)
+				.split('\n')
+				.map(line => (line.length > 0 ? `  ${line}` : line))
+				.join('\n'),
+		);
+		if (configFormat.invalidFiles.length > 0) {
+			for (const invalid of configFormat.invalidFiles) {
+				lines.push(
+					colorize(
+						TERMINAL.fatal,
+						`  wrong extension: ${invalid.path} → *${invalid.expectedExtension}`,
+					),
+				);
+			}
+		}
+		if (configFormat.policyDrift.length > 0) {
+			for (const drift of configFormat.policyDrift) {
+				lines.push(
+					colorize(
+						TERMINAL.warn,
+						`  policy drift: ${drift.domain} — reconcile JSON5 supplyChain.policy with TOML`,
+					),
+				);
+			}
+		}
+	}
+
 	return lines.join('\n');
 }
 
@@ -259,13 +384,26 @@ export interface ConfigDoctorOptions {
 	snapshot?: boolean;
 	/** Write snapshots using Bun's native `--update-snapshots` / `-u` flag. */
 	updateSnapshots?: boolean;
+	/** Override snapshot baseline directory (e.g. `.baseline`). */
+	baselineDir?: string;
+	/** Fail when snapshot critical sections drift (CI gate). */
+	failOnDrift?: boolean;
+	/** Comma-separated sections for `--fail-on-drift` (vault,policy,concerns,templateDrift,bundles). */
+	driftSections?: string;
+	/** Worker count for parallel bundle snapshot hashing during doctor `--snapshot`. */
+	workers?: number;
 	/** Raw argv for native snapshot flag detection. */
 	argv?: readonly string[];
+	/** Preview cross-platform install target (`bun install --cpu`). */
+	installCpu?: string;
+	/** Preview cross-platform install target (`bun install --os`). */
+	installOs?: string;
 }
 
 async function peerMetaDoctorResult(
 	peerMeta: Awaited<ReturnType<typeof checkPeerDependenciesMeta>>,
 	root: string,
+	installOverride: {cpu?: string; os?: string} = {},
 ): Promise<DoctorResult> {
 	const runtimeValidation = validateBunRuntime();
 	const crossRef = validateCrossRefApis();
@@ -290,7 +428,9 @@ async function peerMetaDoctorResult(
 			systemCA: getSystemCARuntimeInfo(),
 			terminalIO: getTerminalIORuntimeInfo(),
 			platform: await getPlatformRuntimeInfo(`${root}/package.json`),
-			diagnostics: collectDoctorDiagnostics(),
+			diagnostics: await collectDoctorDiagnostics(undefined, root),
+			install: await getInstallRuntimeInfo(root, installOverride),
+			configFormat: await getConfigFormatRuntimeInfo(root),
 		},
 		templateCoverage: {
 			ok: templateCoverageRaw.ok,
@@ -313,10 +453,16 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 	const doctorOptions = {
 		matrix: options.matrix === true,
 		matrixSection: options.matrixSection,
-		snapshot: options.snapshot === true,
+		snapshot: options.snapshot === true || options.failOnDrift === true,
 		updateSnapshots: options.updateSnapshots === true,
+		baselineDir: options.baselineDir,
+		failOnDrift: options.failOnDrift === true,
+		driftSections: options.driftSections,
 		argv: options.argv ?? process.argv,
 		peerMeta: options.checkPeerMeta ? false : undefined,
+		installCpu: options.installCpu,
+		installOs: options.installOs,
+		workers: options.workers,
 	};
 
 	const timed = options.checkPeerMeta
@@ -335,6 +481,7 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 		? await peerMetaDoctorResult(
 				timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>,
 				root,
+				{cpu: options.installCpu, os: options.installOs},
 			)
 		: (timed.result as DoctorResult);
 
@@ -360,6 +507,12 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 					benchmark: benchmarkReport,
 					timing,
 					diagnosticsInspect: formatDoctorDiagnosticsInspect(result.runtime.diagnostics),
+					installInspect: result.runtime.install
+						? formatInstallRuntimeInspect(result.runtime.install)
+						: undefined,
+					configFormatInspect: result.runtime.configFormat
+						? formatConfigFormatRuntimeInspect(result.runtime.configFormat)
+						: undefined,
 					packagesScanned: options.checkPeerMeta
 						? (timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>)
 								.packagesScanned
@@ -373,7 +526,7 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 				2,
 			),
 		);
-		process.exit(result.ok ? 0 : 1);
+		process.exit(resolveDoctorExitCode(result, options));
 	}
 
 	if (options.checkPeerMeta) {
@@ -409,5 +562,22 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 			colorize(TERMINAL.muted, `Doctor timing: ${timing.elapsedMs}ms (${timing.elapsedNs}ns)`),
 		);
 	}
-	process.exit(result.ok ? 0 : 1);
+	process.exit(resolveDoctorExitCode(result, options));
+}
+
+function resolveDoctorExitCode(result: DoctorResult, options: ConfigDoctorOptions): number {
+	if (!result.ok) return 1;
+	// Spec §15.3: baseline update always succeeds for CI refresh pipelines.
+	if (options.updateSnapshots) return 0;
+	if (options.failOnDrift && result.snapshot?.driftGate && !result.snapshot.driftGate.ok) {
+		return 1;
+	}
+	if (
+		options.failOnDrift &&
+		result.snapshot?.compatibilityGate &&
+		!result.snapshot.compatibilityGate.ok
+	) {
+		return 1;
+	}
+	return 0;
 }

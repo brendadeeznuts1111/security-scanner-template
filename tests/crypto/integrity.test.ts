@@ -23,7 +23,7 @@ test('verifyDigest matches expected hash', async () => {
 	expect(await verifyDigest(payload, '0'.repeat(64))).toBe(false);
 });
 
-test('satisfiesVersion delegates to Bun.semver', () => {
+test('satisfiesVersion matches semver ranges for threat feed rules', () => {
 	expect(satisfiesVersion('1.2.3', '>=1.0.0 <2.0.0')).toBe(true);
 	expect(satisfiesVersion('2.0.0', '>=1.0.0 <2.0.0')).toBe(false);
 });

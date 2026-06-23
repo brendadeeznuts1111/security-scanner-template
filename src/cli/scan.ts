@@ -5,11 +5,11 @@ import {loadAllDomains} from '../config/loader.ts';
 import {Service} from '../service/index.ts';
 import {checkDomainsParallel} from '../scan/domain-parallel.ts';
 import {DEFAULT_SECURITY_TOOLS} from '../scan/tools.ts';
-import {
-	findingsToAdvisories,
-	scanBundle as scanBundleFile,
-	scanSource as scanSourceCode,
-} from '../scan/transpiler.ts';
+import {findingsToAdvisories, scanSource as scanSourceCode} from '../scan/transpiler.ts';
+import {runTranspilerBundleCli} from './transpiler-bundle.ts';
+import {runScanPackagesCli} from './scan-packages.ts';
+import {runScanPatternsCli} from './scan-patterns.ts';
+import {runScanConstraintsCli} from './scan-constraints.ts';
 import {runTlsCli} from './tls.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 import {benchmark} from '../utils/benchmark.ts';
@@ -38,29 +38,6 @@ async function runInteractiveScan(domain: string, tool: string, args: string[]):
 	const service = new Service(domainRegistry, domain);
 	const result = await service.runInteractiveScanner(tool, args);
 	process.exit(result.exitCode === 0 ? 0 : 1);
-}
-
-async function runBundleScan(bundlePath: string, json: boolean): Promise<void> {
-	const timed = await benchmark('scan.bundle', () => scanBundleFile(bundlePath));
-
-	if (json) {
-		console.log(JSON.stringify({...timed.result, durationMs: timed.durationMs}, null, 2));
-		process.exit(timed.result.findings.length === 0 ? 0 : 1);
-	}
-
-	console.error(
-		colorize(
-			TERMINAL.scannerInfo,
-			`[scan] ${bundlePath} — ${timed.result.findings.length} finding(s) in ${timed.durationMs.toFixed(2)}ms`,
-		),
-	);
-
-	for (const finding of timed.result.findings) {
-		const color = finding.severity === 'fatal' ? TERMINAL.scannerFatal : TERMINAL.scannerWarn;
-		console.error(colorize(color, `  ${finding.severity} ${finding.id}: ${finding.description}`));
-	}
-
-	process.exit(timed.result.findings.some(f => f.severity === 'fatal') ? 1 : 0);
 }
 
 async function runSourceScan(sourcePath: string, json: boolean): Promise<void> {
@@ -135,10 +112,27 @@ async function main(): Promise<void> {
 			'port': {type: 'string'},
 			'tool': {type: 'string'},
 			'root': {type: 'string'},
+			'path': {type: 'string'},
+			'rules': {type: 'string'},
+			'format': {type: 'string'},
+			'output': {type: 'string'},
+			'verify-integrity': {type: 'boolean'},
+			'update-snapshot': {type: 'boolean'},
+			'fail-on-bundle-drift': {type: 'boolean'},
+			'baseline-dir': {type: 'string'},
 			'workers': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
 			'deep': {type: 'boolean'},
 			'json': {type: 'boolean'},
+			'markdown': {type: 'boolean'},
+			'html': {type: 'boolean'},
+			'threat-feed': {type: 'boolean'},
+			'feed-url': {type: 'string'},
+			'fix': {type: 'boolean'},
+			'transitive': {type: 'boolean'},
+			'probe': {type: 'boolean'},
+			'imports': {type: 'boolean'},
+			'no-imports': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
@@ -147,16 +141,21 @@ async function main(): Promise<void> {
 	if (values.help) {
 		console.log(`Usage:
   bun run scan interactive --domain <domain> [--tool <name>] [-- <scanner-args...>]
-  bun run scan bundle <path> [--json]
-  bun run scan source <path> [--json]
+  bun run scan bundle [--path <dir|file>] [--domain <name>] [--rules id,id] [--format json|markdown|html] [--output path] [--verify-integrity] [--json|--markdown|--html]
+  bun run scan source --domain <reverse-dns> [--path src/] [--root <cwd>] [--fix] [--json]
+  bun run scan source <file> [--json]
   bun run scan domains [--root <cwd>] [--workers <n>] [--json]
+  bun run scan packages --domain <reverse-dns> [--root <cwd>] [--deep] [--probe] [--transitive] [--path src/] [--threat-feed] [--feed-url <url>] [--fix] [--json]
+  bun run scan constraints --domain <reverse-dns> [--root <cwd>] [--path src/] [--transitive] [--no-imports] [--fix] [--json]
   bun run scan tls --host <hostname> [--domain <reverse-dns>] [--use-system-ca|--no-use-system-ca] [--deep] [--json]
 
 Subcommands:
   interactive  External scanner via Bun.Terminal PTY (TTY required; service.interactive)
   bundle       Scan bun build output for injected threats (Bun.Transpiler)
-  source       Scan JS/TS source file via transpiler
+  source       Scan source tree via policy patterns, or a single file via transpiler
   domains      Parallel domain config validation via Workers
+  packages     Check installed deps against [[semver.rule]] in security.policy.toml
+  constraints  Deep allow/block/require, license, source, and import constraints
   tls          Remote TLS handshake + OS trust validation (auto when available)
 
 Default tools: ${DEFAULT_SECURITY_TOOLS.join(', ')}`);
@@ -182,18 +181,60 @@ Default tools: ${DEFAULT_SECURITY_TOOLS.join(', ')}`);
 			return;
 		}
 		case 'bundle': {
-			const bundlePath = positionals[1];
+			const bundlePath = values.path ?? positionals[1];
 			if (!bundlePath) {
-				console.error(colorize(TERMINAL.scannerFatal, '[scan] bundle path is required'));
+				console.error(
+					colorize(TERMINAL.scannerFatal, '[scan] bundle path is required (--path or positional)'),
+				);
 				process.exit(1);
 			}
-			await runBundleScan(bundlePath, values.json === true);
-			return;
+			const rules = values.rules
+				?.split(',')
+				.map(rule => rule.trim())
+				.filter(Boolean);
+			const format =
+				values.format === 'json' || values.format === 'markdown' || values.format === 'html'
+					? values.format
+					: undefined;
+			const exitCode = await runTranspilerBundleCli({
+				path: bundlePath,
+				domain: values.domain,
+				rules,
+				format,
+				output: values.output,
+				verifyIntegrity: values['verify-integrity'] === true,
+				updateSnapshot: values['update-snapshot'] === true,
+				failOnBundleDrift: values['fail-on-bundle-drift'] === true,
+				baselineDir:
+					typeof values['baseline-dir'] === 'string' ? values['baseline-dir'] : undefined,
+				json: values.json === true,
+				markdown: values.markdown === true,
+				html: values.html === true,
+				registry: domainRegistry,
+			});
+			process.exit(exitCode);
 		}
 		case 'source': {
-			const sourcePath = positionals[1];
+			if (values.domain) {
+				const exitCode = await runScanPatternsCli({
+					domain: values.domain,
+					path: values.path,
+					root: values.root,
+					json: values.json === true,
+					fix: values.fix === true,
+					registry: domainRegistry,
+				});
+				process.exit(exitCode);
+			}
+
+			const sourcePath = positionals[1] ?? values.path;
 			if (!sourcePath) {
-				console.error(colorize(TERMINAL.scannerFatal, '[scan] source path is required'));
+				console.error(
+					colorize(
+						TERMINAL.scannerFatal,
+						'[scan] source requires --domain <name> [--path dir] or a file path',
+					),
+				);
 				process.exit(1);
 			}
 			await runSourceScan(sourcePath, values.json === true);
@@ -203,6 +244,46 @@ Default tools: ${DEFAULT_SECURITY_TOOLS.join(', ')}`);
 			const workers = values.workers ? Number.parseInt(values.workers, 10) : undefined;
 			await runDomainsScan(values.root ?? process.cwd(), values.json === true, workers);
 			return;
+		}
+		case 'packages': {
+			const domain = values.domain;
+			if (!domain) {
+				console.error(colorize(TERMINAL.scannerFatal, '[scan] packages requires --domain <name>'));
+				process.exit(1);
+			}
+			const exitCode = await runScanPackagesCli({
+				domain,
+				root: values.root,
+				path: values.path,
+				deep: values.deep === true,
+				probe: values.probe === true,
+				transitive: values.transitive === true,
+				json: values.json === true,
+				threatFeed: values['threat-feed'] === true,
+				feedUrl: typeof values['feed-url'] === 'string' ? values['feed-url'] : undefined,
+				fix: values.fix === true,
+			});
+			process.exit(exitCode);
+		}
+		case 'constraints': {
+			const domain = values.domain;
+			if (!domain) {
+				console.error(
+					colorize(TERMINAL.scannerFatal, '[scan] constraints requires --domain <name>'),
+				);
+				process.exit(1);
+			}
+			const exitCode = await runScanConstraintsCli({
+				domain,
+				root: values.root,
+				path: values.path,
+				transitive: values.transitive === true,
+				imports: values.imports === true,
+				noImports: values['no-imports'] === true,
+				json: values.json === true,
+				fix: values.fix === true,
+			});
+			process.exit(exitCode);
 		}
 		case 'tls': {
 			const exitCode = await runTlsCli({
@@ -223,4 +304,4 @@ Default tools: ${DEFAULT_SECURITY_TOOLS.join(', ')}`);
 	}
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

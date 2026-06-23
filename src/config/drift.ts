@@ -1,5 +1,5 @@
 import {cloneStructured} from '../utils/jsc.ts';
-import {deepEquals} from '../utils/runtime.ts';
+import {deepEquals} from '../utils/deep-equal.ts';
 import type {DomainConfig} from './types.ts';
 
 export interface ConfigDrift {

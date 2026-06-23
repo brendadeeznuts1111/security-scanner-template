@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {satisfiesVersion} from '../../src/semver/index.ts';
 import {
 	EVAL_TOP_LEVEL_AWAIT_NOTE,
 	getTerminalIORuntimeInfo,
@@ -6,6 +7,7 @@ import {
 	MIN_BUN_EVAL_TLA_FIX,
 	MIN_BUN_PIPELINE_PAGER_FIX,
 	PIPELINE_PAGER_NOTE,
+	WINDOWS_CONPTY_NOTES,
 } from '../../src/utils/terminal-io.ts';
 
 test('getTerminalIORuntimeInfo reports stdio TTY flags', () => {
@@ -18,12 +20,12 @@ test('getTerminalIORuntimeInfo reports stdio TTY flags', () => {
 	expect(info.spawnAvailable).toBe(typeof Bun.spawn === 'function');
 	expect(info.terminalApiAvailable).toBe(typeof Bun.Terminal === 'function');
 	expect(info.interactiveSession).toBe(Boolean(process.stdin.isTTY && process.stdout.isTTY));
-	expect(info.spawnDocsUrl).toContain('bun.sh/docs/runtime/child-process');
+	expect(info.spawnDocsUrl).toContain('bun.com/docs/runtime/child-process');
 	expect(info.pipelinePagerSafe).toBe(
-		Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_PIPELINE_PAGER_FIX}`),
+		satisfiesVersion(Bun.version, `>=${MIN_BUN_PIPELINE_PAGER_FIX}`),
 	);
 	expect(info.evalTopLevelAwaitSafe).toBe(
-		Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`),
+		satisfiesVersion(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`),
 	);
 });
 
@@ -45,13 +47,23 @@ test('eval note is set on runtimes before the TLA fix', () => {
 	}
 });
 
+test('windows conpty notes are attached on win32', () => {
+	const info = getTerminalIORuntimeInfo();
+	if (info.platform === 'win32') {
+		expect(info.platformNote).toBe(WINDOWS_CONPTY_NOTES.summary);
+		expect(info.windowsConptyNotes?.length).toBeGreaterThan(1);
+	} else {
+		expect(info.windowsConptyNotes).toBeUndefined();
+	}
+});
+
 test('isPagerFriendlyPipeline matches pipeline producer and fix version', () => {
 	const info = getTerminalIORuntimeInfo();
 	expect(isPagerFriendlyPipeline()).toBe(info.pipelineProducer && info.pipelinePagerSafe);
 });
 
 test('bun -p top-level await returns the final completion value', async () => {
-	if (!Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`)) {
+	if (!satisfiesVersion(Bun.version, `>=${MIN_BUN_EVAL_TLA_FIX}`)) {
 		return;
 	}
 

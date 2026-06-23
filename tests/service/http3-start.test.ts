@@ -17,7 +17,9 @@ afterEach(() => {
 
 function mockRegistry(config: ReturnType<typeof applyDefaults>): DomainRegistry {
 	return {
+		root: process.cwd(),
 		async loadAll() {},
+		async ensureDomain() {},
 		get() {
 			return config;
 		},
@@ -39,6 +41,22 @@ function mockRegistry(config: ReturnType<typeof applyDefaults>): DomainRegistry 
 		},
 		watch() {},
 		unwatch() {},
+		async checkPackageVersions() {
+			return [];
+		},
+		async scanPatterns() {
+			return [];
+		},
+		async loadThreatFeed() {},
+		checkPackageThreats() {
+			return [];
+		},
+		checkPackagesThreats() {
+			return new Map();
+		},
+		getLoadedThreats() {
+			return [];
+		},
 		async reloadDomain() {
 			return null;
 		},

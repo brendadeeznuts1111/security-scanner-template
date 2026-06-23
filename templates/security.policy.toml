@@ -5,7 +5,137 @@
 fatal = ["backdoor", "botnet", "token-stealer", "malware"]
 warn = ["protestware", "adware", "deprecated", "unmaintained"]
 
-# Example: trust all internal packages.
+# Doctor snapshot drift thresholds (spec §17).
+[snapshot]
+allowedDrift = ["branding", "templateDrift"]
+requiredSections = ["policy", "vault", "concerns"]
+snapshotVersionRange = "^2.0.0"
+compatibleScannerVersions = ">=1.0.0 <3.0.0"
+
+[semver.packages]
+lodash = ">=4.17.21"
+axios = ">=1.0.0"
+
+[semver.blocked]
+# "some-dep" = "<1.0.0"
+snapshotVersionRange = "^2.0.0"
+
+# Version-aware vulnerability rules (Bun.semver).
+[[semver.rule]]
+id = "lodash-vuln"
+package = "lodash"
+range = "<4.17.21"
+severity = "high"
+description = "lodash versions before 4.17.21 are vulnerable"
+
+[[semver.rule]]
+id = "axios-vuln"
+package = "axios"
+range = "<1.0.0"
+severity = "critical"
+description = "axios <1.0.0 has known security issues"
+
+# Source-code pattern rules (regex + transpiler-backed AST).
+[[patterns.regex]]
+id = "hardcoded-secret"
+description = "Hardcoded API key or token"
+severity = "high"
+pattern = "(?:api[_-]?key|token|secret|password)\\s*=\\s*['\"][a-zA-Z0-9_\\-]{16,}['\"]"
+fileGlob = ["**/*.js", "**/*.ts", "**/*.json"]
+remediation = "Use process.env or Bun.secrets — run `bun sp scan source --fix` for env-var scaffold"
+
+[[patterns.regex]]
+id = "unsafe-eval"
+description = "Use of eval() or Function constructor"
+severity = "critical"
+pattern = "eval\\s*\\(|new\\s+Function\\s*\\("
+fileGlob = ["**/*.js", "**/*.ts"]
+
+[[patterns.ast]]
+id = "unsafe-eval-ast"
+description = "Use of eval() detected via AST selector"
+severity = "critical"
+astPattern = "CallExpression[callee.name='eval']"
+fileGlob = ["**/*.js", "**/*.ts"]
+
+[[patterns.ast]]
+id = "obfuscated-code"
+description = "Detects common obfuscation patterns"
+severity = "medium"
+astPattern = "CallExpression[callee.object.name='String'][callee.property.name='fromCharCode']"
+fileGlob = ["**/*.js", "**/*.ts"]
+
+[[patterns.ast]]
+id = "process-env-access"
+description = "Access to process.env may expose secrets"
+severity = "medium"
+astPattern = "MemberExpression[object.name='process'][property.name='env']"
+fileGlob = ["**/*.js", "**/*.ts"]
+
+# HTTP endpoint meta probes (deep package scan: --deep --probe).
+[[intel.endpoints]]
+url = "http://127.0.0.1:3000/meta"
+label = "service-meta"
+expectStatus = 200
+requireHeaders = ["x-content-type-options"]
+
+[[intel.endpoints]]
+url = "http://127.0.0.1:3000/health"
+method = "HEAD"
+expectStatus = 200
+
+# Package allow/block/require constraints (beyond semver ranges).
+[constraints]
+# strictAllowlist = true
+
+[[constraints.allow]]
+package = "@factory-wager/*"
+reason = "Internal packages vetted by CI"
+
+[[constraints.block]]
+package = "event-stream"
+reason = "Known malware incident (2018)"
+severity = "critical"
+
+[[constraints.require]]
+package = "lodash"
+range = ">=4.17.21"
+reason = "Minimum secure lodash required in production"
+
+# scanTransitive = true   # scan all of node_modules, not only package.json deps
+# strictLicenseAllowlist = true
+
+[[constraints.blockImport]]
+pattern = "child_process"
+reason = "Subprocess spawning must go through audited wrappers"
+severity = "high"
+fileGlob = ["**/*.ts", "**/*.js"]
+
+[[constraints.blockImport]]
+pattern = "node:fs"
+reason = "Direct filesystem access blocked in application layer"
+severity = "medium"
+
+[[constraints.blockLicense]]
+license = "GPL-3.0"
+reason = "Copyleft license incompatible with distribution model"
+severity = "high"
+
+[[constraints.allowLicense]]
+license = "MIT"
+reason = "Permissive licenses approved by legal"
+
+[[constraints.blockSource]]
+pattern = "git+"
+reason = "Git URL dependencies bypass registry integrity checks"
+severity = "critical"
+
+[[constraints.blockSource]]
+pattern = "file:"
+reason = "Local path dependencies are not reproducible in CI"
+severity = "high"
+
+# Example: trust all internal packages via advisory overrides.
 # [[policy.override]]
 # package = "@factory-wager/*"
 # action = "ignore"

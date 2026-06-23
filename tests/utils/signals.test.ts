@@ -1,21 +1,30 @@
 import {expect, test} from 'bun:test';
 import {
 	BUN_CTRL_C_DOCS_URL,
+	BUN_CTRL_C_GUIDE_URL,
 	BUN_OS_SIGNALS_DOCS_URL,
+	BUN_OS_SIGNALS_GUIDE_URL,
 	INTERRUPT_SIGNALS,
 	SIGNAL_BEHAVIOR,
 	formatSignalBehaviorTable,
 	interruptAbortController,
+	isSignalHandlingAvailable,
 	onCtrlC,
 	onInterruptSignals,
 	onProcessExit,
 	waitForInterruptSignal,
 } from '../../src/utils/signals.ts';
 
-test('signal docs URLs point at Bun guides', () => {
-	expect(BUN_OS_SIGNALS_DOCS_URL).toContain('os-signals');
-	expect(BUN_CTRL_C_DOCS_URL).toContain('ctrl-c');
+test('signal docs URLs point at bun.com guides', () => {
+	expect(BUN_OS_SIGNALS_GUIDE_URL).toBe('https://bun.com/docs/guides/process/os-signals');
+	expect(BUN_CTRL_C_GUIDE_URL).toBe('https://bun.com/docs/guides/process/ctrl-c');
+	expect(BUN_OS_SIGNALS_DOCS_URL).toContain('listen-to-os-signals');
+	expect(BUN_CTRL_C_DOCS_URL).toContain('listen-for-ctrl-c');
 	expect(SIGNAL_BEHAVIOR.explicitExit).toContain('process.exit');
+});
+
+test('isSignalHandlingAvailable reflects process signal APIs', () => {
+	expect(isSignalHandlingAvailable()).toBe(true);
 });
 
 test('formatSignalBehaviorTable documents SIGINT and SIGTERM', () => {

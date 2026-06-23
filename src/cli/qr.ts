@@ -400,4 +400,4 @@ and caches PNGs under ~/.bun/security-scanner/qr-cache keyed by Bun.hash(domain:
 	});
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

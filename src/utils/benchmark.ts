@@ -3,7 +3,7 @@ import {
 	type BenchmarkHeapSnapshot,
 	type BenchmarkRunMetadata,
 } from './bench-metadata.ts';
-import {nanoseconds} from './runtime.ts';
+import {nanoseconds} from './nanoseconds.ts';
 
 export interface BenchmarkOptions {
 	/** Discarded warmup iterations before the timed run. */

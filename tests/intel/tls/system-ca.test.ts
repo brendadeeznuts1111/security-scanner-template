@@ -1,5 +1,6 @@
 import tls from 'node:tls';
 import {expect, test, beforeEach, afterEach} from 'bun:test';
+import {satisfiesVersion} from '../../../src/semver/index.ts';
 import {
 	clearSystemCACache,
 	getSystemCACertificates,
@@ -70,7 +71,7 @@ test('getSystemCARuntimeInfo reports API availability and count', () => {
 	expect(info.platform).toBe(process.platform);
 	if (process.platform === 'darwin') {
 		expect(info.macosNote).toBe(MACOS_SYSTEM_CA_ENUMERATION_NOTE);
-		expect(info.macosEnumerationSafe).toBe(Bun.semver.satisfies(Bun.version, '>=1.3.14'));
+		expect(info.macosEnumerationSafe).toBe(satisfiesVersion(Bun.version, '>=1.3.14'));
 	} else {
 		expect(info.macosNote).toBeUndefined();
 		expect(info.macosEnumerationSafe).toBe(true);

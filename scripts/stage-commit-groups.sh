@@ -28,7 +28,7 @@ case "${1:-all}" in
       src/config/ src/cli/config-doctor.ts src/cli/doctor.ts src/cli/master-key.ts src/cli/vault-commands.ts \
       src/domains/vault.ts src/domains/registry.ts src/domain/ src/registry/ src/policy/loader.ts \
       scripts/migrate-vault.ts \
-      tests/config/ tests/domain/ tests/domains/vault.test.ts tests/domains/registry.test.ts \
+      tests/config/ tests/domain/ tests/domain-runtime/vault.test.ts tests/domain-runtime/registry.test.ts \
       tests/scripts/migrate-vault.test.ts tests/registry/ tests/policy/loader.test.ts
     ;;
   3)
@@ -49,7 +49,7 @@ case "${1:-all}" in
   6)
     commit_group 6 "feat(supply-chain): peer-deps meta, feeds, cache, and semver matcher" \
       src/supply-chain/ src/provider/ src/domains/supply-chain.ts \
-      tests/supply-chain/ tests/provider/ tests/domains/supply-chain.test.ts tests/cli/doctor-peer-meta.test.ts
+      tests/supply-chain/ tests/provider/ tests/domain-runtime/supply-chain.test.ts tests/cli/doctor-peer-meta.test.ts
     ;;
   7)
     commit_group 7 "feat(cli): sp, scan, xref, csrf, build commands and domain templates" \
@@ -57,13 +57,13 @@ case "${1:-all}" in
       src/domains/csrf.ts src/domains/identity.ts src/csrf/ src/identity/ \
       domains/com.factory-wager.shadow.security.json5 domains/com.factory-wager.telegram.security.json5 domains/com.factory-wager.toolchain.security.json5 \
       templates/domain.template.json5 \
-      tests/cli/csrf.test.ts tests/domains/csrf.test.ts tests/domains/identity.test.ts \
+      tests/cli/csrf.test.ts tests/domain-runtime/csrf.test.ts tests/domain-runtime/identity.test.ts \
       tests/csrf/ tests/xref/ tests/build/
     ;;
   8)
     commit_group 8 "feat(build): security plugin, crypto, compression, and net helpers" \
       src/build/ src/crypto/ src/compression/ src/net/ \
-      tests/crypto/ tests/net/
+      tests/crypto/ tests/network/
     ;;
   9)
     commit_group 9 "chore: shared features, service layer, and package wiring" \

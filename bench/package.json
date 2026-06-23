@@ -9,6 +9,8 @@
 		"doctor": "bun doctor/bench.mjs",
 		"field-matrix": "bun field-matrix/bench.mjs",
 		"domain-load": "bun domain-load/bench.mjs",
-		"all": "bun doctor/bench.mjs && bun field-matrix/bench.mjs && bun domain-load/bench.mjs"
+		"artifact-spec": "bun artifact-spec/bench.mjs",
+		"ground-truth": "bun ground-truth/bench.mjs",
+		"all": "bun doctor/bench.mjs && bun field-matrix/bench.mjs && bun domain-load/bench.mjs && bun artifact-spec/bench.mjs && bun ground-truth/bench.mjs"
 	}
 }

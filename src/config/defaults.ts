@@ -1,4 +1,10 @@
-import type {DomainConfig, DomainColors, DomainChannels, SecretEntry} from './types.ts';
+import type {
+	DomainConfig,
+	DomainColors,
+	DomainChannels,
+	DomainNetworkConfig,
+	SecretEntry,
+} from './types.ts';
 import {applyAuditDefaults} from '../domain/audit-paths.ts';
 import {syncSecretsService} from '../domain/secrets-service.ts';
 import {syncTokenIssuer} from '../domain/token-issuer.ts';
@@ -10,6 +16,21 @@ export const DEFAULT_COLORS: DomainColors = {
 	warn: '#FF9500',
 	info: '#0A84FF',
 	success: '#30D158',
+};
+
+export const DEFAULT_NETWORK_CONFIG: DomainNetworkConfig = {
+	enabled: false,
+	distPath: './dist',
+	probeInterval: 8000,
+	watch: true,
+	watchInterval: 750,
+	debounceMs: 500,
+	failOnHealth: false,
+	failOnDrift: false,
+	updateBaseline: false,
+	json: false,
+	herdrTab: false,
+	noColor: false,
 };
 
 export const DEFAULT_CHANNELS: DomainChannels = {

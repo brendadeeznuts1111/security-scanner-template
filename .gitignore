@@ -4,9 +4,14 @@
 node_modules
 node_modules/.cache
 .DS_Store
-.security
+.security/*
+!.security/snapshots/
+.security/snapshots/*
+!.security/snapshots/ground-truth.json
 dist
 coverage
+test-results
+tests/.tmp-*/
 .devin/config.local.json
 *.log
 .npmrc

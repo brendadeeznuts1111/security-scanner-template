@@ -363,4 +363,4 @@ async function main(): Promise<void> {
 	process.exit(1);
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

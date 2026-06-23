@@ -139,4 +139,4 @@ Uses Bun.WebView + HTMLRewriter for report preview and web surface scanning.`);
 	}
 }
 
-await runCliIfMain(main);
+await runCliIfMain(main, import.meta.path);

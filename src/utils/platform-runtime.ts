@@ -1,3 +1,5 @@
+import {satisfiesVersion} from '../semver/index.ts';
+
 /**
  * Cross-platform Bun runtime notes (Windows path/spawn/connect, bun-types / tsgo).
  */
@@ -30,7 +32,7 @@ export interface PlatformRuntimeInfo {
 }
 
 function bunSupportsWindowsRuntimeFix(): boolean {
-	return Bun.semver.satisfies(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`);
+	return satisfiesVersion(Bun.version, `>=${MIN_BUN_WINDOWS_RUNTIME_FIX}`);
 }
 
 function parseBunTypesVersion(packageJson: string): string | null {
@@ -55,7 +57,7 @@ function bunTypesSupportsTsgo(version: string | null): boolean {
 		return false;
 	}
 	const normalized = version.replace(/^[\^~]/, '');
-	return Bun.semver.satisfies(normalized, `>=${MIN_BUN_TYPES_FFI_TSGo_FIX}`);
+	return satisfiesVersion(normalized, `>=${MIN_BUN_TYPES_FFI_TSGo_FIX}`);
 }
 
 /**

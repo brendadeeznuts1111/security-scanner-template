@@ -1,5 +1,5 @@
 import type {DomainChannels, DomainColors, DomainConfig} from '../config/types.ts';
-import {ERROR_CODES, getErrorCode, type ErrorCode} from '../color/codes.ts';
+import {getIssueCatalogEntry, ISSUE_CATALOG, type ErrorCode} from '../color/codes.ts';
 import {brightenColor, colorize, normalizeHex, toCss} from '../color/index.ts';
 import type {DoctorIssue} from '../config/doctor.ts';
 
@@ -90,7 +90,7 @@ const SEVERITY_RULES: readonly ConcernColorRule[] = [
 	},
 ] as const;
 
-const CHANNEL_RULES: readonly ConcernColorRule[] = ERROR_CODES.reduce<ConcernColorRule[]>(
+const CHANNEL_RULES: readonly ConcernColorRule[] = ISSUE_CATALOG.reduce<ConcernColorRule[]>(
 	(acc, code) => {
 		const channel = code.defaultChannel as keyof DomainChannels;
 		const id = `concern-channel-${channel}`;
@@ -144,7 +144,7 @@ export function getConcernColorRule(concern: DomainConcern): ConcernColorRule | 
 }
 
 export function getConcernColorRuleForCode(code: string): ConcernColorRule | undefined {
-	return RULE_BY_ERROR_CODE.get(code) ?? ruleForErrorCode(getErrorCode(code));
+	return RULE_BY_ERROR_CODE.get(code) ?? ruleForErrorCode(getIssueCatalogEntry(code));
 }
 
 function ruleForErrorCode(errorCode: ErrorCode | undefined): ConcernColorRule | undefined {
@@ -208,7 +208,8 @@ export function resolveIssueColor(
 ): string {
 	const override = issue.code ? config.errorOverrides[issue.code] : undefined;
 	const channel =
-		override?.channel ?? (issue.code ? getErrorCode(issue.code)?.defaultChannel : undefined);
+		override?.channel ??
+		(issue.code ? getIssueCatalogEntry(issue.code)?.defaultChannel : undefined);
 
 	if (channel) {
 		const rule = getConcernColorRule(channel as DomainConcern);

@@ -11,14 +11,22 @@ export const ThreatCategorySchema = z.enum([
 	'unmaintained',
 ]);
 
-export const ThreatFeedItemSchema = z.object({
+const ThreatFeedItemBaseSchema = z.object({
 	package: z.string(),
-	range: z.string(),
+	range: z.string().optional(),
+	versionRange: z.string().optional(),
+	cve: z.string().optional(),
+	severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
 	url: z.string().nullable(),
 	description: z.string().nullable(),
 	categories: z.array(ThreatCategorySchema),
 	hashes: z.array(z.string()).optional(),
 });
+
+export const ThreatFeedItemSchema = ThreatFeedItemBaseSchema.transform(item => ({
+	...item,
+	range: item.range ?? item.versionRange ?? '*',
+}));
 
 export const AllowlistItemSchema = z.object({
 	package: z.string(),

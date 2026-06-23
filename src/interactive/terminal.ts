@@ -1,4 +1,4 @@
-import {ptyDimensions, writeTerminalOutput} from '../scan/terminal.ts';
+import {createTerminal, ptyDimensions, writeTerminalOutput} from '../scan/terminal.ts';
 import {isInteractiveForced, isInteractiveSession} from '../utils/process.ts';
 
 export interface ShellTerminalOptions {
@@ -28,10 +28,10 @@ export class ShellTerminal {
 		this.forwardStdout = options.stdout !== false;
 		const size = ptyDimensions({cols: options.cols, rows: options.rows});
 
-		this.terminal = new Bun.Terminal({
+		this.terminal = createTerminal({
 			cols: size.cols,
 			rows: size.rows,
-			data: (_term, data) => {
+			onData: data => {
 				if (this.forwardStdout && !this.closed) {
 					writeTerminalOutput(data);
 				}

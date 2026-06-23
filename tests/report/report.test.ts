@@ -71,6 +71,18 @@ test('generateHtmlReport injects data into the template', async () => {
 	expect(html).toContain('bad-pkg');
 });
 
+test('generateHtmlReport renders summary markdown via Bun.markdown', async () => {
+	const html = await generateHtmlReport(
+		reportFixture({advisories: [], fatalCount: 0, warnCount: 0, riskScore: 0}),
+	);
+	if (typeof Bun.markdown?.html === 'function') {
+		expect(html).toContain('<h1>');
+		expect(html).toContain('<table>');
+	} else {
+		expect(html).toContain('<pre>');
+	}
+});
+
 test('computeRiskScore is 0 for clean scans', () => {
 	expect(computeRiskScore(0, 0, 0)).toBe(0);
 });

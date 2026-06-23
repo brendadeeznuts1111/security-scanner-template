@@ -1,7 +1,7 @@
 import path from 'path';
 import {mkdir} from 'fs/promises';
 import type {DomainConfig} from '../config/types.ts';
-import {toRgbaObject} from '../color/index.ts';
+import {toRgbObject} from '../color/index.ts';
 import {solidPng} from './png-solid.ts';
 
 export interface DomainBadgeOptions {
@@ -22,12 +22,8 @@ function openBunImage(input: string): BunImageHandle {
 	return new ctor(input);
 }
 
-function rgbaFromHex(hex: string): {r: number; g: number; b: number} {
-	const rgba = toRgbaObject(hex);
-	if (!rgba) {
-		return {r: 10, g: 132, b: 255};
-	}
-	return {r: rgba.r, g: rgba.g, b: rgba.b};
+function rgbFromHex(hex: string): {r: number; g: number; b: number} {
+	return toRgbObject(hex) ?? {r: 10, g: 132, b: 255};
 }
 
 function badgeFileName(domain: string): string {
@@ -44,7 +40,7 @@ export async function writeDomainBadge(
 ): Promise<string> {
 	const size = options.size ?? DEFAULT_SIZE;
 	const outDir = options.outDir ?? DEFAULT_OUT_DIR;
-	const {r, g, b} = rgbaFromHex(config.colors.primary);
+	const {r, g, b} = rgbFromHex(config.colors.primary);
 
 	await mkdir(outDir, {recursive: true});
 	const outPath = path.join(outDir, badgeFileName(config.domain));

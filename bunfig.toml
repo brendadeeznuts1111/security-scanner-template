@@ -1,5 +1,31 @@
 [test]
 root = "tests"
+# Test position-arg filters are substring matches (not globs). Glob slices: src/domain/test-layout.ts
+# Monorepo script fan-out: bun run --filter '<pattern>' <script> — src/utils/bun-run-filter.ts
+# @see https://bun.com/docs/test/discovery#position-arguments-as-filters
+# @see https://bun.com/docs/runtime#filtering
+# @see https://bun.com/docs/pm/filter
+
+# Lifecycle hooks shared across all test files.
+# @see https://bun.com/reference/bun/test
+# @see https://bun.com/docs/test/lifecycle
+preload = ["./tests/setup.ts"]
+
+# Per-test timeout in ms (default 5000).
+# CLI: `bun test --timeout <ms>` — @see https://bun.com/docs/guides/test/timeout
+# Per-test override: `test("name", fn, 500)` — @see https://bun.com/docs/test/writing-tests#timeouts
+timeout = 10000
+
+# Selectively run independent tests in parallel.
+# @see https://bun.com/reference/bun/test/Describe/serial
+# @see https://bun.com/docs/guides/test/concurrent-test-glob
+# Override everything: `bun test --concurrent`
+concurrentTestGlob = [
+	"**/concurrent-*.test.ts",
+	"**/policy/*.test.ts",
+	"**/crypto/*.test.ts",
+	"**/markdown/*.test.ts",
+]
 
 # Prevent orphaned scanner processes when the parent exits (CI / daemon use).
 [run]
