@@ -4,10 +4,13 @@ import {colorize, TERMINAL} from '../color/index.ts';
 import {domainRegistry} from '../config/registry.ts';
 import {runQrCli} from './qr.ts';
 import {runTlsCli} from './tls.ts';
+import {runBenchCli} from './bench.ts';
 import {runConfigDoctor} from './config-doctor.ts';
+import {Service} from '../service/index.ts';
+import {runTool} from '../scan/tools.ts';
 import {SecurityShell} from '../interactive/index.ts';
 import {runCliIfMain} from '../utils/cli.ts';
-import {exitIfNotInteractive, spawnInheritAndExit} from '../utils/process.ts';
+import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
 
 const HELP = `Usage:
   bun sp [shell] [--domain <reverse-dns-domain>]
@@ -17,8 +20,10 @@ const HELP = `Usage:
   bun sp qr --text <value> --out <path>
   bun sp report --image --html <path> [--out <path>]
   bun sp tls --domain <name> --host <hostname> [--use-system-ca|--no-use-system-ca] [--deep] [--port 443] [--json]
-  bun sp doctor [--snapshot] [--update-snapshots|-u] [--matrix] [--branding] [--matrix-section <name>] [--json] [--root <path>]
+  bun sp doctor [--snapshot] [--update-snapshots|-u] [--matrix] [--branding] [--matrix-section <name>] [--json] [--benchmark] [--root <path>]
   bun sp doctor --json | fx    # piped pagers work on Bun >= 1.3.14
+  bun sp bench [--suite doctor|field-matrix|domain-load|all] [--json] [--root <path>]
+  bun sp scan --domain <name> [--tool trivy] [--json] [-- <scanner-args...>]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
 
@@ -125,6 +130,9 @@ async function main(): Promise<void> {
 			'snapshot': {type: 'boolean'},
 			'update-snapshots': {type: 'boolean', short: 'u'},
 			'matrix-section': {type: 'string'},
+			'benchmark': {type: 'boolean'},
+			'suite': {type: 'string'},
+			'tool': {type: 'string'},
 			'host': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
 			'deep': {type: 'boolean'},
@@ -207,12 +215,58 @@ async function main(): Promise<void> {
 			});
 			process.exit(exitCode);
 		}
+		case 'scan': {
+			const domain = values.domain;
+			if (!domain) {
+				console.error(colorize(TERMINAL.scannerFatal, '[sp] scan requires --domain <name>'));
+				process.exit(1);
+			}
+
+			await domainRegistry.loadAll();
+			if (!domainRegistry.has(domain)) {
+				console.error(colorize(TERMINAL.scannerFatal, `[sp] unknown domain: ${domain}`));
+				process.exit(1);
+			}
+
+			const tool = values.tool ?? 'trivy';
+			const dashIndex = Bun.argv.indexOf('--');
+			const scannerArgs =
+				dashIndex >= 0
+					? Bun.argv.slice(dashIndex + 1)
+					: positionals.slice(1).filter(arg => arg !== '--');
+
+			if (values.json === true) {
+				const result = await runTool(tool, {
+					args: scannerArgs.length > 0 ? scannerArgs : ['--version'],
+				});
+				writeJsonStdout({domain, tool, ...result});
+				process.exit(result.exitCode === 0 ? 0 : 1);
+			}
+
+			exitIfNotInteractive('bun sp scan');
+			const service = new Service(domainRegistry, domain);
+			const result = await service.runInteractiveScanner(tool, scannerArgs);
+			process.exit(result.exitCode === 0 ? 0 : 1);
+		}
+		case 'bench': {
+			await runBenchCli({
+				suite:
+					typeof values.suite === 'string' &&
+					['doctor', 'field-matrix', 'domain-load', 'all'].includes(values.suite)
+						? (values.suite as import('./bench.ts').BenchSuite)
+						: 'all',
+				json: values.json === true,
+				root: values.root,
+			});
+			return;
+		}
 		case 'doctor': {
 			const matrixSection =
 				typeof values['matrix-section'] === 'string' ? values['matrix-section'] : undefined;
 			await runConfigDoctor({
 				root: values.root,
 				json: values.json === true,
+				benchmark: values.benchmark === true,
 				argv: Bun.argv,
 				checkPeerMeta: values['check-peer-meta'] === true,
 				matrix: values.matrix === true,

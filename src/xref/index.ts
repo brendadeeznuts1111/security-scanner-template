@@ -102,7 +102,7 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		configFields: ['service.interactive'],
 		cliCommands: ['scan interactive', 'scan bundle', 'scan domains', 'shell'],
 		related: ['bun.spawn', 'service.interactive', 'feature.scan-external'],
-		docsUrl: 'https://bun.com/docs/runtime/child-process#terminal-pty-support',
+		docsUrl: 'https://bun.sh/docs/runtime/child-process#terminal-pty-support',
 	},
 	{
 		id: 'utils.process',

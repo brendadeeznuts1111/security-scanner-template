@@ -16,7 +16,7 @@ export interface ShellTerminalOptions {
  * REPL messages are written directly to stdout. The Bun.Terminal instance is
  * reused for external scanner spawns so operators keep one PTY across commands.
  *
- * @see https://bun.com/docs/runtime/child-process#reusable-terminal
+ * @see https://bun.sh/docs/runtime/child-process#terminal-pty-support
  */
 export class ShellTerminal {
 	readonly terminal: Bun.Terminal;

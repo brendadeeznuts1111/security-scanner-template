@@ -1,11 +1,5 @@
 import {DEFAULT_SPAWN_TIMEOUT_MS, spawnCaptured, spawnEnvWithTerm} from '../utils/process.ts';
-import {
-	attachPty,
-	createSpawnTerminalOptions,
-	ptyDimensions,
-	withPtySession,
-	writeTerminalOutput,
-} from './terminal.ts';
+import {attachPty, spawnPtyProcess, withPtySession, writeTerminalOutput} from './terminal.ts';
 import {
 	DEFAULT_SECURITY_TOOLS,
 	detectTool,
@@ -17,13 +11,22 @@ import {
 export {DEFAULT_SECURITY_TOOLS, detectTool, detectTools, type SecurityToolName, type ToolDetection};
 export {
 	attachPty,
+	BUN_PTY_DOCS_URL,
 	createSpawnTerminalOptions,
+	createReusableTerminal,
+	disposeReusableTerminal,
 	ptyDimensions,
+	PTY_SPAWN_BEHAVIOR,
+	spawnPtyProcess,
 	terminalOutputMode,
 	withPtySession,
 	writeTerminalOutput,
+	type CreateSpawnTerminalConfig,
 	type PtyAttachOptions,
 	type PtyDimensions,
+	type PtySpawnOptions,
+	type PtySpawnResult,
+	type ReusableTerminalOptions,
 	type SpawnTerminalOptions,
 } from './terminal.ts';
 
@@ -128,31 +131,20 @@ export class ToolRunner {
 		}
 
 		const args = options.args ?? [];
-		const size = ptyDimensions({cols: options.cols, rows: options.rows});
-
-		const proc = Bun.spawn({
-			cmd: [executable, ...args],
+		const spawned = await spawnPtyProcess([executable, ...args], {
 			cwd: options.cwd,
-			env: spawnEnvWithTerm(options.env),
-			terminal: createSpawnTerminalOptions(data => writeTerminalOutput(data), size),
+			env: options.env,
+			cols: options.cols,
+			rows: options.rows,
+			stdin: options.stdin,
+			onData: writeTerminalOutput,
 		});
-
-		const terminal = proc.terminal;
-		if (!terminal) {
-			throw new Error('PTY terminal was not created by Bun.spawn');
-		}
-
-		const exitCode = await withPtySession(terminal, {stdin: options.stdin}, async () => {
-			return proc.exited;
-		});
-
-		terminal.close();
 
 		return {
 			name: command,
 			command: executable,
 			args,
-			exitCode,
+			exitCode: spawned.exitCode,
 		};
 	}
 

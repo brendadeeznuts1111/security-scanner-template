@@ -28,15 +28,26 @@ export {
 } from './tools.ts';
 export {
 	attachPty,
+	BUN_PTY_DOCS_URL,
+	createReusableTerminal,
 	createSpawnTerminalOptions,
+	disposeReusableTerminal,
 	ptyDimensions,
+	PTY_SPAWN_BEHAVIOR,
+	spawnPtyProcess,
 	terminalOutputMode,
 	withPtySession,
 	writeTerminalOutput,
+	type CreateSpawnTerminalConfig,
 	type PtyAttachOptions,
 	type PtyDimensions,
+	type PtySpawnOptions,
+	type PtySpawnResult,
+	type ReusableTerminalOptions,
 	type SpawnTerminalOptions,
 } from './terminal.ts';
+export {canRunInteractive, InteractiveShell, type InteractiveShellOptions} from './shell.ts';
+export {canPromptInteractively, confirmPrompt, passwordPrompt, readlinePrompt} from './readline.ts';
 export {scanHtmlResponse, type HtmlFinding} from './html.ts';
 export {
 	checkDomainsParallel,
