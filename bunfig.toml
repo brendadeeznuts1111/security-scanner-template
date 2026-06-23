@@ -1,8 +1,10 @@
 [test]
 root = "tests"
-# Position-arg filters are substring matches (not globs). Glob slices: src/domain/test-layout.ts
+# Test position-arg filters are substring matches (not globs). Glob slices: src/domain/test-layout.ts
+# Monorepo script fan-out: bun run --filter '<pattern>' <script> — src/utils/bun-run-filter.ts
 # @see https://bun.com/docs/test/discovery#position-arguments-as-filters
-# @see https://bun.com/docs/runtime/archive#filtering-with-glob-patterns
+# @see https://bun.com/docs/runtime#filtering
+# @see https://bun.com/docs/pm/filter
 
 # Lifecycle hooks shared across all test files.
 # @see https://bun.com/reference/bun/test

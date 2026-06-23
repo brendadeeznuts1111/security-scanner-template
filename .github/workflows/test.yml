@@ -21,6 +21,12 @@ jobs:
             script: test:intel
           - name: domain
             script: test:domain
+          - name: domain-runtime
+            script: test:domain-runtime
+          - name: conventions
+            script: test:conventions
+          - name: cli
+            script: test:cli
 
     name: ${{ matrix.name }}
 

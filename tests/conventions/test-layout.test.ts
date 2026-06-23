@@ -12,6 +12,7 @@ import {
 	TEST_ROOT_SUPPORT_FILES,
 	TEST_SLICE_CLI_FILTERS,
 	TEST_TOP_LEVEL_SLICES,
+	testSliceCliExclusions,
 	testSliceCliFilters,
 	topLevelTestSlice,
 } from '../../src/domain/test-layout.ts';
@@ -63,19 +64,20 @@ test('bun conformance tests are grouped under conventions/bun', async () => {
 });
 
 test('glob slices align with bun test CLI substring filters', async () => {
-	const slices = ['domain', 'domain-runtime', 'network', 'conventions'] as const;
+	const slices = ['domain', 'domain-runtime', 'network', 'conventions', 'intel', 'cli'] as const;
 	for (const slice of slices) {
 		const globFiles = await listTestFilesForSlice(TESTS_ROOT, slice);
 		const cliFilters = testSliceCliFilters(slice);
+		const cliExclusions = testSliceCliExclusions(slice);
 		expect(TEST_SLICE_CLI_FILTERS[slice]).toBeDefined();
 
 		for (const relative of globFiles) {
-			expect(matchesTestSliceCliFilters(relative, cliFilters)).toBe(true);
+			expect(matchesTestSliceCliFilters(relative, cliFilters, cliExclusions)).toBe(true);
 		}
 
 		const allGlob = new Bun.Glob('**/*.test.ts');
 		for (const relative of allGlob.scanSync({cwd: TESTS_ROOT})) {
-			if (!matchesTestSliceCliFilters(relative, cliFilters)) continue;
+			if (!matchesTestSliceCliFilters(relative, cliFilters, cliExclusions)) continue;
 			expect(matchesTestSliceGlob(relative, slice)).toBe(true);
 		}
 	}

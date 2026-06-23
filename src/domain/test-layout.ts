@@ -1,7 +1,12 @@
 /**
  * Canonical `tests/` tree layout, glob slices, and CI filters.
+ *
+ * Test discovery uses substring position args (`bun test network/`).
+ * Monorepo script fan-out uses `bun run --filter` — see `src/utils/bun-run-filter.ts`.
+ *
  * @see https://bun.com/docs/test/discovery#position-arguments-as-filters
  * @see https://bun.com/docs/runtime/archive#filtering-with-glob-patterns
+ * @see https://bun.com/docs/runtime#filtering
  */
 
 /** Support files allowed at `tests/` root (not `*.test.ts`). */
@@ -69,13 +74,25 @@ export const TEST_FILE_STEM_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
  * Glob slices for programmatic discovery (Bun.Archive / Bun.Glob semantics).
  * Positive patterns include; `!` prefixes exclude. Negative-only lists match nothing.
  */
+/** Slices exposed as `bun run test:<name>` scripts (glob-accurate via scripts/test-slice.ts). */
+export const PACKAGE_TEST_SLICES = [
+	'domain',
+	'domain-runtime',
+	'network',
+	'conventions',
+	'intel',
+	'cli',
+] as const;
+
+export type PackageTestSlice = (typeof PACKAGE_TEST_SLICES)[number];
+
 export const TEST_SLICE_GLOBS: Record<TestSliceId, readonly string[]> = {
 	domain: ['domain/**', '!domain-runtime/**'],
 	'domain-runtime': ['domain-runtime/**'],
 	network: ['network/**'],
 	conventions: ['conventions/**'],
 	cli: ['cli/**'],
-	intel: ['intel/**'],
+	intel: ['intel/**', '!threat-intel/**'],
 	audit: ['audit/**'],
 	build: ['build/**'],
 	color: ['color/**'],
@@ -119,6 +136,14 @@ export const TEST_SLICE_CLI_FILTERS: Partial<Record<TestSliceId, readonly string
 	conventions: ['conventions/'],
 	cli: ['cli/'],
 	intel: ['intel/'],
+};
+
+/**
+ * Paths excluded from CLI substring filters where overlap is unavoidable
+ * (`intel/` matches `threat-intel/`). Glob slices remain authoritative.
+ */
+export const TEST_SLICE_CLI_EXCLUSIONS: Partial<Record<TestSliceId, readonly string[]>> = {
+	intel: ['threat-intel/'],
 };
 
 const TOP_LEVEL_SLICE_SET = new Set<string>(TEST_TOP_LEVEL_SLICES);
@@ -217,7 +242,15 @@ export function isValidTestFileStem(fileName: string): boolean {
 export function matchesTestSliceCliFilters(
 	relativePath: string,
 	filters: readonly string[],
+	exclusions: readonly string[] = [],
 ): boolean {
 	const normalized = normalizeTestRelativePath(relativePath);
+	if (exclusions.some(exclusion => normalized.includes(exclusion))) {
+		return false;
+	}
 	return filters.some(filter => normalized.includes(filter));
+}
+
+export function testSliceCliExclusions(slice: TestSliceId): readonly string[] {
+	return TEST_SLICE_CLI_EXCLUSIONS[slice] ?? [];
 }
