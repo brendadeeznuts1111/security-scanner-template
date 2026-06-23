@@ -628,6 +628,8 @@ export const scanner: Bun.Security.Scanner = {
 				package: item.package,
 				url: item.url,
 				description: item.description,
+				categories: item.categories,
+				hashVerified,
 			});
 		}
 
