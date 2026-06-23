@@ -1,4 +1,4 @@
-import {encryptInventory} from '../src/config/vault.ts';
+import {encryptInventoryJSONL} from '../src/config/vault.ts';
 
 async function main() {
 	const args = process.argv.slice(2);
@@ -6,7 +6,9 @@ async function main() {
 
 	if (!domain) {
 		console.error('Usage: bun run scripts/encrypt-inventory.ts <domain>');
-		console.error('Reads stdin as JSON5/JSON array of SecretEntry and writes encrypted envelope.');
+		console.error(
+			'Reads stdin as JSON5/JSON array of SecretEntry and writes encrypted JSONL inventory.',
+		);
 		process.exit(1);
 	}
 
@@ -27,10 +29,10 @@ async function main() {
 		process.exit(1);
 	}
 
-	const envelope = await encryptInventory(inventory, masterKey);
-	const outputPath = `.vault/${domain}.inventory.json5.enc`;
-	await Bun.write(outputPath, JSON.stringify(envelope, null, 2));
-	console.error(`Encrypted inventory written to ${outputPath}`);
+	const output = await encryptInventoryJSONL(inventory, masterKey);
+	const outputPath = `.vault/${domain}.inventory.jsonl.enc`;
+	await Bun.write(outputPath, output);
+	console.error(`Encrypted JSONL inventory written to ${outputPath}`);
 }
 
 main().catch(error => {

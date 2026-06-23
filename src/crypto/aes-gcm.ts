@@ -16,19 +16,19 @@ const KEY_LENGTH = 256;
 export async function deriveKey(masterKey: string): Promise<CryptoKey> {
 	const encoder = new TextEncoder();
 	const hash = await crypto.subtle.digest('SHA-256', encoder.encode(masterKey));
-	return crypto.subtle.importKey(
-		'raw',
-		hash,
-		{name: ALGORITHM, length: KEY_LENGTH},
-		false,
-		['encrypt', 'decrypt'],
-	);
+	return crypto.subtle.importKey('raw', hash, {name: ALGORITHM, length: KEY_LENGTH}, false, [
+		'encrypt',
+		'decrypt',
+	]);
 }
 
 /**
  * Encrypt a string with AES-GCM. Returns an envelope with base64 fields.
  */
-export async function encryptText(plaintext: string, masterKey: string): Promise<EncryptedEnvelope> {
+export async function encryptText(
+	plaintext: string,
+	masterKey: string,
+): Promise<EncryptedEnvelope> {
 	const key = await deriveKey(masterKey);
 	const iv = crypto.getRandomValues(new Uint8Array(12));
 	const encoder = new TextEncoder();

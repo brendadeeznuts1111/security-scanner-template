@@ -1,3 +1,4 @@
+import {EncryptedJSONLSink, type AuditEntry} from '../audit/encrypted-jsonl-sink.ts';
 import {severityPolicyFromDocument, type PolicyDocument} from '../policy/index.ts';
 import {
 	createProvider,
@@ -38,6 +39,10 @@ export interface SupplyChainConfig {
 	policy?: SeverityPolicy;
 	dryRun?: boolean;
 	policyDocument?: PolicyDocument;
+	/** Path to an encrypted JSONL audit log. Requires AUDIT_MASTER_KEY or auditMasterKey. */
+	auditLog?: string;
+	/** Master key for the encrypted audit log. Falls back to AUDIT_MASTER_KEY env var. */
+	auditMasterKey?: string;
 }
 
 interface ActiveState {
@@ -46,6 +51,7 @@ interface ActiveState {
 	policyDocument: PolicyDocument | null;
 	dryRun: boolean;
 	decisions: InstallDecision[];
+	auditSink: EncryptedJSONLSink<AuditEntry> | null;
 }
 
 const state: ActiveState = {
@@ -54,6 +60,7 @@ const state: ActiveState = {
 	policyDocument: null,
 	dryRun: false,
 	decisions: [],
+	auditSink: null,
 };
 
 /**
@@ -101,6 +108,13 @@ export function activate(config: SupplyChainConfig = {}): SecurityScannerProvide
 	state.dryRun = config.dryRun ?? false;
 	state.policyDocument = config.policyDocument ?? null;
 
+	const masterKey = config.auditMasterKey ?? process.env.AUDIT_MASTER_KEY;
+	if (config.auditLog && masterKey) {
+		state.auditSink = new EncryptedJSONLSink(config.auditLog, masterKey);
+	} else {
+		state.auditSink = null;
+	}
+
 	const severityPolicy =
 		config.policy ??
 		(state.policyDocument ? severityPolicyFromDocument(state.policyDocument) : getPolicy());
@@ -123,6 +137,7 @@ export function deactivate(): void {
 	state.config = {};
 	state.policyDocument = null;
 	state.dryRun = false;
+	state.auditSink = null;
 	resetPolicy();
 }
 
@@ -195,7 +210,7 @@ export async function scanAll(packages: Bun.Security.Package[]): Promise<Advisor
 
 	for (const pkg of packages) {
 		const pkgAdvisories = mapped.filter(a => a.package === pkg.name && a.version === pkg.version);
-		recordDecision({
+		await recordDecision({
 			package: pkg.name,
 			version: pkg.version,
 			requestedRange: pkg.requestedRange,
@@ -208,18 +223,57 @@ export async function scanAll(packages: Bun.Security.Package[]): Promise<Advisor
 	return mapped;
 }
 
+function decisionToAuditEntry(decision: InstallDecision): AuditEntry {
+	return {
+		package: decision.package,
+		version: decision.version,
+		requestedRange: decision.requestedRange,
+		advisories: decision.advisories as AuditEntry['advisories'],
+		allowed: decision.allowed,
+		decidedAt: decision.decidedAt,
+	};
+}
+
 /**
  * Record an install decision. This is called by the install hook after a scan
  * so the audit buffer can be queried later.
+ *
+ * If an encrypted audit sink is configured, the decision is also appended to
+ * the encrypted JSONL log.
  */
-export function recordDecision(decision: InstallDecision): void {
+export async function recordDecision(decision: InstallDecision): Promise<void> {
 	state.decisions.push(decision);
+
+	if (state.auditSink) {
+		await state.auditSink.append(decisionToAuditEntry(decision));
+	}
 }
 
 /**
  * Return the recorded install decisions since activation. If `since` is a
  * Date or number of hours, only decisions after that point are returned.
+ *
+ * When an encrypted audit sink is configured, this reads from the encrypted
+ * JSONL log so decisions survive process restarts.
  */
+function auditEntryToDecision(entry: AuditEntry): InstallDecision {
+	return {
+		package: entry.package,
+		version: entry.version,
+		requestedRange: entry.requestedRange,
+		allowed: entry.allowed,
+		decidedAt: entry.decidedAt,
+		advisories: entry.advisories.map(a => ({
+			level: a.level === 'fatal' || a.level === 'warn' ? a.level : 'warn',
+			package: a.package,
+			version: a.version,
+			url: a.url,
+			description: a.description,
+			categories: a.categories,
+		})),
+	};
+}
+
 export async function audit(since?: Date | number): Promise<InstallDecision[]> {
 	const cutoff =
 		since === undefined
@@ -228,11 +282,14 @@ export async function audit(since?: Date | number): Promise<InstallDecision[]> {
 				? since.getTime()
 				: Date.now() - since * 60 * 60 * 1000;
 
+	const entries = state.auditSink ? await state.auditSink.readAll() : [...state.decisions];
+	const decisions = entries.map(auditEntryToDecision);
+
 	if (cutoff === null) {
-		return [...state.decisions];
+		return decisions;
 	}
 
-	return state.decisions.filter(d => new Date(d.decidedAt).getTime() >= cutoff);
+	return decisions.filter(d => new Date(d.decidedAt).getTime() >= cutoff);
 }
 
 /**

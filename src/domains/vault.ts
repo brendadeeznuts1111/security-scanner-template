@@ -80,7 +80,7 @@ export class VaultDomain {
 		}
 
 		return Promise.all(
-			secrets.map(async (spec) => {
+			secrets.map(async spec => {
 				const value = await Bun.secrets.get({service: spec.service, name: spec.name});
 				return {
 					name: spec.name,

@@ -49,6 +49,7 @@
 		"check": "bun run lint && bun run typecheck && bun run test",
 		"check:registry": "bun run src/index.ts --check-registry",
 		"healthcheck": "bun run src/index.ts --healthcheck",
+		"vault": "bun run src/cli/vault.ts",
 		"detect-secrets-backend": "bun run scripts/detect-secrets-backend.ts",
 		"prepublishOnly": "bun run check"
 	},

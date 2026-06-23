@@ -1,76 +1,12 @@
+import {encryptText, decryptText, type EncryptedEnvelope} from '../crypto/aes-gcm.ts';
 import type {SecretEntry} from './types.ts';
 
-export interface EncryptedEnvelope {
-	/** Base64-encoded random IV. */
-	iv: string;
-	/** Base64-encoded authentication tag. */
-	authTag: string;
-	/** Base64-encoded ciphertext. */
-	data: string;
-}
-
-const ALGORITHM = 'AES-GCM';
-const KEY_LENGTH = 256;
+export type {EncryptedEnvelope};
 
 /**
- * Derive an AES-GCM key from a UTF-8 master key using SHA-256 as a simple KDF.
- */
-async function deriveKey(masterKey: string): Promise<CryptoKey> {
-	const encoder = new TextEncoder();
-	const hash = await crypto.subtle.digest('SHA-256', encoder.encode(masterKey));
-	return crypto.subtle.importKey('raw', hash, {name: ALGORITHM, length: KEY_LENGTH}, false, [
-		'encrypt',
-		'decrypt',
-	]);
-}
-
-/**
- * Encrypt a string with AES-GCM. Returns an envelope with base64 fields.
- */
-export async function encryptText(
-	plaintext: string,
-	masterKey: string,
-): Promise<EncryptedEnvelope> {
-	const key = await deriveKey(masterKey);
-	const iv = crypto.getRandomValues(new Uint8Array(12));
-	const encoder = new TextEncoder();
-	const ciphertext = await crypto.subtle.encrypt(
-		{name: ALGORITHM, iv},
-		key,
-		encoder.encode(plaintext),
-	);
-
-	const full = new Uint8Array(ciphertext);
-	const authTag = full.slice(full.length - 16);
-	const data = full.slice(0, full.length - 16);
-
-	return {
-		iv: Buffer.from(iv).toString('base64'),
-		authTag: Buffer.from(authTag).toString('base64'),
-		data: Buffer.from(data).toString('base64'),
-	};
-}
-
-/**
- * Decrypt an AES-GCM envelope back to a UTF-8 string.
- */
-export async function decryptText(envelope: EncryptedEnvelope, masterKey: string): Promise<string> {
-	const key = await deriveKey(masterKey);
-	const iv = Buffer.from(envelope.iv, 'base64');
-	const authTag = Buffer.from(envelope.authTag, 'base64');
-	const data = Buffer.from(envelope.data, 'base64');
-
-	const ciphertext = new Uint8Array(data.length + authTag.length);
-	ciphertext.set(data);
-	ciphertext.set(authTag, data.length);
-
-	const decrypted = await crypto.subtle.decrypt({name: ALGORITHM, iv}, key, ciphertext);
-	const decoder = new TextDecoder();
-	return decoder.decode(decrypted);
-}
-
-/**
- * Encrypt a secret inventory (JSON5 array) to an envelope.
+ * Encrypt a secret inventory (JSON5 array) to a single envelope.
+ *
+ * @deprecated Prefer {@link encryptInventoryJSONL} for line-independent encryption.
  */
 export async function encryptInventory(
 	inventory: SecretEntry[],
@@ -81,7 +17,9 @@ export async function encryptInventory(
 }
 
 /**
- * Decrypt an envelope into a secret inventory.
+ * Decrypt a single-envelope secret inventory.
+ *
+ * @deprecated Prefer {@link decryptInventoryJSONL} for line-independent encryption.
  */
 export async function decryptInventory(
 	envelope: EncryptedEnvelope,
@@ -93,4 +31,62 @@ export async function decryptInventory(
 		throw new Error('Decrypted inventory is not an array');
 	}
 	return parsed.filter((item): item is SecretEntry => typeof item.name === 'string');
+}
+
+/**
+ * Encrypt a secret inventory into a JSONL string.
+ * Each line is an independently encrypted secret entry, so a single corrupted
+ * line does not affect the rest of the file and single-line rotation does not
+ * require rewriting the entire vault.
+ */
+export async function encryptInventoryJSONL(
+	inventory: SecretEntry[],
+	masterKey: string,
+): Promise<string> {
+	const lines: string[] = [];
+	for (const entry of inventory) {
+		const envelope = await encryptText(JSON.stringify(entry), masterKey);
+		lines.push(JSON.stringify(envelope));
+	}
+	return lines.join('\n') + (lines.length > 0 ? '\n' : '');
+}
+
+/**
+ * Decrypt a JSONL-encoded secret inventory.
+ * Each line is decrypted independently; parse errors on one line do not
+ * prevent reading the remaining secrets.
+ */
+export async function decryptInventoryJSONL(
+	text: string,
+	masterKey: string,
+): Promise<SecretEntry[]> {
+	const lines = text.split('\n').filter(line => line.trim().length > 0);
+	const entries: SecretEntry[] = [];
+
+	for (const line of lines) {
+		let envelope: EncryptedEnvelope;
+		try {
+			envelope = JSON.parse(line) as EncryptedEnvelope;
+		} catch {
+			continue;
+		}
+
+		try {
+			const plaintext = await decryptText(envelope, masterKey);
+			const parsed = JSON.parse(plaintext) as unknown;
+			if (isSecretEntry(parsed)) {
+				entries.push(parsed);
+			}
+		} catch {
+			// Skip corrupted or unauthenticated lines.
+		}
+	}
+
+	return entries;
+}
+
+function isSecretEntry(value: unknown): value is SecretEntry {
+	return (
+		typeof value === 'object' && value !== null && typeof (value as SecretEntry).name === 'string'
+	);
 }

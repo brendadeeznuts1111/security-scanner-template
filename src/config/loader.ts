@@ -1,7 +1,11 @@
 import path from 'path';
 import {applyDefaults} from './defaults.ts';
-import {decryptInventory} from './vault.ts';
+import {decryptInventory, decryptInventoryJSONL} from './vault.ts';
 import type {DomainConfig, LoadedDomain, SecretEntry} from './types.ts';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export {type LoadedDomain} from './types.ts';
 
@@ -37,8 +41,25 @@ async function loadInventoryFile(
 		if (!masterKey) {
 			throw new Error('VAULT_MASTER_KEY is required to decrypt inventory files');
 		}
-		const envelope = Bun.JSON5.parse(text) as unknown;
-		return decryptInventory(envelope as import('./vault.ts').EncryptedEnvelope, masterKey);
+		// Try a single envelope first, then fall back to JSONL.
+		const trimmed = text.trim();
+		try {
+			const envelope = Bun.JSON5.parse(trimmed) as unknown;
+			if (
+				isPlainObject(envelope) &&
+				'data' in envelope &&
+				'iv' in envelope &&
+				'authTag' in envelope
+			) {
+				return decryptInventory(
+					envelope as unknown as import('./vault.ts').EncryptedEnvelope,
+					masterKey,
+				);
+			}
+		} catch {
+			/* not a single envelope */
+		}
+		return decryptInventoryJSONL(text, masterKey);
 	}
 
 	const parsed = Bun.JSON5.parse(text) as unknown;

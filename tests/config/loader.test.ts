@@ -3,9 +3,10 @@ import {applyDefaults, deepMerge} from '../../src/config/defaults.ts';
 import {discoverDomainFiles, loadDomainFile} from '../../src/config/loader.ts';
 import {encryptInventory} from '../../src/config/vault.ts';
 
-const TEST_DIR = `/tmp/config-loader-test-${Date.now()}`;
+let TEST_DIR = `/tmp/config-loader-test-${Date.now()}`;
 
 beforeEach(async () => {
+	TEST_DIR = `/tmp/config-loader-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	await Bun.write(TEST_DIR, '').catch(() => {});
 	const {rm, mkdir} = await import('fs/promises');
 	await rm(TEST_DIR, {recursive: true, force: true});

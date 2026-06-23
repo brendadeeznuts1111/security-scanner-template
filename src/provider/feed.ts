@@ -1,4 +1,5 @@
 import {getCachedFeed, type CacheOptions} from './cache.ts';
+import {isJSONLSource, parseJSONLFeed, streamJSONLFeed} from './feed-jsonl.ts';
 import {normalizeThreatFeed, type AllowlistItem, type ThreatFeedItem} from './validator.ts';
 
 export interface FeedConfig {
@@ -102,10 +103,16 @@ function buildRemoteFeedFetcher(config: FeedConfig): () => Promise<Response> {
 /**
  * Load the remote feed from the configured URL.
  * Uses stale-while-revalidate caching when cacheTtl > 0.
+ * JSONL feeds are streamed and processed line-by-line.
  */
 async function loadRemoteFeed(config: FeedConfig): Promise<LoadedFeed> {
 	if (!config.remote) {
 		throw new Error('No remote feed URL configured');
+	}
+
+	if (isJSONLSource(config.remote)) {
+		const response = await buildRemoteFeedFetcher(config)();
+		return streamJSONLFeed(response);
 	}
 
 	const ttlSeconds = getCacheTtlSeconds(config);
@@ -121,9 +128,16 @@ async function loadRemoteFeed(config: FeedConfig): Promise<LoadedFeed> {
 /**
  * Load the local feed from the configured local path.
  * If a local feed path is not configured, throw an error.
+ * Supports both plain JSON and JSONL formats.
  */
 async function loadLocalFeed(localPath: string): Promise<LoadedFeed> {
 	const file = Bun.file(localPath);
+	const text = await file.text();
+
+	if (isJSONLSource(localPath) || isJSONLSource(text)) {
+		return parseJSONLFeed(text);
+	}
+
 	const data = await file.json();
 	return normalizeThreatFeed(data);
 }
