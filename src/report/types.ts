@@ -18,6 +18,25 @@ export interface ReportOverride {
 	reason: string;
 }
 
+export interface ReportVisual {
+	id: string;
+	label?: string;
+	imagePath?: string;
+	normalizedPath?: string;
+	thumbnailPath?: string;
+	placeholderDataUrl?: string;
+}
+
+/** Operator QR encoding the domain vault master token (sensitive — HTML only). */
+export interface ReportOperatorQr {
+	domain: string;
+	/** PNG data URL for `<img src>` — encodes the vault master token. */
+	dataUrl: string;
+	label?: string;
+	/** Bun.hash cache key hex (no token material). */
+	cacheKey?: string;
+}
+
 export interface ReportData {
 	generatedAt: string;
 	project?: string;
@@ -28,6 +47,10 @@ export interface ReportData {
 	infoCount: number;
 	advisories: ReportAdvisory[];
 	overrides: ReportOverride[];
+	/** Lazy-loaded screenshots and audit thumbnails for the HTML gallery. */
+	visuals?: ReportVisual[];
+	/** Domain operator QR for vault pairing (omit from exported JSON reports). */
+	operatorQr?: ReportOperatorQr;
 	scanDurationMs?: number;
 	dryRun: boolean;
 }

@@ -1,4 +1,5 @@
 import type {ReportAdvisory, ReportData} from './types.ts';
+import {padVisible, stringWidth} from '../utils/terminal.ts';
 
 function severityEmoji(level: string): string {
 	return {fatal: '🔴', warn: '🟡', info: '🔵'}[level] ?? '⚪';
@@ -6,6 +7,31 @@ function severityEmoji(level: string): string {
 
 function escapeMd(text: string): string {
 	return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function padCell(text: string, width: number): string {
+	return padVisible(text, width);
+}
+
+function formatTableRow(cells: string[], widths: number[]): string {
+	return `| ${cells.map((cell, index) => padCell(cell, widths[index] ?? cell.length)).join(' | ')} |`;
+}
+
+function tableWidths(headers: string[], rows: string[][]): number[] {
+	const widths = headers.map((header, index) =>
+		Math.max(stringWidth(header), ...rows.map(row => stringWidth(row[index] ?? ''))),
+	);
+	return widths;
+}
+
+function advisoryRows(advisories: ReportAdvisory[]): string[][] {
+	return advisories.map(advisory => [
+		`${severityEmoji(advisory.level)} ${advisory.level}`,
+		escapeMd(advisory.package),
+		advisory.version ?? '-',
+		(advisory.categories ?? []).join(', ') || '-',
+		escapeMd(advisory.description ?? ''),
+	]);
 }
 
 /**
@@ -26,36 +52,86 @@ export function generateMarkdownReport(data: ReportData): string {
 	lines.push('');
 
 	lines.push('## Summary\n');
-	lines.push(`| Metric | Count |`);
-	lines.push(`| --- | --- |`);
-	lines.push(`| Risk score | ${data.riskScore}/100 |`);
-	lines.push(`| Fatal | ${data.fatalCount} |`);
-	lines.push(`| Warn | ${data.warnCount} |`);
-	lines.push(`| Info | ${data.infoCount} |`);
-	lines.push(`| Total | ${data.advisories.length} |`);
+	const summaryHeaders = ['Metric', 'Count'];
+	const summaryRows = [
+		['Risk score', `${data.riskScore}/100`],
+		['Fatal', String(data.fatalCount)],
+		['Warn', String(data.warnCount)],
+		['Info', String(data.infoCount)],
+		['Total', String(data.advisories.length)],
+	];
+	const summaryWidths = tableWidths(summaryHeaders, summaryRows);
+	lines.push(formatTableRow(summaryHeaders, summaryWidths));
+	lines.push(
+		formatTableRow(
+			summaryHeaders.map(() => '---'),
+			summaryWidths,
+		),
+	);
+	for (const row of summaryRows) {
+		lines.push(formatTableRow(row, summaryWidths));
+	}
 	lines.push('');
 
 	if (data.advisories.length > 0) {
 		lines.push('## Advisories\n');
-		lines.push(`| Level | Package | Version | Categories | Description |`);
-		lines.push(`| --- | --- | --- | --- | --- |`);
-		for (const a of data.advisories) {
-			lines.push(
-				`| ${severityEmoji(a.level)} ${a.level} | ${escapeMd(a.package)} | ${a.version ?? '-'} | ${(a.categories ?? []).join(', ') || '-'} | ${escapeMd(a.description ?? '')} |`,
-			);
+		const headers = ['Level', 'Package', 'Version', 'Categories', 'Description'];
+		const rows = advisoryRows(data.advisories);
+		const widths = tableWidths(headers, rows);
+		lines.push(formatTableRow(headers, widths));
+		lines.push(
+			formatTableRow(
+				headers.map(() => '---'),
+				widths,
+			),
+		);
+		for (const row of rows) {
+			lines.push(formatTableRow(row, widths));
 		}
 		lines.push('');
 	} else {
 		lines.push('No advisories detected. ✅\n');
 	}
 
+	if (data.operatorQr) {
+		const meta = data.operatorQr;
+		lines.push('## Operator Access\n');
+		lines.push(
+			`Domain vault operator QR is configured for **${escapeMd(meta.domain)}**.`,
+		);
+		if (meta.cacheKey) {
+			lines.push(`Cache key: \`${meta.cacheKey}\``);
+		}
+		lines.push('');
+		lines.push(
+			'```bash',
+			`bun sp qr --domain ${meta.domain} --output operator-qr.png`,
+			'```',
+		);
+		lines.push('');
+		lines.push(
+			'> Sensitive — the QR encodes the vault master token. Do not commit generated images or HTML exports.',
+		);
+		lines.push('');
+	}
+
 	if (data.overrides.length > 0) {
 		lines.push('## Policy Overrides\n');
-		lines.push(`| Action | Target | Reason |`);
-		lines.push(`| --- | --- | --- |`);
-		for (const o of data.overrides) {
-			const target = o.package ?? o.category ?? o.cve ?? '*';
-			lines.push(`| ${o.action} | ${escapeMd(target)} | ${escapeMd(o.reason)} |`);
+		const headers = ['Action', 'Target', 'Reason'];
+		const rows = data.overrides.map(override => {
+			const target = override.package ?? override.category ?? override.cve ?? '*';
+			return [override.action, escapeMd(target), escapeMd(override.reason)];
+		});
+		const widths = tableWidths(headers, rows);
+		lines.push(formatTableRow(headers, widths));
+		lines.push(
+			formatTableRow(
+				headers.map(() => '---'),
+				widths,
+			),
+		);
+		for (const row of rows) {
+			lines.push(formatTableRow(row, widths));
 		}
 		lines.push('');
 	}

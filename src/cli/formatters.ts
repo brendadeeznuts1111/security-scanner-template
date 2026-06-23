@@ -1,18 +1,20 @@
+import {colorize, TERMINAL} from '../color/index.ts';
+import {formatTable} from '../utils/inspect.ts';
+import {writeHumanStderr, writeJsonStdout} from '../utils/process.ts';
+import {getRuntimeInfo} from '../utils/runtime.ts';
+import {wrapAnsi} from '../utils/terminal.ts';
+
 export type OutputFormat = 'human' | 'json';
 
 export interface FormatterMeta {
 	durationMs: number;
 	feedSource: string;
 	dryRun: boolean;
+	bunVersion?: string;
 }
 
 function severityRank(level: string): number {
 	return {fatal: 0, warn: 1, info: 2}[level] ?? 3;
-}
-
-function colorize(hex: string, text: string): string {
-	const code = Bun.color(hex, 'ansi') ?? '';
-	return code ? `${code}${text}\x1b[0m` : text;
 }
 
 /**
@@ -24,32 +26,42 @@ export function emitResults(
 	format: OutputFormat,
 	meta: FormatterMeta,
 ): void {
+	const runtime = getRuntimeInfo();
+	const enrichedMeta: FormatterMeta = {
+		...meta,
+		bunVersion: meta.bunVersion ?? runtime.version,
+	};
+
 	if (format === 'json') {
 		const payload = {
 			ok: advisories.length === 0,
-			meta,
+			meta: enrichedMeta,
+			runtime: {
+				version: runtime.version,
+				revision: runtime.revision.slice(0, 8),
+			},
 			advisories: [...advisories].sort((a, b) => severityRank(a.level) - severityRank(b.level)),
 		};
-		console.log(JSON.stringify(payload, null, 2));
+		writeJsonStdout(payload);
 		return;
 	}
 
 	if (advisories.length === 0) {
-		console.error(colorize('#33dd66', '✓ No threats detected'));
+		writeHumanStderr(colorize(TERMINAL.scannerOk, '✓ No threats detected'));
 		return;
 	}
 
-	console.error(colorize('#ff4444', `✕ ${advisories.length} threat(s) detected`));
-	console.error(
-		Bun.inspect.table(
-			advisories.map(a => ({
-				package: a.package,
-				level: a.level,
-				description: a.description ?? '',
-				categories: a.categories?.join(', ') ?? '',
-			})),
-			['package', 'level', 'description', 'categories'],
-			{colors: true},
-		),
-	);
+	writeHumanStderr(colorize(TERMINAL.scannerFatal, `✕ ${advisories.length} threat(s) detected`));
+	const terminalWidth = Math.max(80, process.stderr.columns ?? 80);
+	const rows = advisories.map(a => ({
+		package: a.package,
+		level: a.level,
+		description: wrapAnsi(a.description ?? '', Math.max(24, terminalWidth - 48), {
+			wordWrap: true,
+			hard: false,
+		}),
+		categories: a.categories?.join(', ') ?? '',
+	}));
+
+	writeHumanStderr(formatTable(rows, ['package', 'level', 'description', 'categories']));
 }
