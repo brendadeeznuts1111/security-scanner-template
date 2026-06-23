@@ -7,7 +7,7 @@ import {
 	BUN_RUNTIME_CATALOG,
 	BUN_RUNTIME_CATALOG_INDEX_URL,
 	getBunRuntimeCatalogEntry,
-} from '../../src/utils/bun-runtime-catalog.ts';
+} from '../../../src/utils/bun-runtime-catalog.ts';
 
 test('catalog has unique ids and required metadata', () => {
 	const ids = BUN_RUNTIME_CATALOG.map(entry => entry.id);
@@ -30,6 +30,8 @@ test('auditBunRuntimeCatalog reports availability for each wrapper', () => {
 test('getBunRuntimeCatalogEntry resolves deepEquals and spawn entries', () => {
 	expect(getBunRuntimeCatalogEntry('deepEquals')?.guideUrl).toContain('deep-equals');
 	expect(getBunRuntimeCatalogEntry('spawn')?.guideUrl).toContain('spawn');
+	expect(BUN_RUNTIME_CATALOG.map(entry => entry.id)).toContain('json5');
+	expect(getBunRuntimeCatalogEntry('bunTest')?.docsUrl).toBe('https://bun.com/reference/bun/test');
 });
 
 test('catalog index URL points at runtime utils docs', () => {

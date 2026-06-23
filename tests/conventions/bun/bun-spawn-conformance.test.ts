@@ -11,7 +11,7 @@ import {
 	spawnAndWait,
 	spawnChild,
 	spawnStdoutText,
-} from '../../src/utils/process.ts';
+} from '../../../src/utils/process.ts';
 
 test('spawn guide awaits proc.exited', async () => {
 	const proc = spawnChild(['echo', 'hello']);

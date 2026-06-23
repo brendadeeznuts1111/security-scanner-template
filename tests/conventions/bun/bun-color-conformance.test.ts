@@ -15,7 +15,7 @@ import {
 	toRgbObject,
 	toRgbaArray,
 	toRgbaObject,
-} from '../../src/color/index.ts';
+} from '../../../src/color/index.ts';
 
 test('docs: css format normalizes red inputs', () => {
 	expect(toCss('red')).toBe('red');

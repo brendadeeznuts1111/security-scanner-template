@@ -1,13 +1,10 @@
 /**
- * Conformance checks for bun:test APIs used across this repo (no jest namespace).
+ * Conformance checks for bun:test APIs used across this repo.
  * @see https://bun.com/reference/bun/test
  * @see https://bun.com/docs/guides/test/migrate-from-jest
  */
 import {
-	afterAll,
 	afterEach,
-	beforeAll,
-	beforeEach,
 	describe,
 	expect,
 	mock,
@@ -16,9 +13,15 @@ import {
 	setSystemTime,
 	spyOn,
 	test,
+	vi,
+	xdescribe,
+	xtest,
 } from 'bun:test';
-import {BUN_TEST_API_REFERENCE_URL} from '../../src/utils/bun-test-catalog.ts';
-import {FIXED_TEST_DATE, FIXED_TEST_ISO, FIXED_TEST_MS} from '../helpers.ts';
+import {
+	auditBunTestCatalog,
+	BUN_TEST_API_REFERENCE_URL,
+} from '../../../src/utils/bun-test-catalog.ts';
+import {FIXED_TEST_DATE, FIXED_TEST_ISO, FIXED_TEST_MS} from '../../helpers.ts';
 
 describe('bun:test module surface', () => {
 	test('reference URL points at bun.com/reference/bun/test', () => {
@@ -33,18 +36,27 @@ describe('bun:test module surface', () => {
 		expect(typeof spyOn).toBe('function');
 		expect(typeof setSystemTime).toBe('function');
 		expect(typeof setDefaultTimeout).toBe('function');
-		expect(typeof beforeAll).toBe('function');
-		expect(typeof beforeEach).toBe('function');
-		expect(typeof afterEach).toBe('function');
-		expect(typeof afterAll).toBe('function');
 		expect(typeof onTestFinished).toBe('function');
+		expect(typeof vi).toBe('object');
+		expect(typeof xtest).toBe('function');
+		expect(typeof xdescribe).toBe('function');
 	});
 
 	test('test and describe modifiers are functions', () => {
 		expect(typeof test.concurrent).toBe('function');
 		expect(typeof test.serial).toBe('function');
+		expect(typeof test.each).toBe('function');
+		expect(typeof test.skip).toBe('function');
+		expect(typeof test.todo).toBe('function');
+		expect(typeof test.failing).toBe('function');
 		expect(typeof describe.serial).toBe('function');
 		expect(typeof describe.each).toBe('function');
+	});
+
+	test('catalog audit is ok under Bun', () => {
+		const audit = auditBunTestCatalog();
+		expect(audit.ok).toBe(true);
+		expect(audit.groups.map(group => group.id)).toContain('matcher-core');
 	});
 });
 
@@ -76,6 +88,7 @@ describe('mock and spyOn', () => {
 		const doubled = mock((value: number) => value * 2);
 		expect(doubled(2)).toBe(4);
 		expect(doubled).toHaveBeenCalledWith(2);
+		expect(doubled).toHaveReturnedWith(4);
 	});
 
 	test('spyOn wraps object methods', () => {
@@ -87,6 +100,23 @@ describe('mock and spyOn', () => {
 	});
 });
 
+describe('vi fake timers', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	test('vi.useFakeTimers pins Date.now', () => {
+		vi.useFakeTimers({now: FIXED_TEST_MS});
+		expect(Date.now()).toBe(FIXED_TEST_MS);
+	});
+
+	test('vi.fn records invocations', () => {
+		const fn = vi.fn((n: number) => n * 3);
+		expect(fn(2)).toBe(6);
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('expect asymmetric matchers', () => {
 	test('any, objectContaining, and stringContaining', () => {
 		expect({id: 1, label: 'alpha'}).toEqual(
@@ -94,6 +124,34 @@ describe('expect asymmetric matchers', () => {
 		);
 		expect('hello world').toEqual(expect.stringContaining('world'));
 		expect([1, 2, 3]).toEqual(expect.arrayContaining([2]));
+	});
+});
+
+describe('test.each and describe.each', () => {
+	test.each([
+		[1, 2, 3],
+		[0, 0, 0],
+	])('adds %i + %i to %i', (a, b, sum) => {
+		expect(a + b).toBe(sum);
+	});
+
+	describe.each([
+		['alpha', 5],
+		['beta', 4],
+	])('string length for %s', (label, length) => {
+		test('matches expected character count', () => {
+			expect(label).toHaveLength(length);
+		});
+	});
+});
+
+describe('onTestFinished', () => {
+	test.serial('registers cleanup after test body', () => {
+		let cleaned = false;
+		onTestFinished(() => {
+			cleaned = true;
+		});
+		expect(cleaned).toBe(false);
 	});
 });
 
@@ -114,20 +172,16 @@ describe('timeouts', () => {
 	);
 });
 
-describe.serial('serial describe under concurrent glob', () => {
-	let counter = 0;
-
-	afterAll(() => {
-		counter = 0;
+describe('skip and failing modifiers', () => {
+	test.skip('skipped test does not run', () => {
+		expect(true).toBe(false);
 	});
 
-	test('first serial test increments shared counter', () => {
-		counter += 1;
-		expect(counter).toBe(1);
+	xtest('xtest alias is skip', () => {
+		expect(true).toBe(false);
 	});
 
-	test('second serial test sees prior state', () => {
-		counter += 1;
-		expect(counter).toBe(2);
+	test.failing('failing test passes when assertion fails', () => {
+		expect(1).toBe(2);
 	});
 });

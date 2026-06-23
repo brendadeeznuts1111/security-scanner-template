@@ -140,6 +140,7 @@ test('getConfigFormatRuntimeInfo reports parser API availability', async () => {
 	const info = await getConfigFormatRuntimeInfo(process.cwd());
 	expect(info.json5Available).toBe(true);
 	expect(info.tomlAvailable).toBe(true);
+	expect(info.docsUrl).toContainKeys(['json5', 'toml']);
 	expect(info.docsUrl.json5).toContain('json5');
 	expect(info.docsUrl.toml).toContain('toml');
 });

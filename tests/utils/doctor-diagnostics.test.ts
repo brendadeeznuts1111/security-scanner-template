@@ -26,11 +26,15 @@ test('formatDoctorDiagnosticsTable includes nanoseconds and stringWidth rows', (
 	expect(table).toContain('SIGINT');
 	expect(table).toContain('Bun.deepEquals');
 	expect(table).toContain('Bun.escapeHTML');
+	expect(table).toContain('bun:test Runner');
+	expect(table).toContain('bun:test Core expect matchers');
 });
 
-test('collectDoctorDiagnostics includes bun wrapper catalog audit', () => {
+test('collectDoctorDiagnostics includes bun wrapper and test catalog audits', () => {
 	const diagnostics = collectDoctorDiagnostics();
 	expect(diagnostics.bunWrappers.entries.length).toBeGreaterThan(5);
+	expect(diagnostics.bunTest.ok).toBe(true);
+	expect(diagnostics.bunTest.groups.length).toBeGreaterThan(3);
 	expect(diagnostics.utilities.deepEqualsAvailable).toBe(true);
 	expect(diagnostics.utilities.peekAvailable).toBe(true);
 	expect(diagnostics.utilities.escapeHtmlAvailable).toBe(true);

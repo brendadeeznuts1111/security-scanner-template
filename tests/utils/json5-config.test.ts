@@ -1,6 +1,5 @@
-import {expect, test} from 'bun:test';
-import {mkdirSync, readFileSync, rmSync} from 'fs';
-import {tmpdir} from 'os';
+import {describe, expect, test} from 'bun:test';
+import {readFileSync} from 'fs';
 import {join} from 'path';
 import {
 	BUN_JSON5_DOCS_URL,
@@ -10,47 +9,48 @@ import {
 	stringifyJson5,
 	writeJson5File,
 } from '../../src/utils/json5-config.ts';
+import {withTestDir} from '../helpers.ts';
 
-function tempDir(): string {
-	return join(tmpdir(), `json5-config-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-}
+describe('json5-config runtime', () => {
+	test('isJson5Available reports Bun.JSON5.parse and stringify', () => {
+		expect(isJson5Available()).toBe(true);
+	});
 
-test('isJson5Available reports Bun.JSON5.parse and stringify', () => {
-	expect(isJson5Available()).toBe(true);
+	test('BUN_JSON5_DOCS_URL points at bun.com', () => {
+		expect(BUN_JSON5_DOCS_URL).toContain('bun.com');
+		expect(BUN_JSON5_DOCS_URL).toContain('json5');
+	});
 });
 
-test('BUN_JSON5_DOCS_URL points at bun.com', () => {
-	expect(BUN_JSON5_DOCS_URL).toContain('bun.com');
-	expect(BUN_JSON5_DOCS_URL).toContain('json5');
+describe('parseJson5Text', () => {
+	test('accepts comments and trailing commas', () => {
+		const parsed = parseJson5Text<{domain: string; enabled: boolean}>(`{
+			// comment
+			domain: 'com.example.app',
+			enabled: true,
+		}`);
+		expect(parsed.domain).toBe('com.example.app');
+		expect(parsed.enabled).toBe(true);
+	});
 });
 
-test('parseJson5Text accepts comments and trailing commas', () => {
-	const parsed = parseJson5Text<{domain: string; enabled: boolean}>(`{
-		// comment
-		domain: 'com.example.app',
-		enabled: true,
-	}`);
-	expect(parsed.domain).toBe('com.example.app');
-	expect(parsed.enabled).toBe(true);
-});
+describe('writeJson5File', () => {
+	test('round-trips with parseJson5File', async () => {
+		await withTestDir('json5-config', async dir => {
+			const filePath = join(dir, 'network-baseline.json5');
+			const document = {
+				version: 1,
+				domain: 'com.example.app',
+				endpoints: ['/health'],
+			};
 
-test('writeJson5File and parseJson5File round-trip', async () => {
-	const dir = tempDir();
-	mkdirSync(dir, {recursive: true});
-	const filePath = join(dir, 'network-baseline.json5');
-	const document = {
-		version: 1,
-		domain: 'com.example.app',
-		endpoints: ['/health'],
-	};
+			await writeJson5File(filePath, document);
+			const loaded = await parseJson5File<typeof document>(filePath);
+			expect(loaded.domain).toBe('com.example.app');
+			expect(stringifyJson5(loaded)).toContain('com.example.app');
 
-	await writeJson5File(filePath, document);
-	const loaded = await parseJson5File<typeof document>(filePath);
-	expect(loaded.domain).toBe('com.example.app');
-	expect(stringifyJson5(loaded)).toContain('com.example.app');
-
-	const raw = readFileSync(filePath, 'utf8');
-	expect(raw.endsWith('\n')).toBe(true);
-
-	rmSync(dir, {recursive: true, force: true});
+			const raw = readFileSync(filePath, 'utf8');
+			expect(raw.endsWith('\n')).toBe(true);
+		});
+	});
 });

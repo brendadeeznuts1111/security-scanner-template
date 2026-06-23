@@ -7,13 +7,13 @@ import {
 	formatTable,
 	formatValue,
 	isInspectAvailable,
-} from '../../src/utils/inspect.ts';
+} from '../../../src/utils/inspect.ts';
 import {
 	formatInspectCustom,
 	INSPECT_CUSTOM,
 	isInspectCustomAvailable,
 	withInspectCustom,
-} from '../../src/utils/inspect-custom.ts';
+} from '../../../src/utils/inspect-custom.ts';
 
 test('Bun.inspect serializes objects like console.log', () => {
 	const obj = {foo: 'bar'};

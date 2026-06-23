@@ -10,9 +10,9 @@ import {
 	moduleUrlFromPath,
 	sleep,
 	which,
-} from '../../src/utils/runtime.ts';
-import {stringWidth} from '../../src/utils/terminal.ts';
-import {randomUUIDv7} from '../../src/utils/uuid.ts';
+} from '../../../src/utils/runtime.ts';
+import {stringWidth} from '../../../src/utils/terminal.ts';
+import {randomUUIDv7} from '../../../src/utils/uuid.ts';
 
 test('docs: Bun.version revision and main are readable', () => {
 	const info = getRuntimeInfo();

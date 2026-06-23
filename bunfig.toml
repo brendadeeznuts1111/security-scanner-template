@@ -17,7 +17,6 @@ timeout = 10000
 # Override everything: `bun test --concurrent`
 concurrentTestGlob = [
 	"**/concurrent-*.test.ts",
-	"**/utils/*.test.ts",
 	"**/policy/*.test.ts",
 	"**/crypto/*.test.ts",
 	"**/markdown/*.test.ts",

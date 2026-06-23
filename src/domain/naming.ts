@@ -17,7 +17,7 @@ export const SECRET_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
  * CamelCase API identifiers are allowed after the first character.
  * No `should`/`SHOULD` prefixes.
  */
-export const TEST_DESCRIPTION_PATTERN = /^[a-zA-Z][a-zA-Z0-9\s.,;:'"()\-–—/&_>]+$/;
+export const TEST_DESCRIPTION_PATTERN = /^[a-zA-Z][a-zA-Z0-9\s.,;:'"()\-–—/&_:>]+$/;
 
 /** CLI-flag-led test titles (`--healthcheck prints JSON status`). */
 export const TEST_CLI_FLAG_DESCRIPTION_PATTERN = /^--[a-z][-a-z0-9]* .+$/;

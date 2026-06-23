@@ -10,7 +10,7 @@ import {
 	freezeSystemTime,
 	resetSystemTime,
 	withFixedSystemTime,
-} from '../helpers.ts';
+} from '../../helpers.ts';
 
 const PAST_ISO = '2020-01-01T00:00:00.000Z';
 const PAST_MS = new Date(PAST_ISO).getTime();

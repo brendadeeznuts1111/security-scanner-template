@@ -3,8 +3,8 @@
  * @see https://github.com/oven-sh/bun/blob/main/docs/runtime/markdown.mdx
  */
 import {expect, test} from 'bun:test';
-import {generateMarkdownReport} from '../../src/report/markdown.ts';
-import type {ReportData} from '../../src/report/types.ts';
+import {generateMarkdownReport} from '../../../src/report/markdown.ts';
+import type {ReportData} from '../../../src/report/types.ts';
 import {
 	DEFAULT_REPORT_MARKDOWN_OPTIONS,
 	isMarkdownAvailable,
@@ -12,7 +12,7 @@ import {
 	markdownToHtml,
 	markdownToPlaintext,
 	renderMarkdown,
-} from '../../src/markdown/index.ts';
+} from '../../../src/markdown/index.ts';
 
 test('isMarkdownAvailable reflects Bun.markdown.html', () => {
 	expect(isMarkdownAvailable()).toBe(typeof Bun.markdown?.html === 'function');
