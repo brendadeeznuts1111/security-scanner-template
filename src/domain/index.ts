@@ -1,10 +1,14 @@
 import type {DomainConfig} from '../config/types.ts';
-import {FEATURE_AUDIT_SQLITE, FEATURE_INTEL_DNS} from '../features/index.ts';
+import {FEATURE_INTEL_DNS} from '../features/index.ts';
 import {PasswordHasher} from '../identity/password.ts';
 import {CSRFGuard} from '../csrf/guard.ts';
 import {DNSThreatChecker} from '../intel/dns-threat.ts';
-import {AuditSink} from '../audit/sqlite-sink.ts';
-import {EncryptedSQLiteSink} from '../audit/encrypted-sqlite-sink.ts';
+import type {AuditSink} from '../audit/types.ts';
+import {
+	createDomainAuditSink,
+	ensureDomainAuditParentDir,
+	resolveDomainAuditMasterKey,
+} from './audit-paths.ts';
 import type {Registry} from '../registry/index.ts';
 
 export type {DomainConfig};
@@ -38,12 +42,9 @@ export class Domain {
 			this.dns = new DNSThreatChecker(config.intel.dns);
 		}
 
-		const sqliteConfig = config.audit?.sqlite;
-		if (FEATURE_AUDIT_SQLITE && sqliteConfig && options.auditMasterKey) {
-			this.audit = new AuditSink(sqliteConfig.path, options.auditMasterKey, {
-				compress: sqliteConfig.compress,
-				compressionFormat: sqliteConfig.compressionFormat,
-			});
+		const masterKey = options.auditMasterKey ?? resolveDomainAuditMasterKey(config);
+		if (masterKey) {
+			this.audit = createDomainAuditSink(config, masterKey) ?? undefined;
 		}
 	}
 
@@ -52,14 +53,12 @@ export class Domain {
 		registry: Registry,
 		options: DomainOptions = {},
 	): Promise<Domain> {
-		const sqliteConfig = config.audit?.sqlite;
-		if (FEATURE_AUDIT_SQLITE && sqliteConfig?.path) {
-			await EncryptedSQLiteSink.ensureParentDir(sqliteConfig.path);
-		}
+		await ensureDomainAuditParentDir(config);
 		return new Domain(config, registry, options);
 	}
 
 	close(): void {
-		this.audit?.close();
+		const sink = this.audit as AuditSink & {close?: () => void};
+		sink?.close?.();
 	}
 }

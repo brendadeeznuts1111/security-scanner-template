@@ -1,5 +1,6 @@
 import type {DomainRegistry} from '../config/registry.ts';
 import {createDomainSecurity} from '../config/security.ts';
+import {resolveDomainAuditMasterKey} from '../domain/audit-paths.ts';
 import {Domain} from '../domain/index.ts';
 import {Registry} from '../registry/index.ts';
 import {FEATURE_SCAN_EXTERNAL} from '../features/index.ts';
@@ -70,14 +71,7 @@ export class Service {
 	private resolveAuditMasterKey(
 		config: import('../config/types.ts').DomainConfig,
 	): string | undefined {
-		const configured = config.audit?.sqlite?.masterKey;
-		if (configured) {
-			return configured;
-		}
-		if (configured === null) {
-			return process.env.AUDIT_MASTER_KEY;
-		}
-		return undefined;
+		return resolveDomainAuditMasterKey(config);
 	}
 
 	/**

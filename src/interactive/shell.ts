@@ -9,6 +9,8 @@ import {
 	PROFILES,
 	type BuildProfile,
 } from '../build/profiles.ts';
+import {formatColorizedAuditEntry} from '../domain/audit-display.ts';
+import {resolveDomainAuditPath} from '../domain/audit-paths.ts';
 import {createDomainContext, type DomainContext} from '../domain/context.ts';
 import {domainDisplayName} from '../domain/branding.ts';
 import type {ConfigVault} from '../domain/vault-config.ts';
@@ -312,7 +314,7 @@ export class SecurityShell {
 		this.terminal.writeln(
 			colorize(
 				TERMINAL.scannerDim,
-				`csrf: ${ctx.config.csrf.enabled ? 'enabled' : 'disabled'} | supply-chain: ${ctx.config.supplyChain.enabled ? 'enabled' : 'disabled'} | secrets: ${ctx.config.secrets.inventory.length} inventoried | audit: ${ctx.config.audit?.sqlite?.path ?? '(none)'}`,
+				`csrf: ${ctx.config.csrf.enabled ? 'enabled' : 'disabled'} | supply-chain: ${ctx.config.supplyChain.enabled ? 'enabled' : 'disabled'} | secrets: ${ctx.config.secrets.inventory.length} inventoried | audit: ${resolveDomainAuditPath(ctx.config) ?? '(none)'}`,
 			),
 		);
 	}
@@ -608,8 +610,9 @@ export class SecurityShell {
 	}
 
 	private printAuditEntries(entries: import('../audit/types.ts').AuditEntry[]): void {
+		const config = this.registry.get(this.resolveDomain());
 		for (const entry of entries) {
-			this.terminal.writeln(JSON.stringify(entry));
+			this.terminal.writeln(formatColorizedAuditEntry(config, entry));
 		}
 	}
 

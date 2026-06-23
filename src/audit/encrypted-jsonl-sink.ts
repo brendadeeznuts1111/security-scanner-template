@@ -120,4 +120,8 @@ export class EncryptedJSONLSink implements AuditSink {
 			return null;
 		}
 	}
+
+	close(): void {
+		// Append-only sink — no persistent handle to release.
+	}
 }

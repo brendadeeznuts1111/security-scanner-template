@@ -36,6 +36,7 @@ import {
 	resolveSecretsService,
 	secretsServiceForDomain,
 } from '../domain/secrets-service.ts';
+import {detectPublicTokenIssuerMismatch, resolveTokenIssuer} from '../domain/token-issuer.ts';
 import {domainBrandingProfile, type DomainBrandingProfile} from '../domain/branding.ts';
 import {
 	DOMAIN_FIELD_MATRIX,
@@ -189,6 +190,15 @@ function validatePublicFile(
 		);
 	}
 
+	const issuerMismatch = detectPublicTokenIssuerMismatch(domain, publicRaw);
+	if (issuerMismatch) {
+		report(
+			'token.issuer',
+			`token.issuer "${issuerMismatch}" does not match domain "${domain}"; issuer is synced to the domain id on load`,
+			'warning',
+		);
+	}
+
 	if (Array.isArray(secrets?.inventory)) {
 		report(
 			'secrets.inventory',
@@ -337,6 +347,16 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 			`secrets.service "${config.secrets.service}" must match domain "${expectedService}"`,
 			'error',
 			'SECRETS_SERVICE_MISMATCH',
+		);
+	}
+
+	const expectedIssuer = resolveTokenIssuer(config);
+	if (config.token.issuer !== expectedIssuer) {
+		report(
+			'token.issuer',
+			`token.issuer "${config.token.issuer}" should match domain "${expectedIssuer}"`,
+			'warning',
+			'TOKEN_ISSUER_MISMATCH',
 		);
 	}
 

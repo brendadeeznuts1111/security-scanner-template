@@ -1,5 +1,7 @@
 import type {DomainConfig, DomainColors, DomainChannels, SecretEntry} from './types.ts';
+import {applyAuditDefaults} from '../domain/audit-paths.ts';
 import {syncSecretsService} from '../domain/secrets-service.ts';
+import {syncTokenIssuer} from '../domain/token-issuer.ts';
 
 export const DEFAULT_COLORS: DomainColors = {
 	primary: '#0A84FF',
@@ -183,6 +185,8 @@ export function applyDefaults(partial: unknown): DomainConfig {
 	const merged = base as unknown as DomainConfig;
 	merged.domain = partial.domain;
 	syncSecretsService(merged);
+	syncTokenIssuer(merged);
+	applyAuditDefaults(merged);
 
 	const partialSecrets = partial as Record<string, unknown>;
 	const partialSupplyChainForFeed = partialSecrets.supplyChain as

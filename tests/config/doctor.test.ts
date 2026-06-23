@@ -67,6 +67,40 @@ test('checkDomain reports secrets.service drift after defaults merge', () => {
 	).toBe(true);
 });
 
+test('checkDomain reports token.issuer drift after defaults merge', () => {
+	const config = applyDefaults({
+		domain: 'com.example.issuer',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	config.token.issuer = 'com.other.issuer';
+	const result = checkDomain({
+		domain: config.domain,
+		path: '/tmp/test.security.json5',
+		config,
+	});
+	expect(result.ok).toBe(true);
+	expect(
+		result.issues.some(i => i.field === 'token.issuer' && i.code === 'TOKEN_ISSUER_MISMATCH'),
+	).toBe(true);
+});
+
+test('checkAllDomains reports public token.issuer override mismatch', async () => {
+	await writeDomain(
+		'issuer',
+		`{
+			domain: "com.example.issuer-public",
+			token: { issuer: "com.other.issuer" },
+			csrf: { enabled: false, tokenLength: 32 },
+		}`,
+	);
+
+	const result = await checkAllDomains(TEST_DIR);
+	const issues = result.domains.flatMap(domain => domain.issues);
+	expect(
+		issues.some(i => i.field === 'token.issuer' && i.domain === 'com.example.issuer-public'),
+	).toBe(true);
+});
+
 test('checkAllDomains reports public secrets.service override mismatch', async () => {
 	await writeDomain(
 		'mismatch',

@@ -32,6 +32,8 @@ test('applyDefaults fills in missing fields', () => {
 	expect(config.domain).toBe('com.example.test');
 	expect(config.colors.primary).toBe('#0A84FF');
 	expect(config.secrets.service).toBe('com.example.test');
+	expect(config.token.issuer).toBe('com.example.test');
+	expect(config.audit?.jsonl?.path).toBe('./.security/com.example.test/audit.jsonl.enc');
 	expect(config.supplyChain.policy.fatal).toContain('malware');
 });
 

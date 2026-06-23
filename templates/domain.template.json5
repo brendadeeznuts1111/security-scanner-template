@@ -129,14 +129,21 @@
 		},
 	},
 
-	// Audit persistence.
+	// Audit persistence (per-domain JSONL preferred; SQLite optional fallback).
 	audit: {
-		sqlite: {
-			path: './.security/audit.sqlite',
+		jsonl: {
+			// Defaults to ./.security/<reverse-dns-segment>/audit.jsonl.enc on load.
+			path: './.security/com.example.service/audit.jsonl.enc',
 			masterKey: null,
-			compress: true,
-			compressionFormat: 'zstd',
+			compress: false,
+			compressionFormat: 'gzip',
 		},
+		// sqlite: {
+		// 	path: './.security/com.example.service/audit.sqlite',
+		// 	masterKey: null,
+		// 	compress: true,
+		// 	compressionFormat: 'zstd',
+		// },
 	},
 
 	// Threat intelligence.

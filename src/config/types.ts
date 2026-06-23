@@ -156,13 +156,16 @@ export interface DomainService {
 	tls?: DomainServiceTls;
 }
 
+export interface DomainAuditBackendConfig {
+	path: string;
+	masterKey?: string | null;
+	compress?: boolean;
+	compressionFormat?: 'gzip' | 'zstd';
+}
+
 export interface DomainAuditConfig {
-	sqlite?: {
-		path: string;
-		masterKey?: string | null;
-		compress?: boolean;
-		compressionFormat?: 'gzip' | 'zstd';
-	};
+	jsonl?: DomainAuditBackendConfig;
+	sqlite?: DomainAuditBackendConfig;
 }
 
 export interface DomainIntelConfig {
