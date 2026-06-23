@@ -3,9 +3,7 @@
 	displayName: 'Shadow',
 	secrets: {
 		service: 'com.factory-wager.shadow',
-		inventory: [
-			{name: 'csrf-secret', required: false, description: 'CSRF signing secret'},
-		],
+		inventory: [{name: 'csrf-secret', required: false, description: 'CSRF signing secret'}],
 	},
 	colors: {
 		primary: '#2C3E50',

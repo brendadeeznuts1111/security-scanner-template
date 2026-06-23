@@ -15,10 +15,7 @@ export interface WebpConversionResult {
  * Convert decoded pixels to WebP for smaller audit/storage footprints.
  */
 export class ImageConverter {
-	static async toWebp(
-		source: ImageSource,
-		quality: number = 80,
-	): Promise<WebpConversionResult> {
+	static async toWebp(source: ImageSource, quality: number = 80): Promise<WebpConversionResult> {
 		const image = await loadImage(source);
 		const encoded = encodeImage(image, 'webp', quality);
 		const metadata = await encoded.metadata();

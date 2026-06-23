@@ -73,10 +73,7 @@ async function writeFileCacheEntry(filePath: string, entry: CacheEntry): Promise
 	}
 }
 
-async function readCacheEntry(
-	url: string,
-	options: CachePathOptions,
-): Promise<CacheEntry | null> {
+async function readCacheEntry(url: string, options: CachePathOptions): Promise<CacheEntry | null> {
 	if (FEATURE_CACHE_REDIS && options.redis !== false) {
 		const redisEntry = await readRedisCacheEntry(url, options);
 		if (redisEntry) return redisEntry;

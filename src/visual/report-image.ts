@@ -1,5 +1,10 @@
 import {loadImage} from './load.ts';
-import {isWebViewAvailable, screenshotHtml, type ScreenshotOptions, type ScreenshotResult} from '../report/webview.ts';
+import {
+	isWebViewAvailable,
+	screenshotHtml,
+	type ScreenshotOptions,
+	type ScreenshotResult,
+} from '../report/webview.ts';
 
 export interface ReportImageOptions extends ScreenshotOptions {}
 

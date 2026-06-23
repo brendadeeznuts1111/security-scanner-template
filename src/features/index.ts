@@ -48,12 +48,16 @@ function injectedFlag(value: boolean | undefined): boolean | undefined {
 
 export const FEATURE_AUDIT_SQLITE = resolveFeature(
 	'AUDIT_SQLITE',
-	injectedFlag(typeof __FEATURE_AUDIT_SQLITE__ !== 'undefined' ? __FEATURE_AUDIT_SQLITE__ : undefined),
+	injectedFlag(
+		typeof __FEATURE_AUDIT_SQLITE__ !== 'undefined' ? __FEATURE_AUDIT_SQLITE__ : undefined,
+	),
 );
 
 export const FEATURE_AUDIT_JSONL = resolveFeature(
 	'AUDIT_JSONL',
-	injectedFlag(typeof __FEATURE_AUDIT_JSONL__ !== 'undefined' ? __FEATURE_AUDIT_JSONL__ : undefined),
+	injectedFlag(
+		typeof __FEATURE_AUDIT_JSONL__ !== 'undefined' ? __FEATURE_AUDIT_JSONL__ : undefined,
+	),
 );
 
 export const FEATURE_INTEL_DNS = resolveFeature(
@@ -70,12 +74,16 @@ export const FEATURE_REPORT_MARKDOWN = resolveFeature(
 
 export const FEATURE_REPORT_HTML = resolveFeature(
 	'REPORT_HTML',
-	injectedFlag(typeof __FEATURE_REPORT_HTML__ !== 'undefined' ? __FEATURE_REPORT_HTML__ : undefined),
+	injectedFlag(
+		typeof __FEATURE_REPORT_HTML__ !== 'undefined' ? __FEATURE_REPORT_HTML__ : undefined,
+	),
 );
 
 export const FEATURE_CACHE_REDIS = resolveFeature(
 	'CACHE_REDIS',
-	injectedFlag(typeof __FEATURE_CACHE_REDIS__ !== 'undefined' ? __FEATURE_CACHE_REDIS__ : undefined),
+	injectedFlag(
+		typeof __FEATURE_CACHE_REDIS__ !== 'undefined' ? __FEATURE_CACHE_REDIS__ : undefined,
+	),
 );
 
 export const FEATURE_FEED_WEBSOCKET = resolveFeature(
@@ -128,9 +136,7 @@ const INJECTED_DEFINE_KEYS: Record<FeatureName, string> = {
 	MOCK_API: '__FEATURE_MOCK_API__',
 };
 
-export function buildFeatureArgs(
-	enabled: ReadonlySet<FeatureName> | FeatureName[],
-): string[] {
+export function buildFeatureArgs(enabled: ReadonlySet<FeatureName> | FeatureName[]): string[] {
 	const enabledSet = enabled instanceof Set ? enabled : new Set(enabled);
 	const args: string[] = [];
 
@@ -141,9 +147,7 @@ export function buildFeatureArgs(
 	return args;
 }
 
-export function buildDefineArgs(
-	enabled: ReadonlySet<FeatureName> | FeatureName[],
-): string[] {
+export function buildDefineArgs(enabled: ReadonlySet<FeatureName> | FeatureName[]): string[] {
 	const enabledSet = enabled instanceof Set ? enabled : new Set(enabled);
 	const args: string[] = [];
 

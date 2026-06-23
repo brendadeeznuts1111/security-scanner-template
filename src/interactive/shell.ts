@@ -80,7 +80,9 @@ export class SecurityShell {
 			await this.ensureDomainsLoaded();
 			await this.printDomainBanner(this.domain);
 		}
-		this.terminal.writeln(colorize(TERMINAL.scannerDim, "Type 'help' for commands, 'exit' to quit."));
+		this.terminal.writeln(
+			colorize(TERMINAL.scannerDim, "Type 'help' for commands, 'exit' to quit."),
+		);
 
 		try {
 			for (;;) {
@@ -142,6 +144,12 @@ export class SecurityShell {
 			case 'secrets':
 				await this.handleSecrets(parts.slice(1));
 				return;
+			case 'matrix':
+				await this.showMatrix(parts.slice(1));
+				return;
+			case 'branding':
+				await this.showBranding();
+				return;
 			case 'colors':
 				await this.showColors();
 				return;
@@ -170,6 +178,8 @@ export class SecurityShell {
 			'  domain <name>                     Set active domain context',
 			'  domains                           List loaded domains',
 			'  status [domain]                   Show domain configuration summary',
+			'  branding                          Branding + service profile for active domain',
+			'  matrix [section] [--desc]         Field matrix (template/domain/branding/service/secrets)',
 			'  colors                            Show domain palette (Bun.color ANSI swatches)',
 			'  badge [--size N]                  Write domain badge PNG (Bun.Image)',
 			'  features                          Show compile-time feature flags',
@@ -217,9 +227,7 @@ export class SecurityShell {
 		this.context = undefined;
 		this.domain = name;
 		const ctx = this.loadContext(name);
-		this.terminal.writeln(
-			colorize(TERMINAL.scannerOk, `domain set: ${ctx.displayName} (${name})`),
-		);
+		this.terminal.writeln(colorize(TERMINAL.scannerOk, `domain set: ${ctx.displayName} (${name})`));
 		await this.printDomainBanner(name);
 	}
 
@@ -296,24 +304,52 @@ export class SecurityShell {
 	private async showStatus(domainArg?: string): Promise<void> {
 		await this.ensureDomainsLoaded();
 		const domainName = this.resolveDomain(domainArg);
-		const config = this.registry.get(domainName);
+		const ctx = createDomainContext(this.registry.get(domainName));
 
-		const ctx = createDomainContext(config);
-		const lines = [
-			`display: ${ctx.displayName}`,
-			`domain: ${config.domain}`,
-			`service: ${ctx.serviceName}`,
-			`csrf: ${config.csrf.enabled ? 'enabled' : 'disabled'}`,
-			`supply-chain: ${config.supplyChain.enabled ? 'enabled' : 'disabled'}`,
-			`interactive: ${config.service?.interactive ? 'yes' : 'no'}`,
-			`audit: ${config.audit?.sqlite?.path ?? '(none)'}`,
-			`secrets: ${config.secrets.inventory.length} inventoried`,
-		];
-
-		ctx.say(this.terminal, 'info', lines[0] ?? ctx.displayName);
-		for (const line of lines.slice(1)) {
+		for (const line of ctx.brandingShowcaseLines()) {
 			this.terminal.writeln(colorize(TERMINAL.scannerInfo, line));
 		}
+		this.terminal.writeln(
+			colorize(
+				TERMINAL.scannerDim,
+				`csrf: ${ctx.config.csrf.enabled ? 'enabled' : 'disabled'} | supply-chain: ${ctx.config.supplyChain.enabled ? 'enabled' : 'disabled'} | secrets: ${ctx.config.secrets.inventory.length} inventoried | audit: ${ctx.config.audit?.sqlite?.path ?? '(none)'}`,
+			),
+		);
+	}
+
+	private async showBranding(): Promise<void> {
+		await this.ensureDomainsLoaded();
+		const ctx = this.activeContext();
+		ctx.say(this.terminal, 'primary', ctx.displayName);
+		for (const line of ctx.brandingShowcaseLines()) {
+			this.terminal.writeln(colorize(TERMINAL.scannerInfo, line));
+		}
+		for (const swatch of ctx.colorSwatches()) {
+			this.terminal.writeln(ctx.formatSwatch(swatch));
+		}
+	}
+
+	private async showMatrix(args: string[]): Promise<void> {
+		await this.ensureDomainsLoaded();
+		const ctx = this.activeContext();
+		const includeDescription = args.includes('--desc') || args.includes('--description');
+		const sectionArg = args.find(arg => !arg.startsWith('--'));
+		const section = sectionArg as
+			| import('../domain/field-matrix.ts').DomainFieldSection
+			| undefined;
+
+		this.terminal.writeln(
+			colorize(TERMINAL.scannerInfo, `field matrix: ${ctx.displayName} (${ctx.config.domain})`),
+		);
+		this.terminal.writeln(
+			colorize(TERMINAL.scannerDim, 'columns: template | domain | branding | service | secrets'),
+		);
+		this.terminal.writeln(
+			ctx.formatFieldMatrix({
+				section,
+				includeDescription,
+			}),
+		);
 	}
 
 	private async showColors(): Promise<void> {
@@ -389,15 +425,18 @@ export class SecurityShell {
 			registry: this.registry,
 		});
 
-		printDomainQrMessages(domainQrMessages(result), {
-			log: line => this.terminal.writeln(line),
-			logErr: line => this.terminal.writeln(line),
-		}, 'qr');
+		printDomainQrMessages(
+			domainQrMessages(result),
+			{
+				log: line => this.terminal.writeln(line),
+				logErr: line => this.terminal.writeln(line),
+			},
+			'qr',
+		);
 	}
 
 	private async runTls(args: string[]): Promise<void> {
-		const host =
-			this.flagValue(args, '--host') ?? args.find(token => !token.startsWith('--'));
+		const host = this.flagValue(args, '--host') ?? args.find(token => !token.startsWith('--'));
 		if (!host) {
 			throw new Error(
 				'usage: tls --host <hostname> [--port N] [--use-system-ca|--no-use-system-ca] [--deep]',
@@ -595,9 +634,7 @@ export class SecurityShell {
 		this.tailAbort = new AbortController();
 		const {signal} = this.tailAbort;
 
-		this.terminal.writeln(
-			colorize(TERMINAL.scannerDim, 'Following audit log (Ctrl+C to stop)…'),
-		);
+		this.terminal.writeln(colorize(TERMINAL.scannerDim, 'Following audit log (Ctrl+C to stop)…'));
 
 		const onSigint = () => this.stopTail();
 		process.on('SIGINT', onSigint);
@@ -661,13 +698,7 @@ export class SecurityShell {
 		const featureArgs = buildFeatureArgs(enabled);
 		const outdir = path.join(this.outdir, profile);
 
-		const buildArgs = [
-			'build',
-			'--target=bun',
-			`--outdir=${outdir}`,
-			...featureArgs,
-			this.entry,
-		];
+		const buildArgs = ['build', '--target=bun', `--outdir=${outdir}`, ...featureArgs, this.entry];
 
 		this.terminal.writeln(
 			colorize(TERMINAL.scannerInfo, `[build] profile=${profile} — ${profileDescription(profile)}`),

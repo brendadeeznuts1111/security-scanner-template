@@ -2,11 +2,7 @@ import {expect, test} from 'bun:test';
 import {parseCommandLine} from '../../src/interactive/parse.ts';
 
 test('parseCommandLine splits on whitespace', () => {
-	expect(parseCommandLine('scan trivy --version')).toEqual([
-		'scan',
-		'trivy',
-		'--version',
-	]);
+	expect(parseCommandLine('scan trivy --version')).toEqual(['scan', 'trivy', '--version']);
 });
 
 test('parseCommandLine respects double quotes', () => {
@@ -18,9 +14,5 @@ test('parseCommandLine respects double quotes', () => {
 });
 
 test('parseCommandLine respects single quotes', () => {
-	expect(parseCommandLine("build --profile 'agent'")).toEqual([
-		'build',
-		'--profile',
-		'agent',
-	]);
+	expect(parseCommandLine("build --profile 'agent'")).toEqual(['build', '--profile', 'agent']);
 });

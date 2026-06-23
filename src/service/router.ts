@@ -18,9 +18,13 @@ export interface FileSystemRouterOptions {
  * Uses Bun.FileSystemRouter when available; falls back to a manual map.
  */
 export function createScannerRouter(options: FileSystemRouterOptions): RouteHandler {
-	const FileSystemRouter = (Bun as {FileSystemRouter?: new (opts: {dir: string; style: string}) => {
-		match: (pathname: string) => {name: string; params: Record<string, string>} | null;
-	}}).FileSystemRouter;
+	const FileSystemRouter = (
+		Bun as {
+			FileSystemRouter?: new (opts: {dir: string; style: string}) => {
+				match: (pathname: string) => {name: string; params: Record<string, string>} | null;
+			};
+		}
+	).FileSystemRouter;
 
 	if (FileSystemRouter) {
 		const router = new FileSystemRouter({

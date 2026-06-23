@@ -59,11 +59,7 @@ function bunSupportsMacosSystemCAFix(): boolean {
  * auto-validation is safe on managed Macs that previously stalled on trustd fetches.
  */
 export function getSystemCACertificates(forceRefresh = false): string[] {
-	if (
-		!forceRefresh &&
-		cachedSystemCAs !== null &&
-		Date.now() - cachedAt < CACHE_TTL_MS
-	) {
+	if (!forceRefresh && cachedSystemCAs !== null && Date.now() - cachedAt < CACHE_TTL_MS) {
 		return cachedSystemCAs;
 	}
 
@@ -93,8 +89,7 @@ export function getSystemCARuntimeInfo(
 	options: SystemCARuntimeInfoOptions = {},
 ): SystemCARuntimeInfo {
 	const platform = process.platform;
-	const macosEnumerationSafe =
-		platform !== 'darwin' || bunSupportsMacosSystemCAFix();
+	const macosEnumerationSafe = platform !== 'darwin' || bunSupportsMacosSystemCAFix();
 
 	let enumerationMs: number | undefined;
 	if (options.measureEnumeration) {

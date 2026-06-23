@@ -97,7 +97,9 @@ async function readManifest(packageJsonPath: string): Promise<PackageManifestSli
 /**
  * Scan installed packages under node_modules for implicit optional peer patterns.
  */
-export async function checkPeerDependenciesMeta(root: string = process.cwd()): Promise<PeerMetaCheckResult> {
+export async function checkPeerDependenciesMeta(
+	root: string = process.cwd(),
+): Promise<PeerMetaCheckResult> {
 	const nodeModules = path.join(root, 'node_modules');
 	try {
 		await access(nodeModules);

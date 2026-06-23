@@ -1,5 +1,6 @@
 import type {DomainChannels, DomainColors, DomainConfig} from '../config/types.ts';
 import {ansiCode, colorize, normalizeHex, toCss} from '../color/index.ts';
+import {resolveSecretsService} from './secrets-service.ts';
 
 /** Reverse-DNS domain identifier pattern (matches config doctor). */
 export const REVERSE_DNS_PATTERN = /^[a-zA-Z0-9][-a-zA-Z0-9.]*$/;
@@ -26,9 +27,75 @@ export function domainDisplayName(config: DomainConfig): string {
 	return config.displayName?.trim() || config.domain;
 }
 
-import {resolveSecretsService} from './secrets-service.ts';
-
 export {resolveSecretsService, resolveSecretsService as domainServiceName};
+
+/** Unified branding + runtime presentation profile for a domain. */
+export interface DomainBrandingProfile {
+	displayName: string;
+	domain: string;
+	description?: string;
+	service: string;
+	colors: DomainColors;
+	channels: DomainChannels;
+	qr: {
+		enabled: boolean;
+		dark: string;
+		light: string;
+	};
+	operatorQr: {
+		enabled: boolean;
+		size: number;
+		dark?: string;
+		light?: string;
+	};
+	report: {
+		format: string;
+		output: string;
+	};
+	runtime: {
+		interactive: boolean;
+		http3: boolean;
+		http1: boolean;
+		port?: number;
+		hostname?: string;
+	};
+}
+
+/**
+ * Collect every branding-, report-, and service-facing field from a domain config.
+ */
+export function domainBrandingProfile(config: DomainConfig): DomainBrandingProfile {
+	const operatorQr = config.ops.report.operatorQr;
+	return {
+		displayName: domainDisplayName(config),
+		domain: config.domain,
+		description: config.description?.trim() || undefined,
+		service: resolveSecretsService(config),
+		colors: config.colors,
+		channels: config.channels,
+		qr: {
+			enabled: config.visual?.qr?.enabled !== false,
+			...domainQrColors(config),
+		},
+		operatorQr: {
+			enabled: operatorQr?.enabled !== false,
+			size: operatorQr?.size ?? 180,
+			dark: operatorQr?.dark,
+			light: operatorQr?.light,
+		},
+		report: {
+			format: config.ops.report.format,
+			output: config.ops.report.output,
+		},
+		runtime: {
+			interactive: config.service?.interactive === true,
+			http3: config.service?.http3 === true,
+			http1: config.service?.http1 !== false,
+			port: config.service?.port,
+			hostname: config.service?.hostname,
+		},
+	};
+}
 
 /**
  * REPL prompt label: `sp:Example Service>`.
@@ -58,9 +125,9 @@ export function colorizeDomain(
 export function domainColorSwatches(config: DomainConfig): ColorSwatch[] {
 	const entries: [string, string][] = [
 		...(Object.entries(config.colors) as [string, string][]),
-		...(Object.entries(config.channels).map(
+		...Object.entries(config.channels).map(
 			([name, value]) => [`channel:${name}`, value] as [string, string],
-		)),
+		),
 	];
 
 	const swatches: ColorSwatch[] = [];

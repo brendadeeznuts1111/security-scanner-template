@@ -20,7 +20,7 @@ const DEFAULT_ENTRY = path.join(import.meta.dir, '..', 'index.ts');
 const DEFAULT_OUTDIR = 'dist';
 
 function parseDisabledFeatures(values: {
-	feature?: string;
+	'feature'?: string;
 	'no-feature'?: string;
 }): Set<FeatureName> {
 	const enabled = new Set<FeatureName>(parseFeatureList(values.feature));
@@ -38,13 +38,13 @@ async function runBuild(): Promise<void> {
 	const {values} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			feature: {type: 'string'},
+			'feature': {type: 'string'},
 			'no-feature': {type: 'string'},
-			profile: {type: 'string'},
-			outdir: {type: 'string'},
-			entry: {type: 'string'},
-			help: {type: 'boolean', short: 'h'},
-			production: {type: 'boolean'},
+			'profile': {type: 'string'},
+			'outdir': {type: 'string'},
+			'entry': {type: 'string'},
+			'help': {type: 'boolean', short: 'h'},
+			'production': {type: 'boolean'},
 		},
 		allowPositionals: true,
 	});
@@ -89,7 +89,8 @@ Examples:
 		enabled = parseDisabledFeatures(values);
 	}
 
-	const outdir = values.outdir ?? (values.profile ? path.join(DEFAULT_OUTDIR, values.profile) : DEFAULT_OUTDIR);
+	const outdir =
+		values.outdir ?? (values.profile ? path.join(DEFAULT_OUTDIR, values.profile) : DEFAULT_OUTDIR);
 	const entry = values.entry ?? DEFAULT_ENTRY;
 	const featureArgs = buildFeatureArgs(enabled);
 
@@ -102,12 +103,7 @@ Examples:
 		entry,
 	];
 
-	console.error(
-		colorize(
-			TERMINAL.scannerInfo,
-			`[build] bun ${buildArgs.join(' ')}`,
-		),
-	);
+	console.error(colorize(TERMINAL.scannerInfo, `[build] bun ${buildArgs.join(' ')}`));
 
 	await spawnInheritAndExit(['bun', ...buildArgs]);
 }

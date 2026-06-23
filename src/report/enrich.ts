@@ -34,10 +34,7 @@ function operatorQrOptions(config: DomainConfig, root?: string) {
 	};
 }
 
-function registryForContext(
-	ctx: DomainReportContext,
-	registry?: DomainRegistry,
-): DomainRegistry {
+function registryForContext(ctx: DomainReportContext, registry?: DomainRegistry): DomainRegistry {
 	if (registry) {
 		return registry;
 	}
@@ -134,7 +131,8 @@ export async function generateEnrichedReport(
 	options: GenerateReportOptions = {},
 ): Promise<string> {
 	const enriched = await enrichReportData(data, options);
-	const colors = options.colors ?? (await loadDomainReportContext(options.root, options.domain))?.config.colors;
+	const colors =
+		options.colors ?? (await loadDomainReportContext(options.root, options.domain))?.config.colors;
 
 	switch (format) {
 		case 'json':

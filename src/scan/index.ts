@@ -38,7 +38,11 @@ export {
 	type SpawnTerminalOptions,
 } from './terminal.ts';
 export {scanHtmlResponse, type HtmlFinding} from './html.ts';
-export {checkDomainsParallel, type DomainCheckResult, type ParallelDomainScanOptions} from './domain-parallel.ts';
+export {
+	checkDomainsParallel,
+	type DomainCheckResult,
+	type ParallelDomainScanOptions,
+} from './domain-parallel.ts';
 export {
 	processWebScreenshot,
 	scanWebSecurity,

@@ -1,7 +1,12 @@
 export {generateMarkdownReport} from './markdown.ts';
 export {generateHtmlReport} from './html.ts';
 export {escapeHtml, safeJsonScript, renderAdvisoryRows, renderOverrideRows} from './safe.ts';
-export {isWebViewAvailable, screenshotHtml, type ScreenshotOptions, type ScreenshotResult} from './webview.ts';
+export {
+	isWebViewAvailable,
+	screenshotHtml,
+	type ScreenshotOptions,
+	type ScreenshotResult,
+} from './webview.ts';
 export {buildOperatorQrForDomain} from './operator-qr.ts';
 export {renderOperatorQr, renderVisualGallery, resolveReportVisuals} from './visuals.ts';
 export type {
@@ -43,7 +48,10 @@ export class ReportGenerator {
 	 * Capture a screenshot of the rendered HTML report.
 	 * Returns null when Bun.WebView is unavailable.
 	 */
-	async screenshot(data: ReportData, options: Omit<ScreenshotOptions, 'html' | 'filePath'> = {}): Promise<import('./webview.ts').ScreenshotResult | null> {
+	async screenshot(
+		data: ReportData,
+		options: Omit<ScreenshotOptions, 'html' | 'filePath'> = {},
+	): Promise<import('./webview.ts').ScreenshotResult | null> {
 		if (!isWebViewAvailable()) {
 			return null;
 		}

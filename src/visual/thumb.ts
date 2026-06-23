@@ -59,13 +59,7 @@ export class ThumbnailGenerator {
 		format: ImageFormat = DEFAULT_FORMAT,
 		quality: number = DEFAULT_QUALITY,
 	): Promise<string> {
-		const {image} = await ThumbnailGenerator.generate(
-			source,
-			width,
-			height,
-			format,
-			quality,
-		);
+		const {image} = await ThumbnailGenerator.generate(source, width, height, format, quality);
 		await mkdir(path.dirname(dest), {recursive: true});
 		await image.write(dest);
 		return dest;

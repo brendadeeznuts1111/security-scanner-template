@@ -44,7 +44,7 @@ test('CSRFGuard enforces session-bound CSRF on mutating requests', async () => {
 	const allowed = await fetch(`${base}/submit`, {
 		method: 'POST',
 		headers: {
-			cookie: `_session=${sessionId}`,
+			'cookie': `_session=${sessionId}`,
 			'X-CSRF-Token': token,
 		},
 	});

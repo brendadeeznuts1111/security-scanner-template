@@ -84,10 +84,7 @@ export function isInteractiveForced(forceEnv = INTERACTIVE_FORCE_ENV): boolean {
  * Assert an interactive session (stdin + stdout TTY) or a documented force override.
  * @throws when the session cannot host PTY / REPL workflows
  */
-export function requireInteractiveSession(
-	context: string,
-	forceEnv = INTERACTIVE_FORCE_ENV,
-): void {
+export function requireInteractiveSession(context: string, forceEnv = INTERACTIVE_FORCE_ENV): void {
 	if (isInteractiveSession() || isInteractiveForced(forceEnv)) {
 		return;
 	}
@@ -194,9 +191,7 @@ export async function spawnCaptured(
 	const exitCode = await proc.exited;
 	const timedOut = wasSpawnTimedOut(proc, timeoutMs, options.signal);
 	const stdout = timedOut ? '' : await readSpawnText(proc.stdout);
-	const stderr = timedOut
-		? `Timed out after ${timeoutMs}ms`
-		: await readSpawnText(proc.stderr);
+	const stderr = timedOut ? `Timed out after ${timeoutMs}ms` : await readSpawnText(proc.stderr);
 
 	return {
 		exitCode,

@@ -1,11 +1,6 @@
 export type ImageFormat = 'jpeg' | 'png' | 'webp';
 
-export type ImageSource =
-	| string
-	| ArrayBuffer
-	| Uint8Array
-	| Blob
-	| Bun.BunFile;
+export type ImageSource = string | ArrayBuffer | Uint8Array | Blob | Bun.BunFile;
 
 /** Matches native `Bun.Image.resize` options. */
 export type ResizeOptions = NonNullable<Parameters<Bun.Image['resize']>[2]>;

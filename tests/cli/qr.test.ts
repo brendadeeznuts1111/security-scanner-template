@@ -5,11 +5,7 @@ import os from 'node:os';
 import {applyDefaults} from '../../src/config/defaults.ts';
 import type {DomainRegistry} from '../../src/config/registry.ts';
 import type {DomainConfig} from '../../src/config/types.ts';
-import {
-	getDomainMasterToken,
-	resolveDomainMasterKeyNames,
-	runDomainQr,
-} from '../../src/cli/qr.ts';
+import {getDomainMasterToken, resolveDomainMasterKeyNames, runDomainQr} from '../../src/cli/qr.ts';
 import {DEFAULT_MASTER_KEY_NAME} from '../../src/config/master-key.ts';
 import {LEGACY_MASTER_TOKEN_SECRET, MASTER_TOKEN_SECRET} from '../../src/visual/qr-cache.ts';
 import {isImageAvailable} from '../../src/visual/index.ts';
@@ -99,10 +95,7 @@ test('resolveDomainMasterKeyNames prefers private vault masterKeyName', async ()
 	const root = await mkdtemp(path.join(os.tmpdir(), 'qr-names-'));
 	try {
 		await mkdir(`${root}/domains`, {recursive: true});
-		await Bun.write(
-			`${root}/domains/ledger.security.json5`,
-			'{ domain: "com.example.ledger" }',
-		);
+		await Bun.write(`${root}/domains/ledger.security.json5`, '{ domain: "com.example.ledger" }');
 		await mkdir(`${root}/.vault`, {recursive: true});
 		await Bun.write(
 			`${root}/.vault/com.example.ledger.inventory.json5`,

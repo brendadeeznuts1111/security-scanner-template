@@ -90,7 +90,9 @@ export function toCss(input: ColorInput): string | null {
 /**
  * Extract RGBA channels as a Bun.color object.
  */
-export function toRgbaObject(input: ColorInput): {r: number; g: number; b: number; a: number} | null {
+export function toRgbaObject(
+	input: ColorInput,
+): {r: number; g: number; b: number; a: number} | null {
 	return formatColor(input, '{rgba}') as {r: number; g: number; b: number; a: number} | null;
 }
 
@@ -104,11 +106,7 @@ export function ansiCode(input: ColorInput, depth: AnsiColorDepth = 'ansi'): str
 /**
  * Wrap text in an ANSI color when the terminal supports it.
  */
-export function colorize(
-	color: ColorInput,
-	text: string,
-	depth: AnsiColorDepth = 'ansi',
-): string {
+export function colorize(color: ColorInput, text: string, depth: AnsiColorDepth = 'ansi'): string {
 	const code = ansiCode(color, depth);
 	return code ? `${code}${text}${ANSI_RESET}` : text;
 }
@@ -132,10 +130,7 @@ export function severityColor(severity: string): string {
 /**
  * Emit CSS custom properties for a domain color map.
  */
-export function cssVariables(
-	colors: Record<string, string>,
-	prefix = '--domain',
-): string {
+export function cssVariables(colors: Record<string, string>, prefix = '--domain'): string {
 	const lines: string[] = [];
 	for (const [name, value] of Object.entries(colors)) {
 		const css = toCss(value);

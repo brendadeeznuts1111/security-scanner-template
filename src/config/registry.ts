@@ -69,7 +69,11 @@ export function createDomainRegistry(root: string): DomainRegistry {
 			securityCache.set(cacheKey, pending);
 			return pending;
 		},
-		async service(domain: string, route?: RouteHandler, options?: ServiceOptions): Promise<Service> {
+		async service(
+			domain: string,
+			route?: RouteHandler,
+			options?: ServiceOptions,
+		): Promise<Service> {
 			const loaded = domains.get(domain);
 			if (!loaded) {
 				throw new Error(`Unknown domain: ${domain}`);
@@ -96,9 +100,7 @@ export function createDomainRegistry(root: string): DomainRegistry {
 			watchHandle = undefined;
 		},
 		async reloadDomain(filePath: string): Promise<DomainWatchEvent | null> {
-			const resolved = path.isAbsolute(filePath)
-				? filePath
-				: path.resolve(root, filePath);
+			const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
 			return reloadDomainFile(domains, securityCache, resolved);
 		},
 	};

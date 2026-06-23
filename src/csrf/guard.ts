@@ -54,10 +54,7 @@ export class CSRFGuard {
 	/**
 	 * Bun.serve-compatible middleware.
 	 */
-	async middleware(
-		req: Request,
-		next: () => Promise<Response> | Response,
-	): Promise<Response> {
+	async middleware(req: Request, next: () => Promise<Response> | Response): Promise<Response> {
 		if (this.sessionBound) {
 			return this.sessionBound.middleware(req, next);
 		}

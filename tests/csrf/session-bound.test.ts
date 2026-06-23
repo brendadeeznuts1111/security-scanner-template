@@ -38,7 +38,10 @@ test('parseCookies decodes cookie header', () => {
 
 test('middleware allows safe methods without a token', async () => {
 	const csrf = new SessionBoundCSRF(secret);
-	const response = await csrf.middleware(new Request('http://localhost/'), () => new Response('ok'));
+	const response = await csrf.middleware(
+		new Request('http://localhost/'),
+		() => new Response('ok'),
+	);
 
 	expect(response.status).toBe(200);
 	expect(await response.text()).toBe('ok');
@@ -66,7 +69,7 @@ test('middleware allows POST with a valid session-bound token', async () => {
 		new Request('http://localhost/submit', {
 			method: 'POST',
 			headers: {
-				cookie: `_session=${sessionId}`,
+				'cookie': `_session=${sessionId}`,
 				'X-CSRF-Token': token,
 			},
 		}),

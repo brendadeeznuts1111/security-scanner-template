@@ -91,7 +91,13 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 			'src/service/index.ts',
 			'src/interactive/shell.ts',
 		],
-		exports: ['ToolRunner', 'runWithPTY', 'runInteractive', 'runInteractiveScanner', 'SecurityShell'],
+		exports: [
+			'ToolRunner',
+			'runWithPTY',
+			'runInteractive',
+			'runInteractiveScanner',
+			'SecurityShell',
+		],
 		configFields: ['service.interactive'],
 		cliCommands: ['scan interactive', 'scan bundle', 'scan domains', 'shell'],
 		related: ['bun.spawn', 'service.interactive', 'feature.scan-external'],
@@ -312,7 +318,8 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		name: 'HTML response scan',
 		layer: 'scanning',
 		bunApi: 'HTMLRewriter',
-		description: 'Parse HTML threat-feed and report responses for injected scripts and unsafe URLs.',
+		description:
+			'Parse HTML threat-feed and report responses for injected scripts and unsafe URLs.',
 		modules: ['src/scan/html.ts', 'src/provider/feed.ts'],
 		exports: ['scanHtmlResponse'],
 		configFields: ['supplyChain.feed.remote'],
@@ -500,7 +507,8 @@ export function listCrossRefs(filters: CrossRefFilters = {}): CrossRefEntry[] {
 		if (filters.configField && !matchesConfigField(entry, filters.configField)) return false;
 		if (filters.cliCommand && !matchesCliCommand(entry, filters.cliCommand)) return false;
 		if (filters.bunApi && entry.bunApi !== filters.bunApi) return false;
-		if (filters.required !== undefined && Boolean(entry.required) !== filters.required) return false;
+		if (filters.required !== undefined && Boolean(entry.required) !== filters.required)
+			return false;
 		return true;
 	});
 }
@@ -574,9 +582,7 @@ function isBunApiAvailable(entry: CrossRefEntry): boolean {
 
 	switch (entry.bunApi) {
 		case 'Bun.CSRF':
-			return (
-				typeof Bun.CSRF?.generate === 'function' && typeof Bun.CSRF?.verify === 'function'
-			);
+			return typeof Bun.CSRF?.generate === 'function' && typeof Bun.CSRF?.verify === 'function';
 		case 'Bun.color':
 			return typeof Bun.color === 'function';
 		case 'Bun.secrets':

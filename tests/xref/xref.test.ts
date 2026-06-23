@@ -32,9 +32,9 @@ test('getCrossRef returns bun.transpiler with bundle scanning exports', () => {
 });
 
 test('getRelatedCrossRefs links transpiler to workers and html to webview', () => {
-	expect(getRelatedCrossRefs('bun.transpiler').some(entry => entry.id === 'bun.bundle.features')).toBe(
-		true,
-	);
+	expect(
+		getRelatedCrossRefs('bun.transpiler').some(entry => entry.id === 'bun.bundle.features'),
+	).toBe(true);
 	expect(getRelatedCrossRefs('html.rewriter').some(entry => entry.id === 'bun.webview')).toBe(true);
 });
 

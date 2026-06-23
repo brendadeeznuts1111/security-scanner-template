@@ -1,9 +1,5 @@
 import {expect, test} from 'bun:test';
-import {
-	ALL_FEATURES,
-	buildFeatureArgs,
-	parseFeatureList,
-} from '../../src/features/index.ts';
+import {ALL_FEATURES, buildFeatureArgs, parseFeatureList} from '../../src/features/index.ts';
 
 test('ALL_FEATURES should list every registered compile-time feature gate', () => {
 	expect(ALL_FEATURES).toEqual([
@@ -21,10 +17,7 @@ test('ALL_FEATURES should list every registered compile-time feature gate', () =
 });
 
 test('parseFeatureList should parse a comma-separated list of feature names', () => {
-	expect(parseFeatureList('AUDIT_SQLITE,INTEL_DNS')).toEqual([
-		'AUDIT_SQLITE',
-		'INTEL_DNS',
-	]);
+	expect(parseFeatureList('AUDIT_SQLITE,INTEL_DNS')).toEqual(['AUDIT_SQLITE', 'INTEL_DNS']);
 });
 
 test('parseFeatureList should default to all features when input is empty or undefined', () => {

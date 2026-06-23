@@ -47,9 +47,7 @@ test('peekValue and peekStatus read settled promises', () => {
 });
 
 test('escapeHtml escapes HTML metacharacters', () => {
-	expect(escapeHtml(`<script>"&'</script>`)).toBe(
-		'&lt;script&gt;&quot;&amp;&#x27;&lt;/script&gt;',
-	);
+	expect(escapeHtml(`<script>"&'</script>`)).toBe('&lt;script&gt;&quot;&amp;&#x27;&lt;/script&gt;');
 });
 
 test('isMainModule is true for the test entrypoint', () => {

@@ -10,10 +10,7 @@ export interface ConfigDrift {
 /**
  * Compare a loaded domain config against a baseline using Bun.deepEquals.
  */
-export function detectConfigDrift(
-	loaded: DomainConfig,
-	baseline: DomainConfig,
-): ConfigDrift[] {
+export function detectConfigDrift(loaded: DomainConfig, baseline: DomainConfig): ConfigDrift[] {
 	const drifts: ConfigDrift[] = [];
 	const normalizedLoaded = cloneStructured(loaded);
 	const normalizedBaseline = cloneStructured(baseline);

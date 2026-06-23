@@ -22,10 +22,7 @@ import {
 	MIN_BUN_TYPES_FFI_TSGo_FIX,
 	type PlatformRuntimeInfo,
 } from '../utils/platform-runtime.ts';
-import {
-	isInteractiveForced,
-	isInteractiveSession,
-} from '../utils/process.ts';
+import {isInteractiveForced, isInteractiveSession} from '../utils/process.ts';
 import {
 	getTerminalIORuntimeInfo,
 	MIN_BUN_PIPELINE_PAGER_FIX,
@@ -37,6 +34,15 @@ import {
 	resolveSecretsService,
 	secretsServiceForDomain,
 } from '../domain/secrets-service.ts';
+import {domainBrandingProfile, type DomainBrandingProfile} from '../domain/branding.ts';
+import {
+	DOMAIN_FIELD_MATRIX,
+	domainFieldValueRows,
+	matrixLayerCounts,
+	validateTemplateFieldCoverage,
+	type DomainFieldSection,
+	type DomainFieldValueRow,
+} from '../domain/field-matrix.ts';
 
 export interface DoctorIssue {
 	domain: string;
@@ -57,19 +63,50 @@ export interface DoctorRuntimeReport extends BunRuntimeInfo {
 	platform: PlatformRuntimeInfo;
 }
 
+export interface DoctorTemplateCoverage {
+	ok: boolean;
+	missing: string[];
+	catalogFields: number;
+	path: string;
+	layerCounts: ReturnType<typeof matrixLayerCounts>;
+}
+
+export interface DoctorDomainReport {
+	domain: string;
+	path: string;
+	ok: boolean;
+	issues: DoctorIssue[];
+	/** Branding + service profile when the domain config loaded successfully. */
+	branding?: DomainBrandingProfile;
+	/** Resolved field values when matrix collection is enabled. */
+	matrix?: DomainFieldValueRow[];
+}
+
+export interface DoctorMatrixReport {
+	template: DomainFieldValueRow[];
+	domains: Record<string, DomainFieldValueRow[]>;
+	layerCounts: ReturnType<typeof matrixLayerCounts>;
+}
+
 export interface DoctorCheckOptions {
 	/** Scan node_modules for peerDependenciesMeta-only peers (default: true). */
 	peerMeta?: boolean;
+	/** Collect per-domain field matrix rows (for --matrix / JSON). */
+	matrix?: boolean;
+	/** Optional matrix section filter. */
+	matrixSection?: DomainFieldSection;
 }
 
 export interface DoctorResult {
 	ok: boolean;
-	domains: {domain: string; path: string; ok: boolean; issues: DoctorIssue[]}[];
+	domains: DoctorDomainReport[];
 	errors: number;
 	warnings: number;
 	crossDomainIssues: DoctorIssue[];
 	peerMetaIssues: DoctorIssue[];
 	runtime: DoctorRuntimeReport;
+	templateCoverage: DoctorTemplateCoverage;
+	matrix?: DoctorMatrixReport;
 }
 
 const SUPPORTED_PASSWORD_ALGORITHMS = new Set(['bcrypt', 'argon2id', 'argon2i', 'argon2d']);
@@ -252,11 +289,7 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 
 	for (const [key, value] of Object.entries(config.channels)) {
 		if (!isValidConfigColor(value)) {
-			report(
-				`channels.${key}`,
-				`Channel color must be a valid CSS color, got ${value}`,
-				'error',
-			);
+			report(`channels.${key}`, `Channel color must be a valid CSS color, got ${value}`, 'error');
 		}
 	}
 
@@ -326,8 +359,7 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 	}
 
 	if (config.supplyChain.feed.apiKeyVault) {
-		const feedService =
-			config.supplyChain.feed.apiKeyService ?? resolveSecretsService(config);
+		const feedService = config.supplyChain.feed.apiKeyService ?? resolveSecretsService(config);
 		if (feedService !== resolveSecretsService(config)) {
 			report(
 				'supplyChain.feed.apiKeyService',
@@ -344,11 +376,7 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 		}
 	}
 
-	if (
-		config.service?.interactive &&
-		!isInteractiveSession() &&
-		!isInteractiveForced()
-	) {
+	if (config.service?.interactive && !isInteractiveSession() && !isInteractiveForced()) {
 		report(
 			'service.interactive',
 			'Interactive external scanners (Bun.Terminal PTY) require stdin and stdout TTYs. Run from a terminal (`bun sp shell`, `bun run scan interactive`) or use JSON-only commands when piping.',
@@ -419,10 +447,22 @@ export async function checkAllDomains(
 	const {applyDefaults} = await import('./defaults.ts');
 	const files = discoverDomainFiles(root);
 
-	const domains: DoctorResult['domains'] = [];
+	const collectMatrix = options.matrix === true;
+	const matrixSection = options.matrixSection;
+	const domains: DoctorDomainReport[] = [];
 	let errors = 0;
 	let warnings = 0;
 	const secretNamesByDomain = new Map<string, Set<string>>();
+	const matrixDomains: Record<string, DomainFieldValueRow[]> = {};
+
+	const templateCoverageRaw = await validateTemplateFieldCoverage();
+	const templateCoverage: DoctorTemplateCoverage = {
+		ok: templateCoverageRaw.ok,
+		missing: templateCoverageRaw.missing,
+		catalogFields: DOMAIN_FIELD_MATRIX.length,
+		path: TEMPLATE_PATH,
+		layerCounts: matrixLayerCounts(),
+	};
 
 	for (const filePath of files) {
 		let publicRaw: Record<string, unknown>;
@@ -538,9 +578,26 @@ export async function checkAllDomains(
 			}
 		}
 
+		let branding: DomainBrandingProfile | undefined;
+		let matrix: DomainFieldValueRow[] | undefined;
+		if (loaded) {
+			branding = domainBrandingProfile(loaded.config);
+			if (collectMatrix) {
+				matrix = domainFieldValueRows(loaded.config, {section: matrixSection});
+				matrixDomains[domainName] = matrix;
+			}
+		}
+
 		errors += issues.filter(i => i.severity === 'error').length;
 		warnings += issues.filter(i => i.severity === 'warning').length;
-		domains.push({domain: domainName, path: filePath, ok: issues.length === 0, issues});
+		domains.push({
+			domain: domainName,
+			path: filePath,
+			ok: issues.length === 0,
+			issues,
+			branding,
+			matrix,
+		});
 	}
 
 	if (files.length === 0) {
@@ -552,6 +609,19 @@ export async function checkAllDomains(
 	}
 
 	const crossDomainIssues = runCrossDomainChecks(secretNamesByDomain);
+
+	if (!templateCoverage.ok) {
+		crossDomainIssues.push({
+			domain: '*',
+			path: templateCoverage.path,
+			field: 'template.coverage',
+			message: `Golden template missing ${templateCoverage.missing.length} catalog field(s): ${templateCoverage.missing.join(', ')}`,
+			severity: 'error',
+			code: 'TEMPLATE_FIELD_MISSING',
+		});
+		errors += 1;
+	}
+
 	warnings += crossDomainIssues.filter(i => i.severity === 'warning').length;
 	errors += crossDomainIssues.filter(i => i.severity === 'error').length;
 
@@ -643,6 +713,20 @@ export async function checkAllDomains(
 		errors += 1;
 	}
 
+	let matrixReport: DoctorMatrixReport | undefined;
+	if (collectMatrix) {
+		const template = await loadTemplate();
+		matrixReport = {
+			template: domainFieldValueRows(template, {section: matrixSection}),
+			domains: matrixDomains,
+			layerCounts: matrixLayerCounts(
+				matrixSection
+					? DOMAIN_FIELD_MATRIX.filter(row => row.section === matrixSection)
+					: DOMAIN_FIELD_MATRIX,
+			),
+		};
+	}
+
 	return {
 		ok: errors === 0 && files.length > 0,
 		domains,
@@ -651,6 +735,8 @@ export async function checkAllDomains(
 		crossDomainIssues,
 		peerMetaIssues,
 		runtime,
+		templateCoverage,
+		matrix: matrixReport,
 	};
 }
 

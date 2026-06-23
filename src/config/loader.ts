@@ -80,9 +80,7 @@ async function loadPrivateInventory(
 		const lookup = masterKeyLookup(config, metadata.masterKeyName);
 		const masterKey = await getMasterKey(lookup);
 		if (!masterKey) {
-			throw new Error(
-				`Master key not found in Bun.secrets for ${lookup.service}/${lookup.name}`,
-			);
+			throw new Error(`Master key not found in Bun.secrets for ${lookup.service}/${lookup.name}`);
 		}
 		return loadEncryptedStore(storePath, masterKey);
 	}

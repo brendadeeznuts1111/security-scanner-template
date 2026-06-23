@@ -74,11 +74,7 @@ export function qrCacheDomainDir(domain: string, root = qrCacheDir()): string {
 	return path.join(root, reverseDnsPathSegment(domain));
 }
 
-export function qrCachePath(
-	domain: string,
-	token: string,
-	root = qrCacheDir(),
-): string {
+export function qrCachePath(domain: string, token: string, root = qrCacheDir()): string {
 	const {key} = qrCacheKeyPair(domain, token);
 	return path.join(qrCacheDomainDir(domain, root), `${key}.png`);
 }
@@ -215,7 +211,10 @@ export class QRCache {
 	/**
 	 * Remove cached PNGs older than `maxAgeMs` (default: 30 days).
 	 */
-	static async purgeStale(maxAgeMs = 30 * 24 * 60 * 60 * 1000, root = qrCacheDir()): Promise<number> {
+	static async purgeStale(
+		maxAgeMs = 30 * 24 * 60 * 60 * 1000,
+		root = qrCacheDir(),
+	): Promise<number> {
 		const glob = new Bun.Glob('**/*.png');
 		const cutoff = Date.now() - maxAgeMs;
 		let removed = 0;

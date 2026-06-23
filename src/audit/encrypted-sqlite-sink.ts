@@ -64,7 +64,9 @@ export class EncryptedSQLiteSink implements AuditSink {
 		const payload = this.compress ? compressBytes(serialized, this.compressionFormat) : serialized;
 
 		this.db
-			.query('INSERT OR REPLACE INTO audit_entries (id, package, decided_at, payload) VALUES (?, ?, ?, ?)')
+			.query(
+				'INSERT OR REPLACE INTO audit_entries (id, package, decided_at, payload) VALUES (?, ?, ?, ?)',
+			)
 			.run(entry.id, entry.package, entry.decidedAt, payload);
 	}
 

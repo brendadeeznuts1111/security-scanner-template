@@ -257,7 +257,10 @@ test('SecurityShell lists deployment profiles', async () => {
 test('SecurityShell buildProfile invokes bun build with profile features', async () => {
 	const spawnCalls: string[][] = [];
 
-	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = ((cmd: string | string[], _opts?: unknown) => {
+	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = ((
+		cmd: string | string[],
+		_opts?: unknown,
+	) => {
 		const args = Array.isArray(cmd) ? cmd : [cmd];
 		spawnCalls.push(args);
 		return {exited: Promise.resolve(0)} as ReturnType<typeof Bun.spawn>;

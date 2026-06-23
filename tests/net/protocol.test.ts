@@ -11,9 +11,9 @@ test('resolveFeedProtocol reads FEED_FETCH_PROTOCOL env', () => {
 });
 
 test('resolveFeedProtocol enables http3 via experimental flag', () => {
-	expect(
-		resolveFeedProtocol(undefined, {BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP3_CLIENT: '1'}),
-	).toBe('http3');
+	expect(resolveFeedProtocol(undefined, {BUN_FEATURE_FLAG_EXPERIMENTAL_HTTP3_CLIENT: '1'})).toBe(
+		'http3',
+	);
 });
 
 test('resolveFeedProtocol returns undefined when unset', () => {

@@ -67,7 +67,9 @@ export class Service {
 		});
 	}
 
-	private resolveAuditMasterKey(config: import('../config/types.ts').DomainConfig): string | undefined {
+	private resolveAuditMasterKey(
+		config: import('../config/types.ts').DomainConfig,
+	): string | undefined {
 		const configured = config.audit?.sqlite?.masterKey;
 		if (configured) {
 			return configured;
@@ -105,9 +107,7 @@ export class Service {
 			throw new Error('HTTP/3 requires TLS configuration (service.tls.cert and service.tls.key)');
 		}
 
-		this.server = Bun.serve(
-			buildServeInit(resolved, (req: Request) => this.handleRequest(req)),
-		);
+		this.server = Bun.serve(buildServeInit(resolved, (req: Request) => this.handleRequest(req)));
 		return this.server;
 	}
 

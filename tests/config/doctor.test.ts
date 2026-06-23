@@ -63,9 +63,7 @@ test('checkDomain reports secrets.service drift after defaults merge', () => {
 	});
 	expect(result.ok).toBe(false);
 	expect(
-		result.issues.some(
-			i => i.field === 'secrets.service' && i.code === 'SECRETS_SERVICE_MISMATCH',
-		),
+		result.issues.some(i => i.field === 'secrets.service' && i.code === 'SECRETS_SERVICE_MISMATCH'),
 	).toBe(true);
 });
 
@@ -149,9 +147,7 @@ test('checkDomain warns when system CA is available but tls.useSystemCA is expli
 		loadedFixture({domain: 'com.example.tls-doctor', tls: {useSystemCA: false}}),
 	);
 	expect(
-		result.issues.some(
-			i => i.code === 'SYSTEM_CA_AVAILABLE' && i.field === 'tls.useSystemCA',
-		),
+		result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE' && i.field === 'tls.useSystemCA'),
 	).toBe(true);
 
 	clearSystemCACache();
@@ -177,6 +173,28 @@ test('checkDomain does not warn when tls.useSystemCA is enabled', () => {
 	expect(result.issues.some(i => i.code === 'SYSTEM_CA_AVAILABLE')).toBe(false);
 
 	clearSystemCACache();
+});
+
+test('checkAllDomains includes template coverage and branding profiles', async () => {
+	await writeDomain('profiled', '{ domain: "com.example.profiled", displayName: "Profiled App" }');
+
+	const result = await checkAllDomains(TEST_DIR);
+	expect(result.templateCoverage.ok).toBe(true);
+	expect(result.templateCoverage.catalogFields).toBeGreaterThanOrEqual(60);
+	const domain = result.domains.find(d => d.domain === 'com.example.profiled');
+	expect(domain?.branding?.displayName).toBe('Profiled App');
+	expect(domain?.branding?.service).toBe('com.example.profiled');
+});
+
+test('checkAllDomains collects matrix rows when matrix option is enabled', async () => {
+	await writeDomain('matrix', '{ domain: "com.example.matrix" }');
+
+	const result = await checkAllDomains(TEST_DIR, {matrix: true, matrixSection: 'branding'});
+	expect(result.matrix?.template.length).toBeGreaterThan(0);
+	expect(result.matrix?.domains['com.example.matrix']?.length).toBeGreaterThan(0);
+	expect(result.domains.find(d => d.domain === 'com.example.matrix')?.matrix?.length).toBeGreaterThan(
+		0,
+	);
 });
 
 test('checkAllDomains is ok when no domains are present', async () => {

@@ -20,7 +20,11 @@ export class IntegrityHasher {
 		return digestHexSync(input, algorithm);
 	}
 
-	verify(input: Blob | ArrayBuffer | Uint8Array | string, expectedHex: string, algorithm?: DigestAlgorithm) {
+	verify(
+		input: Blob | ArrayBuffer | Uint8Array | string,
+		expectedHex: string,
+		algorithm?: DigestAlgorithm,
+	) {
 		return verifyDigest(input, expectedHex, algorithm);
 	}
 }

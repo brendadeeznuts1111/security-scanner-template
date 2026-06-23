@@ -1,6 +1,10 @@
 import {expect, test} from 'bun:test';
 import {generateHtmlReport} from '../../src/report/html.ts';
-import {renderOperatorQr, renderVisualGallery, resolveReportVisuals} from '../../src/report/visuals.ts';
+import {
+	renderOperatorQr,
+	renderVisualGallery,
+	resolveReportVisuals,
+} from '../../src/report/visuals.ts';
 import {ReportGenerator} from '../../src/report/generator.ts';
 import type {ReportData} from '../../src/report/types.ts';
 

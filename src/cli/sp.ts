@@ -17,7 +17,7 @@ const HELP = `Usage:
   bun sp qr --text <value> --out <path>
   bun sp report --image --html <path> [--out <path>]
   bun sp tls --domain <name> --host <hostname> [--use-system-ca|--no-use-system-ca] [--deep] [--port 443] [--json]
-  bun sp doctor [--check-peer-meta] [--json] [--root <path>]
+  bun sp doctor [--check-peer-meta] [--matrix] [--branding] [--matrix-section <name>] [--json] [--root <path>]
   bun sp doctor --json | fx    # piped pagers work on Bun >= 1.3.14
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
@@ -38,11 +38,11 @@ async function runShell(domain?: string): Promise<void> {
 }
 
 async function runStart(values: {
-	domain?: string;
-	port?: string;
-	http3?: boolean;
+	'domain'?: string;
+	'port'?: string;
+	'http3'?: boolean;
 	'no-http1'?: boolean;
-	watch?: boolean;
+	'watch'?: boolean;
 }): Promise<void> {
 	const domain = values.domain;
 	if (!domain) {
@@ -100,30 +100,33 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			domain: {type: 'string'},
-			port: {type: 'string'},
-			http3: {type: 'boolean'},
+			'domain': {type: 'string'},
+			'port': {type: 'string'},
+			'http3': {type: 'boolean'},
 			'no-http1': {type: 'boolean'},
-			watch: {type: 'boolean'},
-			id: {type: 'string'},
-			input: {type: 'string'},
-			text: {type: 'string'},
-			size: {type: 'string'},
-			format: {type: 'string'},
-			dark: {type: 'string'},
-			light: {type: 'string'},
-			terminal: {type: 'boolean'},
-			output: {type: 'string'},
-			out: {type: 'string'},
-			html: {type: 'string'},
-			image: {type: 'boolean'},
-			json: {type: 'boolean'},
-			root: {type: 'string'},
+			'watch': {type: 'boolean'},
+			'id': {type: 'string'},
+			'input': {type: 'string'},
+			'text': {type: 'string'},
+			'size': {type: 'string'},
+			'format': {type: 'string'},
+			'dark': {type: 'string'},
+			'light': {type: 'string'},
+			'terminal': {type: 'boolean'},
+			'output': {type: 'string'},
+			'out': {type: 'string'},
+			'html': {type: 'string'},
+			'image': {type: 'boolean'},
+			'json': {type: 'boolean'},
+			'root': {type: 'string'},
 			'check-peer-meta': {type: 'boolean'},
-			host: {type: 'string'},
+			matrix: {type: 'boolean'},
+			branding: {type: 'boolean'},
+			'matrix-section': {type: 'string'},
+			'host': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
-			deep: {type: 'boolean'},
-			help: {type: 'boolean', short: 'h'},
+			'deep': {type: 'boolean'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});
@@ -174,13 +177,7 @@ async function main(): Promise<void> {
 				return;
 			}
 
-			const flags = [
-				'qr',
-				'--text',
-				values.text ?? '',
-				'--output',
-				outPath ?? '',
-			];
+			const flags = ['qr', '--text', values.text ?? '', '--output', outPath ?? ''];
 			if (values.domain) {
 				flags.push('--domain', values.domain);
 			}
@@ -189,11 +186,7 @@ async function main(): Promise<void> {
 		}
 		case 'report':
 			if (values.image) {
-				const flags = [
-					'report-image',
-					'--html',
-					values.html ?? '',
-				];
+				const flags = ['report-image', '--html', values.html ?? ''];
 				if (outPath) {
 					flags.push('--output', outPath);
 				}
@@ -212,20 +205,43 @@ async function main(): Promise<void> {
 			});
 			process.exit(exitCode);
 		}
-		case 'doctor':
+		case 'doctor': {
+			const matrixSection =
+				typeof values['matrix-section'] === 'string' ? values['matrix-section'] : undefined;
 			await runConfigDoctor({
 				root: values.root,
 				json: values.json === true,
 				checkPeerMeta: values['check-peer-meta'] === true,
+				matrix: values.matrix === true,
+				branding: values.branding === true,
+				matrixSection:
+					matrixSection &&
+					[
+						'domain',
+						'branding',
+						'secrets',
+						'identity',
+						'token',
+						'csrf',
+						'supply-chain',
+						'service',
+						'visual',
+						'ops',
+						'audit',
+						'intel',
+						'tls',
+						'errors',
+					].includes(matrixSection)
+						? (matrixSection as import('../domain/field-matrix.ts').DomainFieldSection)
+						: undefined,
 			});
 			return;
+		}
 		default:
 			break;
 	}
 
-	console.error(
-		colorize(TERMINAL.scannerFatal, `[sp] unknown command: ${command}`),
-	);
+	console.error(colorize(TERMINAL.scannerFatal, `[sp] unknown command: ${command}`));
 	console.error(colorize(TERMINAL.scannerDim, 'Try: bun sp shell | bun sp start --domain <name>'));
 	process.exit(1);
 }

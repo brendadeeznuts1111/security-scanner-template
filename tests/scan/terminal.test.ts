@@ -79,8 +79,7 @@ test('ToolRunner.runWithPTY throws when tool is missing', async () => {
 });
 
 test('ToolRunner.runInteractive delegates to runWithPTY', async () => {
-	(Bun as unknown as {which: typeof Bun.which}).which = (() =>
-		'/usr/bin/snyk') as typeof Bun.which;
+	(Bun as unknown as {which: typeof Bun.which}).which = (() => '/usr/bin/snyk') as typeof Bun.which;
 
 	(Bun as unknown as {spawn: typeof Bun.spawn}).spawn = () =>
 		({

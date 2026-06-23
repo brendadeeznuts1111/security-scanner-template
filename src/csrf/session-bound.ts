@@ -122,10 +122,7 @@ export class SessionBoundCSRF {
 	 * Bun.serve-compatible middleware. Safe methods pass through; mutating
 	 * methods require a valid session-bound token.
 	 */
-	async middleware(
-		req: Request,
-		next: () => Promise<Response> | Response,
-	): Promise<Response> {
+	async middleware(req: Request, next: () => Promise<Response> | Response): Promise<Response> {
 		if (SAFE_METHODS.has(req.method)) {
 			return next();
 		}

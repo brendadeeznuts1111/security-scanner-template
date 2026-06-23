@@ -33,9 +33,7 @@ test('checkPlatformPathLength rejects extreme paths on Windows', () => {
 });
 
 test('readProjectBunTypesVersion reads devDependency from package.json', async () => {
-	const version = await readProjectBunTypesVersion(
-		`${import.meta.dir}/../../package.json`,
-	);
+	const version = await readProjectBunTypesVersion(`${import.meta.dir}/../../package.json`);
 	expect(version).toBeTruthy();
 });
 

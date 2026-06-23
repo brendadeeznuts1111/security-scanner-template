@@ -49,11 +49,7 @@ export function resolveServeOptions(
 		hostname: overrides.hostname ?? svc.hostname,
 		http3: overrides.http3 ?? svc.http3 ?? false,
 		http1: overrides.http1 ?? svc.http1 ?? true,
-		tls: overrides.tls
-			? resolveTls(overrides.tls)
-			: svc.tls
-				? resolveTls(svc.tls)
-				: undefined,
+		tls: overrides.tls ? resolveTls(overrides.tls) : svc.tls ? resolveTls(svc.tls) : undefined,
 	};
 }
 

@@ -16,10 +16,7 @@ beforeEach(() => {
 
 	(Bun as unknown as {secrets: typeof Bun.secrets}).secrets = {
 		get: async (opts: {service: string; name: string}) => store.get(key(opts)) ?? null,
-		set: async (
-			opts: {service: string; name: string; value?: string},
-			value?: string,
-		) => {
+		set: async (opts: {service: string; name: string; value?: string}, value?: string) => {
 			const resolved = value ?? opts.value;
 			if (resolved === undefined) {
 				throw new Error('Bun.secrets.set requires a value');

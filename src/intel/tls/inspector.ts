@@ -1,4 +1,9 @@
-import {connect, type DetailedPeerCertificate, type PeerCertificate, type TLSSocket} from 'node:tls';
+import {
+	connect,
+	type DetailedPeerCertificate,
+	type PeerCertificate,
+	type TLSSocket,
+} from 'node:tls';
 import {getSystemCACertificates, resolveUseSystemCA} from './system-ca.ts';
 import type {TLSInspectOptions, TLSCertificateSummary, TLSProfile} from './types.ts';
 
@@ -31,8 +36,7 @@ function summarizeCertificate(cert: PeerCertificate): TLSCertificateSummary {
 		expired: daysRemaining < 0,
 		selfSigned:
 			Boolean(subject.CN && issuer.CN && subject.CN === issuer.CN) ||
-			(JSON.stringify(subject) === JSON.stringify(issuer) &&
-				Object.keys(subject).length > 0),
+			(JSON.stringify(subject) === JSON.stringify(issuer) && Object.keys(subject).length > 0),
 	};
 }
 
@@ -83,8 +87,7 @@ function buildProfile(
 		} else {
 			trusted = socket.authorized;
 			if (!trusted && socket.authorizationError) {
-				trustError =
-					socket.authorizationError.message || String(socket.authorizationError);
+				trustError = socket.authorizationError.message || String(socket.authorizationError);
 			}
 		}
 	}
@@ -101,8 +104,7 @@ function buildProfile(
 					version: cipher.version,
 				}
 			: undefined,
-		certificate:
-			cert && Object.keys(cert).length > 0 ? summarizeCertificate(cert) : undefined,
+		certificate: cert && Object.keys(cert).length > 0 ? summarizeCertificate(cert) : undefined,
 		trusted,
 		trustError,
 		validatedWithSystemCA: useSystemCA,

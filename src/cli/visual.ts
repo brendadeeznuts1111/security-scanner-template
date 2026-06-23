@@ -15,10 +15,7 @@ import {
 	ThumbnailGenerator,
 	webpPathFor,
 } from '../visual/index.ts';
-import {
-	qrFormatRequiresImage,
-	resolveQrOutputFormat,
-} from '../visual/qr-format.ts';
+import {qrFormatRequiresImage, resolveQrOutputFormat} from '../visual/qr-format.ts';
 import {runCliIfMain} from '../utils/cli.ts';
 
 const HELP = `Usage:
@@ -110,10 +107,7 @@ async function runQr(values: Record<string, unknown>): Promise<void> {
 	const text = values.text as string | undefined;
 	if (!text) {
 		console.error(
-			colorize(
-				TERMINAL.scannerFatal,
-				'[visual] qr requires --text, or --data-url and --out',
-			),
+			colorize(TERMINAL.scannerFatal, '[visual] qr requires --text, or --data-url and --out'),
 		);
 		process.exit(1);
 	}
@@ -138,10 +132,7 @@ async function runQr(values: Record<string, unknown>): Promise<void> {
 
 	if (!output) {
 		console.error(
-			colorize(
-				TERMINAL.scannerFatal,
-				'[visual] qr requires --out <path> unless --terminal is set',
-			),
+			colorize(TERMINAL.scannerFatal, '[visual] qr requires --out <path> unless --terminal is set'),
 		);
 		process.exit(1);
 	}
@@ -207,7 +198,12 @@ async function runSanitize(values: Record<string, unknown>): Promise<void> {
 		(format === 'webp' ? webpPathFor(resolved) : `${resolved}.sanitized.${format}`);
 	const quality = values.quality ? Number(values.quality) : 85;
 
-	const result = await ImageSanitizer.stripMetadataToFile(resolved, path.resolve(output), format, quality);
+	const result = await ImageSanitizer.stripMetadataToFile(
+		resolved,
+		path.resolve(output),
+		format,
+		quality,
+	);
 	console.log(
 		colorize(
 			TERMINAL.scannerOk,
@@ -298,23 +294,23 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			input: {type: 'string'},
-			output: {type: 'string'},
-			out: {type: 'string'},
-			terminal: {type: 'boolean'},
-			dark: {type: 'string'},
-			light: {type: 'string'},
-			size: {type: 'string'},
-			width: {type: 'string'},
-			height: {type: 'string'},
-			format: {type: 'string'},
-			quality: {type: 'string'},
-			text: {type: 'string'},
+			'input': {type: 'string'},
+			'output': {type: 'string'},
+			'out': {type: 'string'},
+			'terminal': {type: 'boolean'},
+			'dark': {type: 'string'},
+			'light': {type: 'string'},
+			'size': {type: 'string'},
+			'width': {type: 'string'},
+			'height': {type: 'string'},
+			'format': {type: 'string'},
+			'quality': {type: 'string'},
+			'text': {type: 'string'},
 			'data-url': {type: 'string'},
-			html: {type: 'string'},
-			id: {type: 'string'},
-			domain: {type: 'string'},
-			help: {type: 'boolean', short: 'h'},
+			'html': {type: 'string'},
+			'id': {type: 'string'},
+			'domain': {type: 'string'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});
@@ -360,7 +356,9 @@ async function main(): Promise<void> {
 			break;
 	}
 
-	console.error(colorize(TERMINAL.scannerFatal, `[visual] unknown command: ${command ?? '(none)'}`));
+	console.error(
+		colorize(TERMINAL.scannerFatal, `[visual] unknown command: ${command ?? '(none)'}`),
+	);
 	console.error(colorize(TERMINAL.scannerDim, 'Try: bun run visual --help'));
 	process.exit(1);
 }

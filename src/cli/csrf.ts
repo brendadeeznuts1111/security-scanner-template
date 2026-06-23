@@ -9,9 +9,7 @@ import {randomUUIDv7} from '../utils/uuid.ts';
 async function rotateCsrfSecret(domain: string): Promise<void> {
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(
-			colorize(TERMINAL.scannerFatal, '[csrf] OS credential store is not available'),
-		);
+		console.error(colorize(TERMINAL.scannerFatal, '[csrf] OS credential store is not available'));
 		process.exit(1);
 	}
 
@@ -24,9 +22,7 @@ async function rotateCsrfSecret(domain: string): Promise<void> {
 
 	const config = domainRegistry.get(domain);
 	if (!config.csrf.enabled) {
-		console.error(
-			colorize(TERMINAL.scannerFatal, `[csrf] CSRF is disabled for domain ${domain}`),
-		);
+		console.error(colorize(TERMINAL.scannerFatal, `[csrf] CSRF is disabled for domain ${domain}`));
 		process.exit(1);
 	}
 
@@ -73,9 +69,7 @@ Rotates the per-domain csrf-secret in Bun.secrets, invalidating all CSRF tokens.
 		process.exit(0);
 	}
 
-	console.error(
-		colorize(TERMINAL.scannerFatal, `[csrf] unknown command: ${command ?? '(none)'}`),
-	);
+	console.error(colorize(TERMINAL.scannerFatal, `[csrf] unknown command: ${command ?? '(none)'}`));
 	process.exit(1);
 }
 

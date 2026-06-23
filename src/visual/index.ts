@@ -23,11 +23,7 @@ export {isImageAvailable, loadImage, requireImage} from './load.ts';
 export {AuditVisualProcessor, type AuditVisualOptions} from './audit.ts';
 export {PlaceholderGenerator} from './placeholder.ts';
 export {QRGenerator, type QRGenerateOptions} from './qr.ts';
-export {
-	resolveQrOutputFormat,
-	qrFormatRequiresImage,
-	type QrOutputFormat,
-} from './qr-format.ts';
+export {resolveQrOutputFormat, qrFormatRequiresImage, type QrOutputFormat} from './qr-format.ts';
 export {
 	QRCache,
 	LEGACY_MASTER_TOKEN_SECRET,
@@ -43,7 +39,11 @@ export {
 	type QrCacheKeyPair,
 	type QrCacheMapping,
 } from './qr-cache.ts';
-export {ReportImageRenderer, type ReportImageOptions, type ReportImageResult} from './report-image.ts';
+export {
+	ReportImageRenderer,
+	type ReportImageOptions,
+	type ReportImageResult,
+} from './report-image.ts';
 export {ThumbnailGenerator, thumbnailPathFor} from './thumb.ts';
 
 import {AuditVisualProcessor} from './audit.ts';

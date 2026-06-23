@@ -40,9 +40,7 @@ test('checkDomain warns when service.interactive is enabled outside a TTY sessio
 	}
 
 	expect(
-		result.issues.some(
-			i => i.code === 'INTERACTIVE_NON_TTY' && i.field === 'service.interactive',
-		),
+		result.issues.some(i => i.code === 'INTERACTIVE_NON_TTY' && i.field === 'service.interactive'),
 	).toBe(true);
 });
 

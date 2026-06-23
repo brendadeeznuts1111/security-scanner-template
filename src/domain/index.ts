@@ -22,11 +22,7 @@ export class Domain {
 	readonly dns?: DNSThreatChecker;
 	readonly audit?: AuditSink;
 
-	constructor(
-		config: DomainConfig,
-		registry: Registry,
-		options: DomainOptions = {},
-	) {
+	constructor(config: DomainConfig, registry: Registry, options: DomainOptions = {}) {
 		this.config = config;
 		this.registry = registry;
 

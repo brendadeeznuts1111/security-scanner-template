@@ -15,9 +15,7 @@ function sqliteUnavailable(): never {
 }
 
 function jsonlUnavailable(): never {
-	throw new Error(
-		'JSONL audit backend is not included in this build (FEATURE_AUDIT_JSONL=false)',
-	);
+	throw new Error('JSONL audit backend is not included in this build (FEATURE_AUDIT_JSONL=false)');
 }
 
 export function createAuditSink(

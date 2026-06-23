@@ -1,6 +1,7 @@
 import {expect, test} from 'bun:test';
 import {applyDefaults} from '../../src/config/defaults.ts';
 import {
+	domainBrandingProfile,
 	domainDisplayName,
 	domainPromptLabel,
 	domainServiceName,
@@ -27,6 +28,21 @@ test('domainQrColors prefers token channel for modules and white background', ()
 		csrf: {enabled: false, tokenLength: 32},
 	});
 	expect(domainQrColors(config)).toEqual({dark: '#AABBCC', light: '#FFFFFF'});
+});
+
+test('domainBrandingProfile aggregates display, service, qr, and runtime fields', () => {
+	const config = applyDefaults({
+		domain: 'com.example.profile',
+		displayName: 'Profile',
+		service: {interactive: true, http3: true, port: 8443},
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const profile = domainBrandingProfile(config);
+	expect(profile.displayName).toBe('Profile');
+	expect(profile.service).toBe('com.example.profile');
+	expect(profile.runtime.interactive).toBe(true);
+	expect(profile.runtime.http3).toBe(true);
+	expect(profile.runtime.port).toBe(8443);
 });
 
 test('domainColorSwatches normalizes palette entries', () => {

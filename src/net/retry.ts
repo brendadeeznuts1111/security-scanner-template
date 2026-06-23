@@ -17,10 +17,7 @@ const DEFAULT_RETRY_DELAY_MS = 250;
 /**
  * Fetch a URL with timeout, retry, and Bun.sleep backoff between attempts.
  */
-export async function fetchWithRetry(
-	url: string,
-	options: RetryOptions = {},
-): Promise<Response> {
+export async function fetchWithRetry(url: string, options: RetryOptions = {}): Promise<Response> {
 	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const retries = options.retries ?? DEFAULT_RETRIES;
 	const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;

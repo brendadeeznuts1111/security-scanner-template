@@ -32,9 +32,7 @@ export async function generateReport(
 		);
 	}
 	if (format === 'html' && !FEATURE_REPORT_HTML) {
-		throw new Error(
-			'HTML report format is not included in this build (FEATURE_REPORT_HTML=false)',
-		);
+		throw new Error('HTML report format is not included in this build (FEATURE_REPORT_HTML=false)');
 	}
 
 	return generateEnrichedReport(data, format, options);

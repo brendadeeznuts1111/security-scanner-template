@@ -57,9 +57,7 @@ async function runBundleScan(bundlePath: string, json: boolean): Promise<void> {
 
 	for (const finding of timed.result.findings) {
 		const color = finding.severity === 'fatal' ? TERMINAL.scannerFatal : TERMINAL.scannerWarn;
-		console.error(
-			colorize(color, `  ${finding.severity} ${finding.id}: ${finding.description}`),
-		);
+		console.error(colorize(color, `  ${finding.severity} ${finding.id}: ${finding.description}`));
 	}
 
 	process.exit(timed.result.findings.some(f => f.severity === 'fatal') ? 1 : 0);
@@ -92,7 +90,10 @@ async function runDomainsScan(root: string, json: boolean, workers?: number): Pr
 	);
 
 	const results = timed.result;
-	const errors = results.reduce((sum, r) => sum + r.issues.filter(i => i.severity === 'error').length, 0);
+	const errors = results.reduce(
+		(sum, r) => sum + r.issues.filter(i => i.severity === 'error').length,
+		0,
+	);
 	const warnings = results.reduce(
 		(sum, r) => sum + r.issues.filter(i => i.severity === 'warning').length,
 		0,
@@ -100,11 +101,7 @@ async function runDomainsScan(root: string, json: boolean, workers?: number): Pr
 
 	if (json) {
 		console.log(
-			JSON.stringify(
-				{domains: results, errors, warnings, durationMs: timed.durationMs},
-				null,
-				2,
-			),
+			JSON.stringify({domains: results, errors, warnings, durationMs: timed.durationMs}, null, 2),
 		);
 		process.exit(errors > 0 ? 1 : 0);
 	}
@@ -117,7 +114,9 @@ async function runDomainsScan(root: string, json: boolean, workers?: number): Pr
 	);
 
 	for (const result of results) {
-		const mark = result.ok ? colorize(TERMINAL.scannerOk, '✓') : colorize(TERMINAL.scannerFatal, '✗');
+		const mark = result.ok
+			? colorize(TERMINAL.scannerOk, '✓')
+			: colorize(TERMINAL.scannerFatal, '✗');
 		console.error(`${mark} ${result.domain}`);
 		for (const issue of result.issues) {
 			console.error(`    ${issue.severity} ${issue.field}: ${issue.message}`);
@@ -131,16 +130,16 @@ async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		args: Bun.argv.slice(2),
 		options: {
-			domain: {type: 'string'},
-			host: {type: 'string'},
-			port: {type: 'string'},
-			tool: {type: 'string'},
-			root: {type: 'string'},
-			workers: {type: 'string'},
+			'domain': {type: 'string'},
+			'host': {type: 'string'},
+			'port': {type: 'string'},
+			'tool': {type: 'string'},
+			'root': {type: 'string'},
+			'workers': {type: 'string'},
 			'use-system-ca': {type: 'boolean'},
-			deep: {type: 'boolean'},
-			json: {type: 'boolean'},
-			help: {type: 'boolean', short: 'h'},
+			'deep': {type: 'boolean'},
+			'json': {type: 'boolean'},
+			'help': {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,
 	});
@@ -167,7 +166,9 @@ Default tools: ${DEFAULT_SECURITY_TOOLS.join(', ')}`);
 	const command = positionals[0];
 	const dashIndex = Bun.argv.indexOf('--');
 	const scannerArgs =
-		dashIndex >= 0 ? Bun.argv.slice(dashIndex + 1) : positionals.slice(1).filter(arg => arg !== '--');
+		dashIndex >= 0
+			? Bun.argv.slice(dashIndex + 1)
+			: positionals.slice(1).filter(arg => arg !== '--');
 
 	switch (command) {
 		case 'interactive': {

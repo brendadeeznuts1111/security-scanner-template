@@ -47,9 +47,7 @@ test('eval note is set on runtimes before the TLA fix', () => {
 
 test('isPagerFriendlyPipeline matches pipeline producer and fix version', () => {
 	const info = getTerminalIORuntimeInfo();
-	expect(isPagerFriendlyPipeline()).toBe(
-		info.pipelineProducer && info.pipelinePagerSafe,
-	);
+	expect(isPagerFriendlyPipeline()).toBe(info.pipelineProducer && info.pipelinePagerSafe);
 });
 
 test('bun -p top-level await returns the final completion value', async () => {

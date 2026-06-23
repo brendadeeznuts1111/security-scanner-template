@@ -280,7 +280,10 @@ function getLogPath(): string | null {
 function formatEventForStderr(event: ScannerEvent): string {
 	switch (event.type) {
 		case 'scan.start':
-			return colorize(TERMINAL.scannerInfo, `[scanner] scan started: ${event.packageCount} package(s)`);
+			return colorize(
+				TERMINAL.scannerInfo,
+				`[scanner] scan started: ${event.packageCount} package(s)`,
+			);
 		case 'feed.loaded':
 			return colorize(
 				TERMINAL.scannerDim,
@@ -400,7 +403,9 @@ async function emitEvent(event: ScannerEvent): Promise<void> {
 			await writer.flush();
 		} catch (error) {
 			// Never let a logging failure crash the scan / block installation.
-			console.error(colorize(TERMINAL.scannerFatal, `[scanner] failed to write event log: ${error}`));
+			console.error(
+				colorize(TERMINAL.scannerFatal, `[scanner] failed to write event log: ${error}`),
+			);
 		}
 	}
 }
@@ -541,7 +546,10 @@ async function fetchRemoteThreatFeed(
 	if (cached) {
 		const ageMs = Date.now() - cached.fetchedAt;
 		console.error(
-			colorize(TERMINAL.scannerInfo, `[scanner] using cached threat feed (${Math.round(ageMs / 1000)}s old)`),
+			colorize(
+				TERMINAL.scannerInfo,
+				`[scanner] using cached threat feed (${Math.round(ageMs / 1000)}s old)`,
+			),
 		);
 		// Refresh the cache in the background so the next scan has fresh data.
 		fetchRemoteThreatFeedDirect(url)
@@ -1025,7 +1033,9 @@ async function runRegistryCheck(): Promise<void> {
 	try {
 		const response = await fetchWithTimeoutAndRetry(registryUrl, 5000, 1, headers);
 		if (response.ok) {
-			console.error(colorize(TERMINAL.scannerOk, `[scanner] registry reachable (${response.status})`));
+			console.error(
+				colorize(TERMINAL.scannerOk, `[scanner] registry reachable (${response.status})`),
+			);
 			if (hasCredentials) {
 				console.error(
 					colorize(
@@ -1035,13 +1045,18 @@ async function runRegistryCheck(): Promise<void> {
 				);
 			} else {
 				console.error(
-					colorize(TERMINAL.scannerWarn, '[scanner] no registry credentials set; publish will fail in CI'),
+					colorize(
+						TERMINAL.scannerWarn,
+						'[scanner] no registry credentials set; publish will fail in CI',
+					),
 				);
 			}
 			process.exit(0);
 		}
 		if (response.status === 401) {
-			console.error(colorize(TERMINAL.scannerFatal, '[scanner] registry returned 401 Unauthorized'));
+			console.error(
+				colorize(TERMINAL.scannerFatal, '[scanner] registry returned 401 Unauthorized'),
+			);
 			if (!hasCredentials) {
 				console.error(colorize(TERMINAL.scannerWarn, '[scanner] no registry credentials set'));
 			} else {
@@ -1492,7 +1507,9 @@ async function runTokenCli(): Promise<void> {
 				colorize(TERMINAL.scannerOk, `[scanner] token removed from keychain (${service}/${name})`),
 			);
 		} else {
-			console.error(colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`));
+			console.error(
+				colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`),
+			);
 		}
 		process.exit(0);
 	}
@@ -1530,7 +1547,9 @@ async function runTokenCli(): Promise<void> {
 				colorize(TERMINAL.scannerOk, `[scanner] token present in keychain (${service}/${name})`),
 			);
 		} else {
-			console.error(colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`));
+			console.error(
+				colorize(TERMINAL.scannerWarn, `[scanner] no token found for ${service}/${name}`),
+			);
 		}
 		process.exit(0);
 	}

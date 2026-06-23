@@ -46,9 +46,7 @@ test('cd reports EACCES to stderr and exits 1 without hanging', async () => {
 	await mkdir(locked);
 	await chmod(locked, 0o000);
 
-	const result = await shellCompletesWithin(
-		$`cd ${path.join(locked, 'inside')}`.nothrow().quiet(),
-	);
+	const result = await shellCompletesWithin($`cd ${path.join(locked, 'inside')}`.nothrow().quiet());
 
 	expect(result.exitCode).toBe(1);
 	expect(result.stderr.toString()).toMatch(/Permission denied|EACCES/i);

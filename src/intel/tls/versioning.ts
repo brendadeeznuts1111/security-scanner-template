@@ -1,10 +1,7 @@
 import {Database} from 'bun:sqlite';
 import {mkdirSync} from 'fs';
 import path from 'path';
-import {
-	applySqliteSecurityPragmas,
-	type SqliteSecurityPragmaOptions,
-} from './sqlite-pragmas.ts';
+import {applySqliteSecurityPragmas, type SqliteSecurityPragmaOptions} from './sqlite-pragmas.ts';
 import type {TLSProfile} from './types.ts';
 
 const SCHEMA = `
@@ -88,16 +85,16 @@ export class TLSVersioning {
 				 LIMIT ?`,
 			)
 			.all(host, port, limit) as Array<{
-				id: number;
-				host: string;
-				port: number;
-				scanned_at: string;
-				protocol: string | null;
-				cipher: string | null;
-				fingerprint: string | null;
-				score: number | null;
-				profile_json: string;
-			}>;
+			id: number;
+			host: string;
+			port: number;
+			scanned_at: string;
+			protocol: string | null;
+			cipher: string | null;
+			fingerprint: string | null;
+			score: number | null;
+			profile_json: string;
+		}>;
 
 		return rows.map(row => ({
 			id: row.id,

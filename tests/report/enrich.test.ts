@@ -59,7 +59,10 @@ async function writeDomain(domain: string): Promise<void> {
 test('generateEnrichedReport embeds operator QR in HTML for project domain', async () => {
 	await writeDomain('com.example.enrich-html');
 
-	const html = await generateEnrichedReport(baseData(), 'html', {root, domain: 'com.example.enrich-html'});
+	const html = await generateEnrichedReport(baseData(), 'html', {
+		root,
+		domain: 'com.example.enrich-html',
+	});
 	expect(html).toContain('operator-qr');
 	expect(html).toContain('com.example.enrich-html');
 });

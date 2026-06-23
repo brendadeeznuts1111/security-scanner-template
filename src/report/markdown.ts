@@ -96,18 +96,12 @@ export function generateMarkdownReport(data: ReportData): string {
 	if (data.operatorQr) {
 		const meta = data.operatorQr;
 		lines.push('## Operator Access\n');
-		lines.push(
-			`Domain vault operator QR is configured for **${escapeMd(meta.domain)}**.`,
-		);
+		lines.push(`Domain vault operator QR is configured for **${escapeMd(meta.domain)}**.`);
 		if (meta.cacheKey) {
 			lines.push(`Cache key: \`${meta.cacheKey}\``);
 		}
 		lines.push('');
-		lines.push(
-			'```bash',
-			`bun sp qr --domain ${meta.domain} --output operator-qr.png`,
-			'```',
-		);
+		lines.push('```bash', `bun sp qr --domain ${meta.domain} --output operator-qr.png`, '```');
 		lines.push('');
 		lines.push(
 			'> Sensitive — the QR encodes the vault master token. Do not commit generated images or HTML exports.',

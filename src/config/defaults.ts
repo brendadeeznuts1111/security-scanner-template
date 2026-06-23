@@ -185,7 +185,9 @@ export function applyDefaults(partial: unknown): DomainConfig {
 	syncSecretsService(merged);
 
 	const partialSecrets = partial as Record<string, unknown>;
-	const partialSupplyChainForFeed = partialSecrets.supplyChain as Record<string, unknown> | undefined;
+	const partialSupplyChainForFeed = partialSecrets.supplyChain as
+		| Record<string, unknown>
+		| undefined;
 	const partialFeed = isPlainObject(partialSupplyChainForFeed?.feed)
 		? (partialSupplyChainForFeed.feed as Record<string, unknown>)
 		: undefined;

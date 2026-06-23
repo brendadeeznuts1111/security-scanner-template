@@ -1,5 +1,7 @@
 import {colorize, severityColor, TERMINAL} from '../color/index.ts';
 import {checkAllDomains, type DoctorIssue, type DoctorResult} from '../config/doctor.ts';
+import {formatBrandingShowcase, formatFieldMatrixTable} from '../domain/field-matrix.ts';
+import type {DomainFieldSection} from '../domain/field-matrix.ts';
 import {checkPeerDependenciesMeta} from '../supply-chain/peer-meta.ts';
 import {getSystemCARuntimeInfo} from '../intel/tls/system-ca.ts';
 import {getPlatformRuntimeInfo} from '../utils/platform-runtime.ts';
@@ -13,7 +15,29 @@ function formatIssue(issue: DoctorIssue): string {
 	return `${colorize(severityColor(issue.severity), label)} ${issue.domain} — ${issue.field}: ${issue.message}`;
 }
 
-function formatResult(result: DoctorResult): string {
+function formatBrandingLine(result: DoctorResult, domain: DoctorResult['domains'][number]): string {
+	if (!domain.branding) {
+		return '';
+	}
+	const b = domain.branding;
+	return `  branding: ${b.displayName} | service: ${b.service} | report: ${b.report.format} | qr: ${b.qr.enabled ? 'on' : 'off'} | runtime: interactive=${b.runtime.interactive} http3=${b.runtime.http3}`;
+}
+
+function formatTemplateCoverage(result: DoctorResult): string[] {
+	const coverage = result.templateCoverage;
+	const counts = coverage.layerCounts;
+	const status = coverage.ok
+		? colorize(TERMINAL.success, '✓')
+		: colorize(TERMINAL.fatal, '✗');
+	return [
+		'',
+		colorize(TERMINAL.warn, 'Golden template & field matrix'),
+		`${status} ${coverage.path}`,
+		`  catalog: ${coverage.catalogFields} fields | template=${counts.template} domain=${counts.domain} branding=${counts.branding} service=${counts.service} secrets=${counts.secrets}`,
+	];
+}
+
+function formatResult(result: DoctorResult, options: ConfigDoctorOptions = {}): string {
 	const lines: string[] = [];
 
 	if (result.ok) {
@@ -24,15 +48,49 @@ function formatResult(result: DoctorResult): string {
 		);
 	}
 
+	lines.push(...formatTemplateCoverage(result));
+
 	for (const domain of result.domains) {
 		lines.push('');
 		lines.push(
 			`${domain.ok ? colorize(TERMINAL.success, '✓') : colorize(TERMINAL.fatal, '✗')} ${domain.domain}`,
 		);
 		lines.push(`  ${domain.path}`);
+		const brandingLine = formatBrandingLine(result, domain);
+		if (brandingLine) {
+			lines.push(colorize(TERMINAL.muted, brandingLine));
+		}
+		if (options.branding && domain.branding) {
+			for (const line of formatBrandingShowcase(domain.branding)) {
+				lines.push(colorize(TERMINAL.muted, `  ${line}`));
+			}
+		}
 		for (const issue of domain.issues) {
 			lines.push(`  ${formatIssue(issue)}`);
 		}
+		if (options.matrix && domain.matrix?.length) {
+			lines.push(colorize(TERMINAL.muted, '  field matrix (template | domain | branding | service | secrets):'));
+			lines.push(
+				formatFieldMatrixTable(domain.matrix, {
+					values: true,
+					valueRows: domain.matrix,
+				})
+					.split('\n')
+					.map(line => `  ${line}`)
+					.join('\n'),
+			);
+		}
+	}
+
+	if (options.matrix && result.matrix?.template.length) {
+		lines.push('');
+		lines.push(colorize(TERMINAL.warn, 'Template field matrix'));
+		lines.push(
+			formatFieldMatrixTable(result.matrix.template, {
+				values: true,
+				valueRows: result.matrix.template,
+			}),
+		);
 	}
 
 	if (result.crossDomainIssues.length > 0) {
@@ -61,8 +119,7 @@ function formatResult(result: DoctorResult): string {
 			systemCA.systemCount > 0
 				? `${systemCA.systemCount} OS trust anchor(s)`
 				: 'OS trust store empty';
-		const timing =
-			systemCA.enumerationMs !== undefined ? `, ${systemCA.enumerationMs}ms` : '';
+		const timing = systemCA.enumerationMs !== undefined ? `, ${systemCA.enumerationMs}ms` : '';
 		lines.push(
 			colorize(
 				TERMINAL.muted,
@@ -114,6 +171,31 @@ export interface ConfigDoctorOptions {
 	benchmark?: boolean;
 	/** Run only peerDependenciesMeta supply-chain checks. */
 	checkPeerMeta?: boolean;
+	/** Print full per-domain field matrix tables. */
+	matrix?: boolean;
+	/** Print expanded branding + service profile per domain. */
+	branding?: boolean;
+	/** Limit matrix rows to a section (e.g. branding, secrets, service). */
+	matrixSection?: DomainFieldSection;
+}
+
+function isMatrixSection(value: string): value is DomainFieldSection {
+	return [
+		'domain',
+		'branding',
+		'secrets',
+		'identity',
+		'token',
+		'csrf',
+		'supply-chain',
+		'service',
+		'visual',
+		'ops',
+		'audit',
+		'intel',
+		'tls',
+		'errors',
+	].includes(value);
 }
 
 async function peerMetaDoctorResult(
@@ -122,6 +204,11 @@ async function peerMetaDoctorResult(
 ): Promise<DoctorResult> {
 	const runtimeValidation = validateBunRuntime();
 	const crossRef = validateCrossRefApis();
+	const {DOMAIN_FIELD_MATRIX, matrixLayerCounts, validateTemplateFieldCoverage} = await import(
+		'../domain/field-matrix.ts'
+	);
+	const {TEMPLATE_PATH} = await import('../config/loader.ts');
+	const templateCoverageRaw = await validateTemplateFieldCoverage();
 	return {
 		ok: peerMeta.ok,
 		domains: [],
@@ -138,6 +225,13 @@ async function peerMetaDoctorResult(
 			terminalIO: getTerminalIORuntimeInfo(),
 			platform: await getPlatformRuntimeInfo(`${root}/package.json`),
 		},
+		templateCoverage: {
+			ok: templateCoverageRaw.ok,
+			missing: templateCoverageRaw.missing,
+			catalogFields: DOMAIN_FIELD_MATRIX.length,
+			path: TEMPLATE_PATH,
+			layerCounts: matrixLayerCounts(),
+		},
 	};
 }
 
@@ -147,13 +241,19 @@ async function peerMetaDoctorResult(
 export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promise<void> {
 	const root = options.root ?? process.cwd();
 
+	const doctorOptions = {
+		matrix: options.matrix === true,
+		matrixSection: options.matrixSection,
+		peerMeta: options.checkPeerMeta ? false : undefined,
+	};
+
 	const timed = options.checkPeerMeta
 		? options.benchmark
 			? await benchmark('doctor.checkPeerMeta', () => checkPeerDependenciesMeta(root))
 			: {result: await checkPeerDependenciesMeta(root), durationMs: 0}
 		: options.benchmark
-			? await benchmark('doctor.checkAllDomains', () => checkAllDomains(root))
-			: {result: await checkAllDomains(root), durationMs: 0};
+			? await benchmark('doctor.checkAllDomains', () => checkAllDomains(root, doctorOptions))
+			: {result: await checkAllDomains(root, doctorOptions), durationMs: 0};
 
 	const result = options.checkPeerMeta
 		? await peerMetaDoctorResult(
@@ -169,7 +269,8 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 					...result,
 					benchmarkMs: options.benchmark ? timed.durationMs : undefined,
 					packagesScanned: options.checkPeerMeta
-						? (timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>).packagesScanned
+						? (timed.result as Awaited<ReturnType<typeof checkPeerDependenciesMeta>>)
+								.packagesScanned
 						: undefined,
 					runtime: {
 						...result.runtime,
@@ -193,15 +294,13 @@ export async function runConfigDoctor(options: ConfigDoctorOptions = {}): Promis
 				),
 			);
 		} else {
-			console.error(
-				colorize(TERMINAL.warn, `⚠ ${peerMeta.warnings} peer dependency warning(s)`),
-			);
+			console.error(colorize(TERMINAL.warn, `⚠ ${peerMeta.warnings} peer dependency warning(s)`));
 			for (const issue of peerMeta.issues) {
 				console.error(`  ${formatIssue(issue)}`);
 			}
 		}
 	} else {
-		console.error(formatResult(result));
+		console.error(formatResult(result, options));
 	}
 
 	if (options.benchmark) {

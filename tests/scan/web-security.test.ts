@@ -2,10 +2,7 @@ import {expect, test} from 'bun:test';
 import {mkdtemp, rm} from 'fs/promises';
 import path from 'path';
 import os from 'node:os';
-import {
-	processWebScreenshot,
-	scanWebSecurity,
-} from '../../src/scan/web-security.ts';
+import {processWebScreenshot, scanWebSecurity} from '../../src/scan/web-security.ts';
 import {isImageAvailable} from '../../src/visual/load.ts';
 import {tinyPngBytes} from '../visual/fixture.ts';
 

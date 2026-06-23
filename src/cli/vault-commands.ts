@@ -85,7 +85,9 @@ export async function runVaultStatus(options: VaultCliOptions = {}): Promise<voi
 		formatTable(
 			status.map(s => ({
 				name: s.name,
-				status: s.exists ? colorize(TERMINAL.scannerOk, 'present') : colorize(TERMINAL.scannerWarn, 'missing'),
+				status: s.exists
+					? colorize(TERMINAL.scannerOk, 'present')
+					: colorize(TERMINAL.scannerWarn, 'missing'),
 				required: s.required ? 'yes' : 'no',
 			})),
 			['name', 'status', 'required'],
@@ -111,7 +113,10 @@ export async function runVaultSet(options: VaultCliOptions = {}): Promise<void> 
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(TERMINAL.scannerFatal, `[vault] could not store secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not store secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
@@ -136,7 +141,10 @@ export async function runVaultGet(options: VaultCliOptions = {}): Promise<void> 
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(TERMINAL.scannerFatal, `[vault] could not read secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not read secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
@@ -166,7 +174,10 @@ export async function runVaultDelete(options: VaultCliOptions = {}): Promise<voi
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(
-			colorize(TERMINAL.scannerFatal, `[vault] could not delete secret (${domain}/${name}): ${message}`),
+			colorize(
+				TERMINAL.scannerFatal,
+				`[vault] could not delete secret (${domain}/${name}): ${message}`,
+			),
 		);
 		process.exit(1);
 	}
@@ -189,7 +200,9 @@ export interface DoctorRow {
 export async function runVaultDoctor(options: VaultCliOptions = {}): Promise<void> {
 	const available = await isOsCredentialStoreAvailable();
 	if (!available) {
-		console.error(colorize(TERMINAL.scannerFatal, '[vault doctor] OS credential store is not available'));
+		console.error(
+			colorize(TERMINAL.scannerFatal, '[vault doctor] OS credential store is not available'),
+		);
 		process.exit(1);
 	}
 
@@ -229,7 +242,9 @@ export async function runVaultDoctor(options: VaultCliOptions = {}): Promise<voi
 			rows.map(r => ({
 				domain: r.domain,
 				name: r.name,
-				status: r.exists ? colorize(TERMINAL.scannerOk, 'present') : colorize(TERMINAL.scannerWarn, 'missing'),
+				status: r.exists
+					? colorize(TERMINAL.scannerOk, 'present')
+					: colorize(TERMINAL.scannerWarn, 'missing'),
 				required: r.required ? 'yes' : 'no',
 				winPersist: r.winPersist ?? '',
 			})),
