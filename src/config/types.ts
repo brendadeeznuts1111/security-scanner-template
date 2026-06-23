@@ -224,6 +224,8 @@ export interface DomainWorkflowConfig {
 	tls?: import('../workflow/types.ts').WorkflowTlsConfig;
 	/** Include Bun runtime metadata in reports/alerts/drift (default true). */
 	includeBunVersion?: boolean;
+	/** Directory of custom workflow effect plugins (`.ts` files). */
+	effectsDir?: string;
 }
 
 export interface DomainService {

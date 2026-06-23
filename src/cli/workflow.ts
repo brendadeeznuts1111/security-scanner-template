@@ -35,6 +35,7 @@ export interface WorkflowCliOptions {
 	seedWritePath?: string;
 	failOnDrift?: boolean;
 	effects?: WorkflowEffectsConfig;
+	effectsDir?: string;
 	tls?: WorkflowTlsConfig;
 	includeBunVersion?: boolean;
 	json?: boolean;
@@ -168,7 +169,12 @@ export async function runWorkflowCli(options: WorkflowCliOptions): Promise<numbe
 		effects: buildWorkflowEffects(options, workflowConfig),
 		tls: options.tls ?? workflowConfig?.tls,
 		includeBunVersion: options.includeBunVersion ?? workflowConfig?.includeBunVersion ?? true,
+		effectsDir: options.effectsDir ?? workflowConfig?.effectsDir,
 	});
+
+	if (options.effectsDir) {
+		await loop.loadCustomEffects(options.effectsDir);
+	}
 
 	if (options.command === 'status') {
 		const status = loop.status();
@@ -220,6 +226,7 @@ async function main(): Promise<void> {
 			'tls-key': {type: 'string'},
 			'tls-reject-unauthorized': {type: 'boolean'},
 			'no-include-bun-version': {type: 'boolean'},
+			'effects-dir': {type: 'string'},
 			'tls-deep': {type: 'boolean'},
 			'json': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
@@ -234,7 +241,7 @@ async function main(): Promise<void> {
       [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
   bun sp workflow start --domain <name> [--interval 60000] [--watch] [--scanners ...] [--output ndjson]
       [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
-      [--tls-ca <path>] [--tls-cert <path>] [--tls-key <path>] [--no-include-bun-version]
+      [--tls-ca <path>] [--tls-cert <path>] [--tls-key <path>] [--no-include-bun-version] [--effects-dir <path>]
   bun sp workflow status --domain <name> [--json]
 
 Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
@@ -279,6 +286,7 @@ Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
 		effects: parseWorkflowEffects(parsed.values),
 		tls: parseWorkflowTls(parsed.values),
 		includeBunVersion: parsed.values['no-include-bun-version'] === true ? false : true,
+		effectsDir: cliString(parsed.values['effects-dir']),
 	});
 
 	process.exit(exitCode);

@@ -49,6 +49,9 @@ export interface WorkflowLoopStatus {
 	lastRunAt?: string;
 	runCount: number;
 	scanners: string[];
+	seedLoaded: boolean;
+	seedPath?: string;
+	effectsDir?: string;
 }
 
 export class WorkflowLoop {
@@ -120,10 +123,18 @@ export class WorkflowLoop {
 				report: config.report,
 				tls: config.tls,
 			},
+			effectsDir: config.effectsDir,
 			tls: config.tls,
 			includeBunVersion: config.includeBunVersion,
 			...overrides,
 		});
+	}
+
+	resolvedEffectsDir(): string | undefined {
+		if (!this.options.effectsDir) return undefined;
+		const trimmed = this.options.effectsDir.trim();
+		if (!trimmed) return undefined;
+		return path.isAbsolute(trimmed) ? trimmed : path.resolve(this.registry.root, trimmed);
 	}
 
 	private mergeEffectsTls() {
@@ -200,6 +211,9 @@ export class WorkflowLoop {
 			lastRunAt: this.lastRunAt,
 			runCount: this.runCount,
 			scanners: this.options.scanners ?? [...WORKFLOW_SCANNER_IDS],
+			seedLoaded: this.seedDocument !== null,
+			seedPath: this.resolvedSeedPath(),
+			effectsDir: this.resolvedEffectsDir(),
 		};
 	}
 
@@ -282,6 +296,7 @@ export class WorkflowLoop {
 				results,
 				drift,
 				effects: this.mergeEffectsTls(),
+				effectsDir: this.options.effectsDir,
 				bun: bun ?? collectWorkflowBunMetadata(),
 				tls: this.resolveOutboundTls(),
 				dryRun: this.options.dryRun,

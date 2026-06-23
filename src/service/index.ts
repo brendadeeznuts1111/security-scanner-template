@@ -317,6 +317,7 @@ export class Service {
 			scanners: this.registry.has(this.domainName)
 				? (this.registry.get(this.domainName).service?.workflow?.scanners ?? [])
 				: [],
+			seedLoaded: false,
 		};
 	}
 

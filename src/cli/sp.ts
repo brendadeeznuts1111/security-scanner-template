@@ -39,8 +39,8 @@ const HELP = `Usage:
   bun sp network start --all
   bun sp network stop --domain <name>
   bun sp network status --domain <name> [--json]
-  bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output json|ndjson|herdr|table] [--dry-run] [--fail-on-issue] [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report] [--report-path <path>]
-  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--output ndjson] [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report]
+  bun sp workflow run --domain <name> [--scanners network,semver,patterns,tls,dns] [--output json|ndjson|herdr|table] [--dry-run] [--fail-on-issue] [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report] [--effects-dir <path>]
+  bun sp workflow start --domain <name> [--interval 60000] [--watch] [--output ndjson] [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report] [--effects-dir <path>]
   bun sp workflow status --domain <name> [--json]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
@@ -196,6 +196,7 @@ async function main(): Promise<void> {
 			'tls-key': {type: 'string'},
 			'tls-reject-unauthorized': {type: 'boolean'},
 			'no-include-bun-version': {type: 'boolean'},
+			'effects-dir': {type: 'string'},
 			'fail-on-severity': {type: 'string'},
 			'tls-host': {type: 'string'},
 			'tls-port': {type: 'string'},
@@ -477,6 +478,7 @@ async function main(): Promise<void> {
 				effects: parseWorkflowEffects(values),
 				tls: parseWorkflowTls(values),
 				includeBunVersion: values['no-include-bun-version'] === true ? false : true,
+				effectsDir: cliString(values['effects-dir']),
 				registry: domainRegistry,
 			});
 			process.exit(exitCode);

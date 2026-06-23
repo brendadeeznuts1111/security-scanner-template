@@ -68,9 +68,14 @@ export class EffectRegistry {
 	 * Every `.ts` file is imported; the default export is registered if it
 	 * has a valid `id` and `run` method.
 	 */
-	async loadFromDirectory(dir: string): Promise<void> {
+	async loadFromDirectory(dir: string): Promise<string[]> {
+		const loaded: string[] = [];
 		const glob = new Bun.Glob('*.ts');
 		for await (const file of glob.scan({cwd: dir, absolute: true})) {
+			const base = path.basename(file);
+			if (base.endsWith('.test.ts') || base === 'index.ts') {
+				continue;
+			}
 			const mod = (await import(pathToFileURL(file).href)) as {
 				default?: unknown;
 			};
@@ -83,9 +88,17 @@ export class EffectRegistry {
 				'run' in plugin &&
 				typeof plugin.run === 'function'
 			) {
-				this.register(plugin as EffectPlugin);
+				const effect = plugin as EffectPlugin;
+				if (this.plugins.has(effect.id)) {
+					console.error(`[workflow] skipping duplicate effect id "${effect.id}" in ${base}`);
+					continue;
+				}
+				this.register(effect);
+				this.configure(effect.id, {enabled: true});
+				loaded.push(effect.id);
 			}
 		}
+		return loaded;
 	}
 }
 

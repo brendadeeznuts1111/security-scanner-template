@@ -4,6 +4,7 @@ export {
 	applyWorkflowFixes,
 	buildWorkflowAlertPayload,
 	generateWorkflowReport,
+	resolveWorkflowEffectsDir,
 	runWorkflowEffects,
 	sendWorkflowAlert,
 	type WorkflowEffectHandlers,

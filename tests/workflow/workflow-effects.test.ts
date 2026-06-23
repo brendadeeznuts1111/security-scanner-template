@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {mkdirSync, mkdtempSync, readFileSync} from 'fs';
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'fs';
 import path from 'path';
 import {tmpdir} from 'os';
 import type {DomainRegistry} from '../../src/config/registry.ts';
@@ -162,4 +162,38 @@ test('runWorkflowEffects combines alert, fix, and report', async () => {
 	expect(effectResult.fixes?.length).toBe(1);
 	expect(effectResult.reportPath).toBe(path.join(root, 'reports', 'run.md'));
 	expect(readFileSync(effectResult.reportPath!, 'utf8')).toContain('com.example.effects');
+});
+
+test('runWorkflowEffects loads custom plugins from effectsDir', async () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'workflow-custom-effect-'));
+	const effectsDir = path.join(root, 'effects');
+	mkdirSync(effectsDir, {recursive: true});
+	const marker = path.join(root, 'marker.txt');
+	writeFileSync(
+		path.join(effectsDir, 'marker-effect.ts'),
+		`const plugin = {
+  id: 'marker',
+  name: 'Marker',
+  description: 'writes a marker file',
+  async run(ctx) {
+    await Bun.write(${JSON.stringify(marker)}, ctx.domain);
+  },
+};
+export default plugin;
+`,
+	);
+
+	const report = aggregateWorkflowReport('com.example.custom', []);
+	const result = await runWorkflowEffects({
+		domain: 'com.example.custom',
+		projectRoot: root,
+		registry: {root} as unknown as DomainRegistry,
+		report,
+		results: [],
+		effects: {log: false},
+		effectsDir: 'effects',
+	});
+
+	expect(result.customEffects).toEqual(['marker']);
+	expect(readFileSync(marker, 'utf8')).toBe('com.example.custom');
 });

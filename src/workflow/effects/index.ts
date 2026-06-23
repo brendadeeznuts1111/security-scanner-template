@@ -4,6 +4,7 @@
  * This module also re-exports the plugin registry and interfaces so custom
  * effects can import them from the same entry point.
  */
+import {existsSync} from 'fs';
 import path from 'path';
 import type {DomainRegistry} from '../../config/registry.ts';
 import {
@@ -48,6 +49,8 @@ export interface WorkflowEffectsContext {
 	results: readonly ScannerResult[];
 	drift?: WorkflowSeedDrift | null;
 	effects?: WorkflowEffectsConfig;
+	/** Directory of custom `.ts` effect plugins (relative to projectRoot). */
+	effectsDir?: string;
 	bun?: WorkflowBunMetadata;
 	tls?: WorkflowTlsConfig;
 	dryRun?: boolean;
@@ -205,11 +208,17 @@ function resolveReportPath(domain: string, report: boolean | string, projectRoot
 	return path.join(projectRoot, 'reports', `${domain}-workflow.md`);
 }
 
+export function resolveWorkflowEffectsDir(projectRoot: string, effectsDir: string): string {
+	const trimmed = effectsDir.trim();
+	return path.isAbsolute(trimmed) ? trimmed : path.join(projectRoot, trimmed);
+}
+
 async function configureEffectRegistry(
 	effects: WorkflowEffectsConfig,
 	handlers: WorkflowEffectHandlers,
 	projectRoot: string,
 	formatMarkdown?: (report: WorkflowRunReport) => string,
+	effectsDir?: string,
 ): Promise<EffectRegistry> {
 	const registry = new EffectRegistry();
 	if (effects.log !== false) {
@@ -241,6 +250,17 @@ async function configureEffectRegistry(
 			},
 		});
 	}
+	if (effectsDir) {
+		const resolved = resolveWorkflowEffectsDir(projectRoot, effectsDir);
+		if (existsSync(resolved)) {
+			const loaded = await registry.loadFromDirectory(resolved);
+			if (loaded.length > 0) {
+				console.error(`[workflow] loaded custom effects from ${resolved}: ${loaded.join(', ')}`);
+			}
+		} else {
+			console.error(`[workflow] effects directory not found: ${resolved}`);
+		}
+	}
 	return registry;
 }
 
@@ -260,12 +280,18 @@ export async function runWorkflowEffects(
 		(ctx.drift !== undefined && ctx.drift !== null && hasWorkflowSeedDrift(ctx.drift)) ||
 		!ctx.report.ok;
 
+	const builtinIds = new Set(['log', 'alert', 'fix', 'report']);
 	const effectRegistry = await configureEffectRegistry(
 		effects,
 		handlers,
 		ctx.projectRoot,
 		formatMarkdown,
+		ctx.effectsDir,
 	);
+	const customEffects = effectRegistry.registeredIds().filter(id => !builtinIds.has(id));
+	if (customEffects.length > 0) {
+		result.customEffects = customEffects;
+	}
 	if (effects.alert && !shouldReact) {
 		effectRegistry.configure('alert', {enabled: false});
 	}

@@ -132,4 +132,6 @@ export interface WorkflowEffectsResult {
 	alertError?: string;
 	fixes?: WorkflowFixResult[];
 	reportPath?: string;
+	/** Custom effect plugin ids loaded from effectsDir this run. */
+	customEffects?: string[];
 }
