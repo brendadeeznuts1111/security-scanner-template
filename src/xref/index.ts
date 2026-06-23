@@ -169,6 +169,29 @@ export const CROSS_REF_CATALOG: readonly CrossRefEntry[] = [
 		docsUrl: 'https://bun.sh/docs/guides/process/os-signals#listen-to-os-signals',
 	},
 	{
+		id: 'utils.doctor-diagnostics',
+		name: 'Doctor runtime diagnostics',
+		layer: 'runtime',
+		bunApi: 'Bun.nanoseconds',
+		description:
+			'Doctor/CLI diagnostics: Bun.nanoseconds timing, Bun.stringWidth tables, inspect.custom formatters, spawn + signal snapshots.',
+		modules: [
+			'src/utils/doctor-diagnostics.ts',
+			'src/utils/inspect-custom.ts',
+			'src/cli/config-doctor.ts',
+		],
+		exports: [
+			'collectDoctorDiagnostics',
+			'formatDoctorDiagnosticsTable',
+			'formatDoctorDiagnosticsInspect',
+			'createDoctorTimingSnapshot',
+			'withInspectCustom',
+		],
+		cliCommands: ['sp doctor', 'sp doctor --json', 'sp doctor --benchmark'],
+		related: ['utils.signals', 'utils.process', 'bun.nanoseconds'],
+		docsUrl: 'https://bun.com/docs/api/utils#bun-nanoseconds',
+	},
+	{
 		id: 'feature.scan-external',
 		name: 'External scanner PTY',
 		layer: 'scanning',

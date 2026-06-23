@@ -200,6 +200,9 @@ test('checkAllDomains validates discovered domain files', async () => {
 	expect(result.runtime.terminalIO.bunVersion).toBe(Bun.version);
 	expect(result.runtime.platform.bunVersion).toBe(Bun.version);
 	expect(typeof result.runtime.platform.bunTypesTsgoCompatible).toBe('boolean');
+	expect(result.runtime.diagnostics.utilities.nanosecondsAvailable).toBe(true);
+	expect(result.runtime.diagnostics.utilities.stringWidthAvailable).toBe(true);
+	expect(result.runtime.diagnostics.signals.ctrlCDocsUrl).toContain('ctrl-c');
 	expect(Array.isArray(result.peerMetaIssues)).toBe(true);
 });
 
