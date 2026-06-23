@@ -220,6 +220,10 @@ export interface DomainWorkflowConfig {
 	fix?: boolean;
 	/** Write Markdown report each run (`true` → reports/<domain>-workflow.md). */
 	report?: boolean | string;
+	/** TLS material for outbound webhook alerts. */
+	tls?: import('../workflow/types.ts').WorkflowTlsConfig;
+	/** Include Bun runtime metadata in reports/alerts/drift (default true). */
+	includeBunVersion?: boolean;
 }
 
 export interface DomainService {

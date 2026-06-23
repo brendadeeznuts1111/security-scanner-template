@@ -1,7 +1,12 @@
 import path from 'path';
 import {deepEquals} from '../utils/deep-equal.ts';
 import {parseJson5File, writeJson5File} from '../utils/json5-config.ts';
-import type {ScannerResult, WorkflowSeedDrift, WorkflowSeedScannerState} from './types.ts';
+import type {
+	ScannerResult,
+	WorkflowBunMetadata,
+	WorkflowSeedDrift,
+	WorkflowSeedScannerState,
+} from './types.ts';
 
 export const WORKFLOW_SEED_SCHEMA = 'workflow-seed';
 export const WORKFLOW_SEED_VERSION = 1;
@@ -12,6 +17,8 @@ export interface WorkflowSeedDocument {
 	domain: string;
 	createdAt: string;
 	state: Record<string, WorkflowSeedScannerState>;
+	/** Bun runtime captured when the seed was written. */
+	bun?: WorkflowBunMetadata;
 }
 
 export function defaultWorkflowSeedPath(domain: string, projectRoot: string): string {
@@ -36,6 +43,7 @@ export function scannerSeedState(result: ScannerResult): WorkflowSeedScannerStat
 export function buildWorkflowSeedDocument(
 	domain: string,
 	results: readonly ScannerResult[],
+	bun?: WorkflowBunMetadata,
 ): WorkflowSeedDocument {
 	const state: Record<string, WorkflowSeedScannerState> = {};
 	for (const result of results) {
@@ -47,12 +55,23 @@ export function buildWorkflowSeedDocument(
 		domain,
 		createdAt: new Date().toISOString(),
 		state,
+		...(bun ? {bun} : {}),
+	};
+}
+
+export function bunSeedState(bun: WorkflowBunMetadata): WorkflowSeedScannerState {
+	return {
+		version: bun.version,
+		revision: bun.revision ?? null,
+		platform: bun.platform,
+		isDebug: bun.isDebug,
 	};
 }
 
 export function computeWorkflowSeedDrift(
 	results: readonly ScannerResult[],
 	seed: WorkflowSeedDocument,
+	options: {bun?: WorkflowBunMetadata; includeBunVersion?: boolean} = {},
 ): WorkflowSeedDrift {
 	const drift: WorkflowSeedDrift = {};
 	for (const result of results) {
@@ -63,6 +82,15 @@ export function computeWorkflowSeedDrift(
 			drift[result.scannerId] = {expected, actual};
 		}
 	}
+
+	if (options.includeBunVersion !== false && seed.bun && options.bun) {
+		const expected = bunSeedState(seed.bun);
+		const actual = bunSeedState(options.bun);
+		if (!deepEquals(actual, expected)) {
+			drift['bun.runtime'] = {expected, actual};
+		}
+	}
+
 	return drift;
 }
 

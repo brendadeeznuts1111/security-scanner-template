@@ -9,9 +9,11 @@ import type {DomainRegistry} from '../../config/registry.ts';
 import type {WorkflowSeedDocument} from '../seed.ts';
 import type {
 	ScannerResult,
+	WorkflowBunMetadata,
 	WorkflowEffectsResult,
 	WorkflowRunReport,
 	WorkflowSeedDrift,
+	WorkflowTlsConfig,
 } from '../types.ts';
 
 export interface EffectContext {
@@ -24,6 +26,10 @@ export interface EffectContext {
 	registry: DomainRegistry;
 	options: Record<string, unknown>;
 	result?: WorkflowEffectsResult;
+	bun: WorkflowBunMetadata;
+	tls?: WorkflowTlsConfig;
+	dryRun?: boolean;
+	includeBunVersion?: boolean;
 }
 
 export interface EffectPlugin {

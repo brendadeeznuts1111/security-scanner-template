@@ -9,6 +9,7 @@ import {shouldColorize} from '../utils/process.ts';
 import type {
 	ScannerIssue,
 	ScannerResult,
+	WorkflowBunMetadata,
 	WorkflowOutputFormat,
 	WorkflowRunReport,
 } from './types.ts';
@@ -38,6 +39,7 @@ export function aggregateWorkflowReport(
 	domain: string,
 	results: readonly ScannerResult[],
 	drift?: WorkflowRunReport['drift'],
+	bun?: WorkflowBunMetadata,
 ): WorkflowRunReport {
 	const allIssues = results.flatMap(result => result.issues);
 	const hasFail = results.some(result => result.status === 'fail');
@@ -50,7 +52,14 @@ export function aggregateWorkflowReport(
 		maxSeverity: maxSeverity(allIssues),
 		ok: !hasFail && !hasWarn,
 		...(drift ? {drift} : {}),
+		...(bun ? {bun} : {}),
 	};
+}
+
+function formatBunMetadataLine(bun: WorkflowBunMetadata): string {
+	const revision = bun.revision ? ` (${bun.revision.slice(0, 8)})` : '';
+	const debug = bun.isDebug ? ', debug' : '';
+	return `Bun ${bun.version}${revision} on ${bun.platform}${debug}`;
 }
 
 export function formatWorkflowTable(report: WorkflowRunReport, noColor = false): string {
@@ -73,6 +82,9 @@ export function formatWorkflowTable(report: WorkflowRunReport, noColor = false):
 			}
 		}
 	}
+	if (report.bun) {
+		lines.push('', `Runtime: ${formatBunMetadataLine(report.bun)}`);
+	}
 	if (report.drift && Object.keys(report.drift).length > 0) {
 		lines.push('', 'Seed drift:');
 		for (const [scannerId, entry] of Object.entries(report.drift)) {
@@ -91,6 +103,7 @@ export function formatWorkflowMarkdown(report: WorkflowRunReport): string {
 		`- **Issues:** ${report.issueCount}`,
 		`- **Max severity:** ${report.maxSeverity}`,
 		`- **OK:** ${report.ok}`,
+		...(report.bun ? [`- **Bun:** ${formatBunMetadataLine(report.bun)}`] : []),
 		'',
 		'## Scanners',
 		'',

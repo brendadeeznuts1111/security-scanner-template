@@ -13,7 +13,7 @@ import {runScanPackagesCli} from './scan-packages.ts';
 import {runScanPatternsCli} from './scan-patterns.ts';
 import {runScanConstraintsCli} from './scan-constraints.ts';
 import {runNetworkCli} from './network.ts';
-import {parseWorkflowEffects, runWorkflowCli} from './workflow.ts';
+import {parseWorkflowEffects, parseWorkflowTls, runWorkflowCli} from './workflow.ts';
 import {SecurityShell} from '../interactive/index.ts';
 import {cliBoolean, cliString, runCliIfMain} from '../utils/cli.ts';
 import {exitIfNotInteractive, spawnInheritAndExit, writeJsonStdout} from '../utils/process.ts';
@@ -191,6 +191,11 @@ async function main(): Promise<void> {
 			'report': {type: 'boolean'},
 			'report-path': {type: 'string'},
 			'log': {type: 'boolean'},
+			'tls-ca': {type: 'string'},
+			'tls-cert': {type: 'string'},
+			'tls-key': {type: 'string'},
+			'tls-reject-unauthorized': {type: 'boolean'},
+			'no-include-bun-version': {type: 'boolean'},
 			'fail-on-severity': {type: 'string'},
 			'tls-host': {type: 'string'},
 			'tls-port': {type: 'string'},
@@ -470,6 +475,8 @@ async function main(): Promise<void> {
 				tlsDeep: cliBoolean(values['tls-deep']) ?? cliBoolean(values.deep),
 				json: values.json === true,
 				effects: parseWorkflowEffects(values),
+				tls: parseWorkflowTls(values),
+				includeBunVersion: values['no-include-bun-version'] === true ? false : true,
 				registry: domainRegistry,
 			});
 			process.exit(exitCode);

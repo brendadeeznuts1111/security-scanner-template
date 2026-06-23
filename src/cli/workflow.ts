@@ -14,6 +14,7 @@ import type {
 	WorkflowEffectsConfig,
 	WorkflowLoopOptions,
 	WorkflowOutputFormat,
+	WorkflowTlsConfig,
 } from '../workflow/types.ts';
 import {cliBoolean, cliString, runCliIfMain} from '../utils/cli.ts';
 
@@ -34,8 +35,35 @@ export interface WorkflowCliOptions {
 	seedWritePath?: string;
 	failOnDrift?: boolean;
 	effects?: WorkflowEffectsConfig;
+	tls?: WorkflowTlsConfig;
+	includeBunVersion?: boolean;
 	json?: boolean;
 	registry?: DomainRegistry;
+}
+
+export function parseWorkflowTls(
+	values: Record<string, string | boolean | undefined>,
+): WorkflowTlsConfig | undefined {
+	const ca = cliString(values['tls-ca']);
+	const cert = cliString(values['tls-cert']);
+	const key = cliString(values['tls-key']);
+	const rejectRaw = values['tls-reject-unauthorized'];
+	if (!ca && !cert && !key && rejectRaw === undefined) {
+		return undefined;
+	}
+	return {
+		...(ca
+			? {
+					ca: ca
+						.split(',')
+						.map(entry => entry.trim())
+						.filter(Boolean),
+				}
+			: {}),
+		...(cert ? {cert} : {}),
+		...(key ? {key} : {}),
+		...(typeof rejectRaw === 'boolean' ? {rejectUnauthorized: rejectRaw} : {}),
+	};
 }
 
 function buildWorkflowEffects(
@@ -45,13 +73,22 @@ function buildWorkflowEffects(
 		alertUrl?: string;
 		fix?: boolean;
 		report?: boolean | string;
+		tls?: WorkflowTlsConfig;
+		includeBunVersion?: boolean;
 	},
 ): WorkflowEffectsConfig | undefined {
 	const alert = cli.effects?.alert ?? workflowConfig?.alertUrl;
 	const fix = cli.effects?.fix ?? workflowConfig?.fix;
 	const report = cli.effects?.report ?? workflowConfig?.report;
 	const log = cli.effects?.log ?? workflowConfig?.logEffects;
-	if (alert === undefined && fix === undefined && report === undefined && log === undefined) {
+	const tls = cli.effects?.tls ?? cli.tls ?? workflowConfig?.tls;
+	if (
+		alert === undefined &&
+		fix === undefined &&
+		report === undefined &&
+		log === undefined &&
+		tls === undefined
+	) {
 		return cli.effects;
 	}
 	return {
@@ -59,6 +96,7 @@ function buildWorkflowEffects(
 		alert,
 		fix,
 		report,
+		...(tls ? {tls} : {}),
 	};
 }
 
@@ -72,7 +110,8 @@ export function parseWorkflowEffects(
 	const reportPath = cliString(values['report-path']);
 	const report = reportPath ?? (cliBoolean(values.report) ? true : undefined);
 	const log = typeof values.log === 'boolean' ? values.log : undefined;
-	if (!alert && !fix && report === undefined && log === undefined) {
+	const tls = parseWorkflowTls(values);
+	if (!alert && !fix && report === undefined && log === undefined && !tls) {
 		return undefined;
 	}
 	return {
@@ -80,6 +119,7 @@ export function parseWorkflowEffects(
 		...(alert ? {alert} : {}),
 		...(fix ? {fix: true} : {}),
 		...(report !== undefined ? {report} : {}),
+		...(tls ? {tls} : {}),
 	};
 }
 
@@ -126,6 +166,8 @@ export async function runWorkflowCli(options: WorkflowCliOptions): Promise<numbe
 		seedWritePath: options.seedWritePath ?? workflowConfig?.seedWritePath,
 		failOnDrift: options.failOnDrift ?? workflowConfig?.failOnDrift,
 		effects: buildWorkflowEffects(options, workflowConfig),
+		tls: options.tls ?? workflowConfig?.tls,
+		includeBunVersion: options.includeBunVersion ?? workflowConfig?.includeBunVersion ?? true,
 	});
 
 	if (options.command === 'status') {
@@ -173,6 +215,11 @@ async function main(): Promise<void> {
 			'report-path': {type: 'string'},
 			'log': {type: 'boolean'},
 			'fix': {type: 'boolean'},
+			'tls-ca': {type: 'string'},
+			'tls-cert': {type: 'string'},
+			'tls-key': {type: 'string'},
+			'tls-reject-unauthorized': {type: 'boolean'},
+			'no-include-bun-version': {type: 'boolean'},
 			'tls-deep': {type: 'boolean'},
 			'json': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
@@ -187,6 +234,7 @@ async function main(): Promise<void> {
       [--seed <path>] [--seed-write <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
   bun sp workflow start --domain <name> [--interval 60000] [--watch] [--scanners ...] [--output ndjson]
       [--seed <path>] [--fail-on-drift] [--alert-url <url>] [--fix] [--report <path>]
+      [--tls-ca <path>] [--tls-cert <path>] [--tls-key <path>] [--no-include-bun-version]
   bun sp workflow status --domain <name> [--json]
 
 Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
@@ -229,6 +277,8 @@ Scanners: ${WORKFLOW_SCANNER_IDS.join(', ')}`);
 		tlsDeep: cliBoolean(parsed.values['tls-deep']),
 		json: cliBoolean(parsed.values.json),
 		effects: parseWorkflowEffects(parsed.values),
+		tls: parseWorkflowTls(parsed.values),
+		includeBunVersion: parsed.values['no-include-bun-version'] === true ? false : true,
 	});
 
 	process.exit(exitCode);

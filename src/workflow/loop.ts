@@ -15,6 +15,7 @@ import {createAsyncDebouncer} from '../utils/debounce.ts';
 import {onInterruptSignals, waitForInterruptSignal} from '../utils/signals.ts';
 import {runWorkflowEffects} from './effects/index.ts';
 import {aggregateWorkflowReport, formatWorkflowOutput, workflowExitCode} from './output.ts';
+import {collectWorkflowBunMetadata} from './runtime-context.ts';
 import {
 	createWorkflowScannerContext,
 	resolveWorkflowScanners,
@@ -83,6 +84,8 @@ export class WorkflowLoop {
 			seedWritePath: options.seedWritePath,
 			failOnDrift: options.failOnDrift ?? false,
 			effects: options.effects,
+			tls: options.tls,
+			includeBunVersion: options.includeBunVersion ?? true,
 		};
 	}
 
@@ -109,9 +112,26 @@ export class WorkflowLoop {
 				alert: config.alertUrl,
 				fix: config.fix,
 				report: config.report,
+				tls: config.tls,
 			},
+			tls: config.tls,
+			includeBunVersion: config.includeBunVersion,
 			...overrides,
 		});
+	}
+
+	private mergeEffectsTls() {
+		if (!this.options.effects) {
+			return undefined;
+		}
+		return {
+			...this.options.effects,
+			tls: this.options.effects.tls ?? this.options.tls,
+		};
+	}
+
+	private resolveOutboundTls() {
+		return this.options.effects?.tls ?? this.options.tls;
 	}
 
 	seedState(): WorkflowSeedDocument | null {
@@ -161,7 +181,8 @@ export class WorkflowLoop {
 	private async writeSeed(results: ScannerResult[]): Promise<void> {
 		const writePath = this.resolvedSeedWritePath();
 		if (!writePath) return;
-		const document = buildWorkflowSeedDocument(this.domainName, results);
+		const bun = this.options.includeBunVersion !== false ? collectWorkflowBunMetadata() : undefined;
+		const document = buildWorkflowSeedDocument(this.domainName, results, bun);
 		await writeWorkflowSeed(writePath, document);
 		console.error(`[workflow] seed written to ${writePath}`);
 	}
@@ -209,9 +230,14 @@ export class WorkflowLoop {
 
 		ctx.domain.close();
 
+		const bun = this.options.includeBunVersion !== false ? collectWorkflowBunMetadata() : undefined;
+
 		let drift: WorkflowSeedDrift | null = null;
 		if (this.seedDocument) {
-			drift = computeWorkflowSeedDrift(results, this.seedDocument);
+			drift = computeWorkflowSeedDrift(results, this.seedDocument, {
+				bun,
+				includeBunVersion: this.options.includeBunVersion,
+			});
 			this.lastDrift = drift;
 			if (hasWorkflowSeedDrift(drift)) {
 				console.error(
@@ -228,6 +254,7 @@ export class WorkflowLoop {
 			this.domainName,
 			results,
 			this.seedDocument ? (drift ?? {}) : undefined,
+			bun,
 		);
 		this.lastReport = report;
 		this.lastRunAt = report.timestamp;
@@ -247,7 +274,12 @@ export class WorkflowLoop {
 			report,
 			results,
 			drift,
-			effects: this.options.effects,
+			effects: this.mergeEffectsTls(),
+			bun: bun ?? collectWorkflowBunMetadata(),
+			tls: this.resolveOutboundTls(),
+			dryRun: this.options.dryRun,
+			includeBunVersion: this.options.includeBunVersion,
+			seedState: this.seedDocument,
 		});
 		const awaitEffects = !this.running || this.options.dryRun === true;
 		if (awaitEffects) {

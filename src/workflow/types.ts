@@ -36,6 +36,7 @@ export interface WorkflowBunMetadata {
 	version: string;
 	revision: string | undefined;
 	platform: string;
+	isDebug: boolean;
 }
 
 export interface WorkflowTlsConfig {
@@ -115,6 +116,7 @@ export interface WorkflowAlertPayload {
 	maxSeverity: ScannerIssueSeverity;
 	results: {scanner: string; status: ScannerStatus; issues: number}[];
 	drift?: WorkflowSeedDrift;
+	bun?: WorkflowBunMetadata;
 }
 
 export interface WorkflowFixResult {

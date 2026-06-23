@@ -16,6 +16,11 @@ export class LogEffect implements EffectPlugin {
 	}
 
 	async run(ctx: EffectContext): Promise<void> {
+		if (ctx.includeBunVersion !== false) {
+			console.error(
+				`[${ctx.domain}] Bun ${ctx.bun.version}${ctx.bun.revision ? ` (${ctx.bun.revision.slice(0, 8)})` : ''} on ${ctx.bun.platform}`,
+			);
+		}
 		if (ctx.drift && Object.keys(ctx.drift).length > 0) {
 			console.error(`[${ctx.domain}] Drift:`, JSON.stringify(ctx.drift, null, 2));
 		}

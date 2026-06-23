@@ -1,6 +1,7 @@
 /**
  * Built-in alert effect — sends a webhook notification when issues or drift exist.
  */
+import {createWorkflowFetch, resolveWorkflowTlsOptions} from '../../tls-fetch.ts';
 import type {EffectPlugin, EffectContext} from '../plugin.ts';
 
 export interface AlertEffectOptions {
@@ -40,9 +41,13 @@ export class AlertEffect implements EffectPlugin {
 				issues: result.issues.length,
 			})),
 			drift: ctx.drift,
+			...(ctx.includeBunVersion !== false ? {bun: ctx.bun} : {}),
 		};
 
-		const fetchFn = options.fetchFn ?? fetch;
+		const tlsOptions = await resolveWorkflowTlsOptions(ctx.tls, ctx.projectRoot);
+		const fetchFn =
+			options.fetchFn ?? createWorkflowFetch(tlsOptions, fetch as AlertEffectOptions['fetchFn']);
+
 		try {
 			const response = await fetchFn(webhookUrl, {
 				method: 'POST',

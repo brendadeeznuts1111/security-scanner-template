@@ -72,6 +72,12 @@ export class FixEffect implements EffectPlugin {
 		const plans = planPackageUpgrades(remediated);
 		const results: {package: string; ok: boolean; message: string}[] = [];
 		for (const plan of plans) {
+			if (ctx.dryRun) {
+				const message = `Dry-run: would upgrade ${plan.package}@${plan.fromVersion} → ${plan.package}@${plan.toVersion}`;
+				console.error(`[${ctx.domain}] ${message}`);
+				results.push({package: plan.package, ok: true, message});
+				continue;
+			}
 			console.error(
 				`[${ctx.domain}] Upgrading ${plan.package}@${plan.fromVersion} → ${plan.package}@${plan.toVersion}`,
 			);

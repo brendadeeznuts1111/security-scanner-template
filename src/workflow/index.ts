@@ -1,3 +1,5 @@
+export {collectWorkflowBunMetadata} from './runtime-context.ts';
+export {createWorkflowFetch, resolveWorkflowTlsOptions, type WorkflowFetchFn} from './tls-fetch.ts';
 export {
 	applyWorkflowFixes,
 	buildWorkflowAlertPayload,
