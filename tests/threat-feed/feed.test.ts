@@ -12,7 +12,7 @@ import {
 
 setupEnvCleanup();
 
-test('Should use a configurable threat feed URL', async () => {
+test('use a configurable threat feed URL', async () => {
 	const {server, url} = startFeedServer([
 		{
 			package: 'remote-pkg',
@@ -40,7 +40,7 @@ test('Should use a configurable threat feed URL', async () => {
 	server.stop(true);
 });
 
-test('Should load a local threat feed from a file path', async () => {
+test('load a local threat feed from a file path', async () => {
 	const path = await writeTempFile(
 		JSON.stringify([
 			{
@@ -72,7 +72,7 @@ test('Should load a local threat feed from a file path', async () => {
 		.catch(() => {});
 });
 
-test('Should load a threat feed from stdin via THREAT_FEED_STDIN', async () => {
+test('load a threat feed from stdin via THREAT_FEED_STDIN', async () => {
 	const feedJson = JSON.stringify({
 		rules: [
 			{
@@ -114,7 +114,7 @@ test('Should load a threat feed from stdin via THREAT_FEED_STDIN', async () => {
 	}
 });
 
-test('Should throw when threat feed response is invalid', async () => {
+test('throw when threat feed response is invalid', async () => {
 	const {server, url} = startFeedServer({not: 'an array'});
 	process.env.THREAT_FEED_URL = url;
 
@@ -123,7 +123,7 @@ test('Should throw when threat feed response is invalid', async () => {
 	server.stop(true);
 });
 
-test('Should throw when threat feed request fails', async () => {
+test('throw when threat feed request fails', async () => {
 	const server = Bun.serve({
 		port: 0,
 		fetch: () => new Response('Internal Server Error', {status: 500}),
@@ -135,7 +135,7 @@ test('Should throw when threat feed request fails', async () => {
 	server.stop(true);
 });
 
-test('Should throw when remote threat feed times out', async () => {
+test('throw when remote threat feed times out', async () => {
 	const server = Bun.serve({
 		port: 0,
 		fetch: () => new Promise<Response>(() => {}), // Never resolves
@@ -149,7 +149,7 @@ test('Should throw when remote threat feed times out', async () => {
 	server.stop(true);
 });
 
-test('Should cache remote threat feed and reuse it within TTL', async () => {
+test('cache remote threat feed and reuse it within TTL', async () => {
 	const state: {requests: number} = {requests: 0};
 	const {server, url} = startFeedServerWithCounter(state, [
 		{
@@ -201,7 +201,7 @@ test('Should cache remote threat feed and reuse it within TTL', async () => {
 	}
 });
 
-test('Should refetch remote threat feed when cache is expired', async () => {
+test('refetch remote threat feed when cache is expired', async () => {
 	const state: {requests: number} = {requests: 0};
 	const {server, url} = startFeedServerWithCounter(state, [
 		{
@@ -324,7 +324,7 @@ test('streamJSONLFeed processes response body line-by-line', async () => {
 	}
 });
 
-test('Should load a local JSONL threat feed from a file path', async () => {
+test('load a local JSONL threat feed from a file path', async () => {
 	const path = `/tmp/scanner-test-${Date.now()}.jsonl`;
 	await Bun.write(
 		path,

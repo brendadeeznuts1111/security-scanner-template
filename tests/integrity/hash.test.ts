@@ -4,7 +4,7 @@ import {setupEnvCleanup, startFeedServer, startTarballServer, sha256Hex} from '.
 
 setupEnvCleanup();
 
-test('Should block packages by tarball hash', async () => {
+test('block packages by tarball hash', async () => {
 	const tarballContents = 'mock tarball contents';
 	const blockedHash = await sha256Hex(tarballContents);
 
@@ -43,7 +43,7 @@ test('Should block packages by tarball hash', async () => {
 	feedServer.stop(true);
 });
 
-test('Should ignore threats when tarball hash does not match blocklist', async () => {
+test('ignore threats when tarball hash does not match blocklist', async () => {
 	const tarballContents = 'safe tarball contents';
 	const {server: tarballServer, url: tarballUrl} = startTarballServer(tarballContents);
 	const {server: feedServer, url: feedUrl} = startFeedServer([

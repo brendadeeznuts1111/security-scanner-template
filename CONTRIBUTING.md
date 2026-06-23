@@ -52,9 +52,24 @@ When changing domain loading, audit, vault, or operator CLI behavior:
    bun run xref
    ```
 
+### Naming conventions
+
+Enforced by `bun sp doctor` and `tests/conventions/test-naming.test.ts`:
+
+| Artifact                | Pattern                                                               | Example                                 |
+| ----------------------- | --------------------------------------------------------------------- | --------------------------------------- |
+| Domain config file      | `domains/<domain>.security.json5`                                     | `com.example.app.security.json5`        |
+| `domain` field          | Reverse-DNS                                                           | `com.example.app`                       |
+| Secret inventory `name` | kebab-case                                                            | `threat-feed-api-key`                   |
+| Test file               | `tests/**/*.test.ts`                                                  | `tests/config/doctor.test.ts`           |
+| Test description        | Lowercase lead; no `Should` prefix; CLI tests may start with `--flag` | `checkDomain reports invalid hex color` |
+
+Inspect alignment defaults and enum options: `bun run matrix --template --alignment`.
+
 ### Feature flags
 
 Optional code paths are gated by compile-time features (see `src/features/index.ts`).
+Inspect active flags: `bun run flags` or `features` inside `bun sp shell`.
 The default `bun test` script passes `--feature=<NAME>` for every flag.
 
 To test a single feature in isolation:

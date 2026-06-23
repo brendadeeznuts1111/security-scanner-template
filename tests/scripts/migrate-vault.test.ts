@@ -61,8 +61,7 @@ test('migrate skips existing vault unless force is set', async () => {
 
 test('migrate splits inline inventory into encrypted store and metadata', async () => {
 	const domain = 'com.example.test';
-	const domainFileName = 'test';
-	const domainFile = path.join(TEST_DIR, 'domains', `${domainFileName}.security.json5`);
+	const domainFile = path.join(TEST_DIR, 'domains', `${domain}.security.json5`);
 	const vaultDir = path.join(TEST_DIR, '.vault');
 
 	mkdirSync(path.dirname(domainFile), {recursive: true});

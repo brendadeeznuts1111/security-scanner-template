@@ -34,7 +34,7 @@ test('resolveProjectDomain prefers SP_DOMAIN when multiple domain files exist', 
 test('loadDomainReportContext loads merged config', async () => {
 	await mkdir(`${root}/domains`, {recursive: true});
 	await Bun.write(
-		`${root}/domains/ledger.security.json5`,
+		`${root}/domains/com.example.ledger.security.json5`,
 		'{ domain: "com.example.ledger", displayName: "Ledger" }',
 	);
 

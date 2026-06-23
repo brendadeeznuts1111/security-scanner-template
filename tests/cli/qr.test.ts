@@ -95,7 +95,10 @@ test('resolveDomainMasterKeyNames prefers private vault masterKeyName', async ()
 	const root = await mkdtemp(path.join(os.tmpdir(), 'qr-names-'));
 	try {
 		await mkdir(`${root}/domains`, {recursive: true});
-		await Bun.write(`${root}/domains/ledger.security.json5`, '{ domain: "com.example.ledger" }');
+		await Bun.write(
+			`${root}/domains/com.example.ledger.security.json5`,
+			'{ domain: "com.example.ledger" }',
+		);
 		await mkdir(`${root}/.vault`, {recursive: true});
 		await Bun.write(
 			`${root}/.vault/com.example.ledger.inventory.json5`,

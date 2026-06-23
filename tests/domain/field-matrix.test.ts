@@ -4,9 +4,13 @@ import {TEMPLATE_PATH} from '../../src/config/loader.ts';
 import {domainBrandingProfile} from '../../src/domain/branding.ts';
 import {
 	DOMAIN_FIELD_MATRIX,
+	domainFieldAlignmentRows,
 	domainFieldValueRows,
+	FIELD_OPTIONS,
+	formatAlignmentMatrixTable,
 	formatBrandingShowcase,
 	formatFieldMatrixTable,
+	strongDefaultForField,
 	validateTemplateFieldCoverage,
 } from '../../src/domain/field-matrix.ts';
 
@@ -72,4 +76,33 @@ test('formatFieldMatrixTable renders layer flags', () => {
 	expect(table).toContain('template');
 	expect(table).toContain('branding');
 	expect(table).toContain('domain');
+});
+
+test('strongDefaultForField returns bcrypt for identity.algorithm', () => {
+	expect(strongDefaultForField('identity.algorithm')).toBe('bcrypt');
+});
+
+test('FIELD_OPTIONS documents csrf.mode allowed values', () => {
+	expect(FIELD_OPTIONS['csrf.mode']).toEqual(['stateless', 'session-bound']);
+});
+
+test('domainFieldAlignmentRows marks derived secrets.service as aligned', () => {
+	const config = applyDefaults({
+		domain: 'com.example.align',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const row = domainFieldAlignmentRows(config).find(entry => entry.field === 'secrets.service');
+	expect(row?.aligned).toBe(true);
+	expect(row?.defaultValue).toBe('com.example.defaults');
+});
+
+test('formatAlignmentMatrixTable includes default and options columns', () => {
+	const config = applyDefaults({
+		domain: 'com.example.table',
+		csrf: {enabled: false, tokenLength: 32},
+	});
+	const table = formatAlignmentMatrixTable(domainFieldAlignmentRows(config).slice(0, 3));
+	expect(table).toContain('default');
+	expect(table).toContain('aligned');
+	expect(table).toContain('options');
 });

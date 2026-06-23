@@ -4,7 +4,7 @@ import {setupEnvCleanup, packageFixture, withSecretsGet} from '../helpers.ts';
 
 setupEnvCleanup();
 
-test('Should send Bearer token from Bun.secrets when THREAT_FEED_TOKEN_NAME is set', async () => {
+test('send Bearer token from Bun.secrets when THREAT_FEED_TOKEN_NAME is set', async () => {
 	const state: {auth: string | null} = {auth: null};
 	const server = Bun.serve({
 		port: 0,
@@ -43,7 +43,7 @@ test('Should send Bearer token from Bun.secrets when THREAT_FEED_TOKEN_NAME is s
 	}
 });
 
-test('Should pass the configured service/name to Bun.secrets.get', async () => {
+test('pass the configured service/name to Bun.secrets.get', async () => {
 	const state: {captured: {service: string; name: string} | null} = {captured: null};
 	const server = Bun.serve({
 		port: 0,
@@ -71,7 +71,7 @@ test('Should pass the configured service/name to Bun.secrets.get', async () => {
 	}
 });
 
-test('Should not call Bun.secrets when THREAT_FEED_TOKEN_NAME is unset', async () => {
+test('not call Bun.secrets when THREAT_FEED_TOKEN_NAME is unset', async () => {
 	let calls = 0;
 	const server = Bun.serve({
 		port: 0,
@@ -98,7 +98,7 @@ test('Should not call Bun.secrets when THREAT_FEED_TOKEN_NAME is unset', async (
 	}
 });
 
-test('Should proceed unauthenticated when Bun.secrets.get returns null', async () => {
+test('proceed unauthenticated when Bun.secrets.get returns null', async () => {
 	const state: {auth: string | null} = {auth: null};
 	const server = Bun.serve({
 		port: 0,
@@ -136,7 +136,7 @@ test('Should proceed unauthenticated when Bun.secrets.get returns null', async (
 	}
 });
 
-test('Should proceed unauthenticated when Bun.secrets.get throws', async () => {
+test('proceed unauthenticated when Bun.secrets.get throws', async () => {
 	const state: {auth: string | null} = {auth: null};
 	const server = Bun.serve({
 		port: 0,

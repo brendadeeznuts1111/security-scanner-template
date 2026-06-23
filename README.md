@@ -61,9 +61,16 @@ Inspect every field (and concern color tags) with:
 ```bash
 bun run matrix --template          # template field matrix
 bun run matrix --domain com.example.service
+bun run matrix --domain com.example.service --alignment   # value vs strong default + options
 bun run matrix --concerns          # ast-grep-style concern → channel map
+bun run flags                      # compile-time feature flags + profiles
+bun run flags --profile agent --json
 bun run xref                       # API / module cross-reference catalog
 ```
+
+Domain config files must be named `domains/<reverse-dns>.security.json5`
+(matching `domain` in the file). Secret inventory names use kebab-case
+(`threat-feed-api-key`). `bun sp doctor` enforces both.
 
 Encrypted vault artifacts default under `.vault/`; per-domain security state
 under `.security/<reverse-dns-segment>/`.
@@ -83,6 +90,7 @@ under `.security/<reverse-dns-segment>/`.
 | `bun run vault`                            | Vault CLI                                                          |
 | `bun run master-key`                       | Generate audit master key material                                 |
 | `bun run bench`                            | Same as `bun sp bench`                                             |
+| `bun run flags`                            | Feature flags and deployment profiles (`--json`)                   |
 
 Inside `bun sp shell`, run `help` for REPL commands (`domain`, `audit tail`,
 `features`, `profiles`, `build --profile agent|server|dev`, etc.).

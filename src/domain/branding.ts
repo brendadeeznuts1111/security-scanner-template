@@ -7,12 +7,7 @@ import {
 } from './concern-colors.ts';
 import {resolveSecretsService} from './secrets-service.ts';
 
-/** Reverse-DNS domain identifier pattern (matches config doctor). */
-export const REVERSE_DNS_PATTERN = /^[a-zA-Z0-9][-a-zA-Z0-9.]*$/;
-
-export function isReverseDnsDomain(domain: string): boolean {
-	return REVERSE_DNS_PATTERN.test(domain);
-}
+export {DOMAIN_CONFIG_SUFFIX, isReverseDnsDomain, REVERSE_DNS_PATTERN} from './naming.ts';
 
 /** Filesystem-safe segment from a reverse-DNS domain id. */
 export function reverseDnsPathSegment(domain: string): string {
