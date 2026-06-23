@@ -15,7 +15,8 @@ test('artifact spec has unique ids and template paths', () => {
 	const ids = artifactSpecIds();
 	expect(new Set(ids).size).toBe(ids.length);
 	for (const entry of BUN_CREATE_ARTIFACT_SPEC) {
-		expect(entry.path.startsWith('templates/')).toBe(true);
+		const pathPrefix = entry.kind === 'package' ? 'src/' : 'templates/';
+		expect(entry.path.startsWith(pathPrefix)).toBe(true);
 		expect(entry.docsUrl.startsWith('https://')).toBe(true);
 	}
 });

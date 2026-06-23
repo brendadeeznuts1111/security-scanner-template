@@ -51,6 +51,7 @@ export const TEST_TOP_LEVEL_SLICES = [
 	'threat-intel',
 	'utils',
 	'visual',
+	'workflow',
 	'xref',
 ] as const;
 
@@ -118,6 +119,7 @@ export const TEST_SLICE_GLOBS: Record<TestSliceId, readonly string[]> = {
 	'threat-intel': ['threat-intel/**'],
 	'utils': ['utils/**'],
 	'visual': ['visual/**'],
+	'workflow': ['workflow/**'],
 	'xref': ['xref/**'],
 	'conventions/bun': ['conventions/bun/**'],
 };
