@@ -1,8 +1,12 @@
+import type {NetworkBaselineDelta} from '../intel/network-baseline.ts';
+
 export type NetworkHealthStatus = 'healthy' | 'degraded' | 'unreachable';
 
 export interface NetworkHealthProbeResult {
 	status: NetworkHealthStatus;
 	latencyMs: number;
+	probesOk?: number;
+	probesTotal?: number;
 	statusCode?: number;
 }
 
@@ -15,6 +19,7 @@ export interface NetworkAuditSummary {
 	bundleHealthRoutes?: number;
 	healthStatus?: NetworkHealthStatus;
 	healthLatencyMs?: number;
+	delta?: NetworkBaselineDelta;
 }
 
 export interface NetworkLoopStatus {
@@ -22,6 +27,8 @@ export interface NetworkLoopStatus {
 	domain: string;
 	distPath: string;
 	healthUrl?: string;
+	healthUrlSecret?: string;
+	baselinePath?: string;
 	probeIntervalMs: number;
 	watchEnabled: boolean;
 	watchIntervalMs: number;
@@ -29,4 +36,8 @@ export interface NetworkLoopStatus {
 	lastDistHash?: string;
 	probeCount: number;
 	auditCount: number;
+	failOnHealth: boolean;
+	failOnDrift: boolean;
+	emitJson: boolean;
+	emitHerdrTab: boolean;
 }

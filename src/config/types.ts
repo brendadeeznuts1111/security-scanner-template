@@ -161,14 +161,33 @@ export interface DomainNetworkConfig {
 	distPath?: string;
 	/** Health endpoint URL (`/health`, `/meta`, etc.). */
 	healthUrl?: string;
+	/**
+	 * Bun.secrets logical name (scoped to `supply-chain-{domain}` service).
+	 * Example: `health/prod` → service `supply-chain-com.example.app`, name `health/prod`.
+	 */
+	healthUrlSecret?: string;
 	/** Health probe interval in ms (default 8000). */
 	probeInterval?: number;
 	/** Poll dist fingerprint for changes and re-audit. */
 	watch?: boolean;
 	/** Dist watch interval in ms (default 750). */
 	watchInterval?: number;
+	/** Watch debounce in ms (default 500; falls back to ops.watch.debounceMs). */
+	debounceMs?: number;
 	/** Treat non-healthy probes as fatal (exit 1 in CLI). */
 	failOnHealth?: boolean;
+	/** Exit when endpoints drift from baseline. */
+	failOnDrift?: boolean;
+	/** Baseline JSON5 path (default `.security/<domain>/network-baseline.json5`). */
+	baselinePath?: string;
+	/** Persist current audit as baseline on start. */
+	updateBaseline?: boolean;
+	/** Emit NDJSON ticks to stdout (machine-readable). */
+	json?: boolean;
+	/** Emit herdr-doctor tab layout to stdout. */
+	herdrTab?: boolean;
+	/** Disable colored stderr dashboard (`NO_COLOR` also respected). */
+	noColor?: boolean;
 }
 
 export interface DomainService {

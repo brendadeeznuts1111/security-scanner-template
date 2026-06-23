@@ -34,8 +34,9 @@ const HELP = `Usage:
   bun sp scan source --domain <name> [--path src/] [--root <path>] [--fix] [--json]
   bun sp scan constraints --domain <name> [--root <path>] [--path src/] [--transitive] [--no-imports] [--fix] [--json]
   bun sp scan bundle --domain <name> --path <dir|file> [--rules id,id] [--format json|markdown|html] [--output path] [--verify-integrity] [--update-snapshot] [--fail-on-bundle-drift] [--baseline-dir <path>] [--json]
-  bun sp network start --domain <name> [--json]
-  bun sp network stop --domain <name> [--json]
+  bun sp network start --domain <name> [--health-url-secret name] [--baseline path] [--fail-on-drift] [--json] [--herdr-tab]
+  bun sp network start --all
+  bun sp network stop --domain <name>
   bun sp network status --domain <name> [--json]
 
 Enter the interactive security operator REPL, start a domain service, or run one-shot commands.
@@ -160,6 +161,14 @@ async function main(): Promise<void> {
 			'fix': {type: 'boolean'},
 			'transitive': {type: 'boolean'},
 			'probe': {type: 'boolean'},
+			'health-url': {type: 'string'},
+			'health-url-secret': {type: 'string'},
+			'baseline': {type: 'string'},
+			'update-baseline': {type: 'boolean'},
+			'fail-on-health': {type: 'boolean'},
+			'herdr-tab': {type: 'boolean'},
+			'no-color': {type: 'boolean'},
+			'all': {type: 'boolean'},
 			'no-imports': {type: 'boolean'},
 			'update-snapshot': {type: 'boolean'},
 			'fail-on-bundle-drift': {type: 'boolean'},
@@ -392,11 +401,6 @@ async function main(): Promise<void> {
 			return;
 		}
 		case 'network': {
-			const domain = values.domain;
-			if (!domain) {
-				console.error(colorize(TERMINAL.scannerFatal, '[sp] network requires --domain <name>'));
-				process.exit(1);
-			}
 			const subcommand = positionals[1];
 			if (subcommand !== 'start' && subcommand !== 'stop' && subcommand !== 'status') {
 				console.error(
@@ -407,10 +411,29 @@ async function main(): Promise<void> {
 				);
 				process.exit(1);
 			}
+			if (subcommand === 'start' && !values.domain && values.all !== true) {
+				console.error(
+					colorize(TERMINAL.scannerFatal, '[sp] network start requires --domain or --all'),
+				);
+				process.exit(1);
+			}
+			if ((subcommand === 'stop' || subcommand === 'status') && !values.domain) {
+				console.error(colorize(TERMINAL.scannerFatal, '[sp] network requires --domain <name>'));
+				process.exit(1);
+			}
 			const exitCode = await runNetworkCli({
-				domain,
+				domain: values.domain as string | undefined,
 				command: subcommand,
+				healthUrl: values['health-url'] as string | undefined,
+				healthUrlSecret: values['health-url-secret'] as string | undefined,
+				baseline: values.baseline as string | undefined,
+				updateBaseline: values['update-baseline'] === true,
+				failOnHealth: values['fail-on-health'] === true,
+				failOnDrift: values['fail-on-drift'] === true,
 				json: values.json === true,
+				herdrTab: values['herdr-tab'] === true,
+				noColor: values['no-color'] === true,
+				all: values.all === true,
 				registry: domainRegistry,
 			});
 			process.exit(exitCode);

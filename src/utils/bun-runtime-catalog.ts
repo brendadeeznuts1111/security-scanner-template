@@ -30,6 +30,7 @@ import {
 	BUN_OS_SIGNALS_GUIDE_URL,
 	isSignalHandlingAvailable,
 } from './signals.ts';
+import {BUN_JSON5_DOCS_URL, isJson5Available} from './json5-config.ts';
 import {BUN_UUID_GUIDE_URL, BUN_UUID_V7_DOCS_URL, isUUIDv7Available} from './uuid.ts';
 
 export interface BunRuntimeCatalogEntry {
@@ -135,6 +136,20 @@ export const BUN_RUNTIME_CATALOG: readonly BunRuntimeCatalogEntry[] = [
 		docsUrl: BUN_MARKDOWN_DOCS_URL,
 		exports: ['markdownToHtml', 'renderMarkdown', 'isMarkdownAvailable'],
 		isAvailable: isMarkdownAvailable,
+	},
+	{
+		id: 'json5',
+		bunApi: 'Bun.JSON5.parse',
+		module: 'src/utils/json5-config.ts',
+		docsUrl: BUN_JSON5_DOCS_URL,
+		exports: [
+			'parseJson5File',
+			'parseJson5Text',
+			'stringifyJson5',
+			'writeJson5File',
+			'isJson5Available',
+		],
+		isAvailable: isJson5Available,
 	},
 ] as const;
 

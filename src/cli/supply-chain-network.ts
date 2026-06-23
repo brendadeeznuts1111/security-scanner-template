@@ -31,6 +31,7 @@ function buildNetworkOptions(
 		failOnHealth: values['fail-on-health'] === true,
 		failOnDrift:
 			values['fail-on-drift'] === true || values['fail-on-endpoint-change'] === true,
+		noColor: values['no-color'] === true,
 	};
 }
 
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
 			'fail-on-health': {type: 'boolean'},
 			'fail-on-drift': {type: 'boolean'},
 			'fail-on-endpoint-change': {type: 'boolean'},
+			'no-color': {type: 'boolean'},
 			help: {type: 'boolean', short: 'h'},
 		},
 		allowPositionals: true,

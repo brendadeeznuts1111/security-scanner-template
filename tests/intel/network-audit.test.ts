@@ -7,7 +7,7 @@ import {
 	diffNetworkBaseline,
 	NETWORK_BASELINE_VERSION,
 } from '../../src/intel/network-baseline.ts';
-import {parseHealthUrlSecretSpec} from '../../src/intel/network-health.ts';
+import {resolveHealthSecretRef} from '../../src/network/health-secrets.ts';
 import {formatNetworkLoopStatusLine} from '../../src/cli/supply-chain-network-colors.ts';
 import {buildHerdrDoctorTabDocument, formatHerdrDoctorTabText} from '../../src/cli/supply-chain-network-herdr.ts';
 
@@ -27,11 +27,11 @@ test('auditBundleNetwork extracts unique urls and health routes', async () => {
 	rmSync(root, {recursive: true, force: true});
 });
 
-test('parseHealthUrlSecretSpec splits service and name', () => {
-	expect(parseHealthUrlSecretSpec('sports-terminal/health/prod')).toEqual({
-		service: 'sports-terminal',
+test('resolveHealthSecretRef scopes secrets to supply-chain domain service', () => {
+	expect(resolveHealthSecretRef('com.example.app', 'health/prod')).toEqual({
+		service: 'supply-chain-com.example.app',
 		name: 'health/prod',
-		raw: 'sports-terminal/health/prod',
+		raw: 'health/prod',
 	});
 });
 
@@ -89,6 +89,6 @@ test('herdr doctor tab document renders field table', () => {
 		bundlePath: '/tmp/dist',
 	});
 	const text = formatHerdrDoctorTabText(doc);
-	expect(text).toContain('herdr-doctor/supply-chain-network/v1');
-	expect(text).toContain('network.unique');
+	expect(text).toContain('network-surface:');
+	expect(text).toContain('api-catalog:');
 });

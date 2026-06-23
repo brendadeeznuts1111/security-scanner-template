@@ -1,5 +1,6 @@
 import path from 'path';
 import {reverseDnsPathSegment} from '../domain/branding.ts';
+import {parseJson5File, writeJson5File} from '../utils/json5-config.ts';
 
 export const NETWORK_BASELINE_VERSION = 1;
 export const NETWORK_BASELINE_FILENAME = 'network-baseline.json5';
@@ -33,7 +34,7 @@ export async function loadNetworkBaseline(filePath: string): Promise<NetworkBase
 		return null;
 	}
 	try {
-		const parsed = Bun.JSON5.parse(await file.text()) as NetworkBaselineDocument;
+		const parsed = await parseJson5File<NetworkBaselineDocument>(filePath);
 		if (!Array.isArray(parsed.endpoints) || !Array.isArray(parsed.healthRoutes)) {
 			return null;
 		}
@@ -47,7 +48,7 @@ export async function saveNetworkBaseline(
 	filePath: string,
 	document: NetworkBaselineDocument,
 ): Promise<void> {
-	await Bun.write(filePath, `${Bun.JSON5.stringify(document, null, 2)}\n`);
+	await writeJson5File(filePath, document, {indent: 2});
 }
 
 function diffList(baseline: readonly string[], current: readonly string[]): {

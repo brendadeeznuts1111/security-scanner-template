@@ -8,6 +8,7 @@ import {
 	FORMAT_SEPARATION,
 	auditConfigFormats,
 	discoverInvalidConfigFiles,
+	discoverNetworkBaselineFiles,
 	discoverVaultFiles,
 	formatConfigFormatBehaviorTable,
 	formatConfigFormatRuntimeInspect,
@@ -26,6 +27,21 @@ test('FORMAT_SEPARATION documents JSON5 vs TOML parsers', () => {
 	expect(FORMAT_SEPARATION.some(row => row.parser === 'Bun.JSON5.parse')).toBe(true);
 	expect(FORMAT_SEPARATION.some(row => row.parser === 'Bun.TOML.parse')).toBe(true);
 	expect(FORMAT_SEPARATION.some(row => row.extension === 'bunfig.toml')).toBe(true);
+	expect(FORMAT_SEPARATION.some(row => row.configType === 'Network audit baselines')).toBe(true);
+});
+
+test('discoverNetworkBaselineFiles finds network-baseline.json5 under .security', () => {
+	const root = makeProject();
+	mkdirSync(join(root, '.security', 'com.example.service'), {recursive: true});
+	writeFileSync(
+		join(root, '.security', 'com.example.service', 'network-baseline.json5'),
+		'{ domain: "com.example.service", version: 1 }',
+	);
+
+	const baselines = discoverNetworkBaselineFiles(root);
+	expect(baselines.some(path => path.endsWith('network-baseline.json5'))).toBe(true);
+
+	rmSync(root, {recursive: true, force: true});
 });
 
 test('discoverInvalidConfigFiles flags wrong domain extension', () => {
@@ -133,6 +149,7 @@ test('formatConfigFormatRuntimeTable and inspect render doctor output', async ()
 	const table = formatConfigFormatRuntimeTable(info);
 	expect(table).toContain('Bun.JSON5.parse');
 	expect(table).toContain('Bun.TOML.parse');
+	expect(table).toContain('network-baseline.json5');
 
 	const inspect = formatConfigFormatRuntimeInspect(info);
 	expect(inspect).toContain('domain');

@@ -1,7 +1,7 @@
 /**
  * Config format separation diagnostics (JSON5 domains / vault, TOML policy).
- * @see https://bun.sh/docs/runtime/json5
- * @see https://bun.sh/docs/runtime/toml
+ * @see https://bun.com/docs/runtime/json5
+ * @see https://bun.com/docs/runtime/toml
  */
 
 import {existsSync, readdirSync} from 'fs';
@@ -12,10 +12,14 @@ import {DEFAULT_POLICY_FILE, discoverPolicyFiles} from '../policy/loader.ts';
 import {severityPolicyFromDocument, type PolicyDocument} from '../policy/index.ts';
 import {formatTable} from './inspect.ts';
 import {formatInspectCustom, withInspectCustom} from './inspect-custom.ts';
+import {BUN_JSON5_DOCS_URL, isJson5Available} from './json5-config.ts';
 import {shouldColorize} from './process.ts';
 
-export const BUN_JSON5_DOCS_URL = 'https://bun.sh/docs/runtime/json5';
-export const BUN_TOML_DOCS_URL = 'https://bun.sh/docs/runtime/toml';
+export {BUN_JSON5_DOCS_URL};
+export const BUN_TOML_DOCS_URL = 'https://bun.com/docs/runtime/toml';
+
+/** Keep in sync with `intel/network-baseline.ts` — local to avoid import cycles. */
+const NETWORK_BASELINE_FILENAME = 'network-baseline.json5';
 
 export const CONFIG_FORMAT_ISSUE_CODES = {
 	WRONG_EXTENSION: 'CONFIG_WRONG_EXTENSION',
@@ -40,6 +44,12 @@ export const FORMAT_SEPARATION = [
 		usedBy: 'loader, doctor, migrate-vault',
 	},
 	{
+		configType: 'Network audit baselines',
+		extension: `.security/*/${NETWORK_BASELINE_FILENAME}`,
+		parser: 'Bun.JSON5.parse',
+		usedBy: 'json5-config.ts, intel/network-baseline.ts, network loop',
+	},
+	{
 		configType: 'Policy files',
 		extension: '*.policy.toml',
 		parser: 'Bun.TOML.parse',
@@ -57,6 +67,7 @@ export const CONFIG_FORMAT_BEHAVIOR = {
 	json5Domains:
 		'domains/*.security.json5 — comments, unquoted keys, trailing commas via Bun.JSON5.parse',
 	vaultInventory: '.vault/<domain>.inventory.json5 — private secret metadata (JSON5)',
+	networkBaseline: `.security/<domain>/${NETWORK_BASELINE_FILENAME} — endpoint/health snapshots (JSON5)`,
 	tomlPolicy: 'security.policy.toml — severity defaults and override rules via Bun.TOML.parse',
 	noBunTomlParse: 'There is no bun.toml.parse — use Bun.TOML.parse and Bun.JSON5.parse',
 	bunfigNote: 'bunfig.toml is read by Bun itself; this runtime never parses it',
@@ -94,6 +105,8 @@ export interface ConfigFormatRuntimeInfo {
 	domainFiles: string[];
 	vaultCount: number;
 	vaultFiles: string[];
+	baselineCount: number;
+	baselineFiles: string[];
 	policyCount: number;
 	policyFiles: string[];
 	/** Project-root `security.policy.toml` (not template copies in subfolders). */
@@ -118,10 +131,6 @@ function arraysEqual(a: string[], b: string[]): boolean {
 	return left.every((value, index) => value === right[index]);
 }
 
-function isJson5Available(): boolean {
-	return typeof (Bun as {JSON5?: {parse?: unknown}}).JSON5?.parse === 'function';
-}
-
 function isTomlAvailable(): boolean {
 	return typeof (Bun as {TOML?: {parse?: unknown}}).TOML?.parse === 'function';
 }
@@ -137,6 +146,20 @@ function listVaultDir(root: string): string[] {
 /** Discover valid `.vault/*.inventory.json5` files under a project root. */
 export function discoverVaultFiles(root: string): string[] {
 	return listVaultDir(root).filter(filePath => filePath.endsWith('.inventory.json5'));
+}
+
+/** Discover network-baseline.json5 files under `.security/` (recursive). */
+export function discoverNetworkBaselineFiles(root: string): string[] {
+	const securityDir = path.join(root, '.security');
+	if (!existsSync(securityDir)) {
+		return [];
+	}
+	const glob = new Bun.Glob(`**/${NETWORK_BASELINE_FILENAME}`);
+	const files: string[] = [];
+	for (const relative of glob.scanSync({cwd: securityDir, absolute: false})) {
+		files.push(path.join(securityDir, relative));
+	}
+	return files.sort();
 }
 
 const INVALID_CONFIG_GLOBS: Array<{
@@ -332,6 +355,7 @@ export async function getConfigFormatRuntimeInfo(
 ): Promise<ConfigFormatRuntimeInfo> {
 	const domainFiles = discoverDomainFiles(root);
 	const vaultFiles = discoverVaultFiles(root);
+	const baselineFiles = discoverNetworkBaselineFiles(root);
 	const policyFiles = await discoverPolicyFiles(root);
 	const invalidFiles = discoverInvalidConfigFiles(root);
 	const bunfigPresent = await Bun.file(path.join(root, 'bunfig.toml')).exists();
@@ -346,6 +370,8 @@ export async function getConfigFormatRuntimeInfo(
 		domainFiles,
 		vaultCount: vaultFiles.length,
 		vaultFiles,
+		baselineCount: baselineFiles.length,
+		baselineFiles,
 		policyCount: policyFiles.length,
 		policyFiles,
 		rootPolicyPresent,
@@ -368,6 +394,9 @@ export function formatConfigFormatRuntimeTable(info: ConfigFormatRuntimeInfo): s
 		{area: 'vault', key: 'count', value: String(info.vaultCount)},
 		{area: 'vault', key: 'parser', value: 'Bun.JSON5.parse'},
 		{area: 'vault', key: 'glob', value: '.vault/*.inventory.json5'},
+		{area: 'baseline', key: 'count', value: String(info.baselineCount)},
+		{area: 'baseline', key: 'parser', value: 'Bun.JSON5.parse'},
+		{area: 'baseline', key: 'glob', value: `.security/*/${NETWORK_BASELINE_FILENAME}`},
 		{area: 'policy', key: 'count', value: String(info.policyCount)},
 		{area: 'policy', key: 'parser', value: 'Bun.TOML.parse'},
 		{area: 'policy', key: 'root', value: info.rootPolicyPresent ? 'yes' : 'no'},
@@ -388,6 +417,7 @@ export function formatConfigFormatBehaviorTable(): string {
 		[
 			{topic: 'domains', note: CONFIG_FORMAT_BEHAVIOR.json5Domains},
 			{topic: 'vault', note: CONFIG_FORMAT_BEHAVIOR.vaultInventory},
+			{topic: 'baseline', note: CONFIG_FORMAT_BEHAVIOR.networkBaseline},
 			{topic: 'policy', note: CONFIG_FORMAT_BEHAVIOR.tomlPolicy},
 			{topic: 'parsers', note: CONFIG_FORMAT_BEHAVIOR.noBunTomlParse},
 			{topic: 'bunfig', note: CONFIG_FORMAT_BEHAVIOR.bunfigNote},

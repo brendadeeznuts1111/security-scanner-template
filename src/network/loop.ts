@@ -1,14 +1,23 @@
-import {existsSync, readFileSync, statSync} from 'fs';
+import {existsSync, statSync} from 'fs';
 import path from 'path';
-import {auditBundleNetwork} from '../intel/network-audit.ts';
+import type {DomainConfig} from '../config/types.ts';
 import type {PackageSemverViolation} from '../intel/semver-checks.ts';
 import type {PatternMatch} from '../scan/patterns/index.ts';
+import {defaultNetworkBaselinePath} from '../intel/network-baseline.ts';
+import {
+	NetworkDriftFailure,
+	runNetworkProbeTick,
+	runNetworkTick,
+	type NetworkTickOptions,
+} from './tick.ts';
 import type {
 	NetworkAuditSummary,
 	NetworkHealthProbeResult,
-	NetworkHealthStatus,
 	NetworkLoopStatus,
 } from './types.ts';
+
+export {probeNetworkHealth} from './probe.ts';
+export {NetworkDriftFailure} from './tick.ts';
 
 export class NetworkHealthFailure extends Error {
 	readonly result: NetworkHealthProbeResult;
@@ -24,52 +33,30 @@ export interface NetworkLoopOptions {
 	domainId: string;
 	projectRoot: string;
 	distPath: string;
+	domainConfig?: DomainConfig | null;
 	healthUrl?: string;
+	healthUrlSecret?: string;
+	baselinePath?: string;
+	updateBaseline?: boolean;
 	probeInterval?: number;
 	watch?: boolean;
 	watchInterval?: number;
 	failOnHealth?: boolean;
+	failOnDrift?: boolean;
+	emitJson?: boolean;
+	emitHerdrTab?: boolean;
+	noColor?: boolean;
 	scanPatterns: (distPath: string) => Promise<PatternMatch[]>;
 	checkPackageVersions: (packages: Record<string, string>) => Promise<PackageSemverViolation[]>;
 	recordAudit?: (summary: NetworkAuditSummary) => Promise<void>;
 	onHealthFailure?: (result: NetworkHealthProbeResult) => void;
+	onDriftFailure?: (summary: NetworkAuditSummary) => void;
 }
 
 const DIST_GLOB = '**/*.{js,mjs,cjs,css,html,json}';
 
 const DEFAULT_PROBE_INTERVAL_MS = 8000;
 const DEFAULT_WATCH_INTERVAL_MS = 750;
-
-function resolveHealthStatus(ok: boolean, reachable: boolean): NetworkHealthStatus {
-	if (!reachable) return 'unreachable';
-	return ok ? 'healthy' : 'degraded';
-}
-
-/** Probe a health endpoint (exported for tests). */
-export async function probeNetworkHealth(
-	url: string,
-	timeoutMs = 10_000,
-): Promise<NetworkHealthProbeResult> {
-	const start = performance.now();
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
-	try {
-		const response = await fetch(url, {signal: controller.signal});
-		const latencyMs = Math.round(performance.now() - start);
-		return {
-			status: resolveHealthStatus(response.ok, true),
-			latencyMs,
-			statusCode: response.status,
-		};
-	} catch {
-		return {
-			status: 'unreachable',
-			latencyMs: Math.round(performance.now() - start),
-		};
-	} finally {
-		clearTimeout(timer);
-	}
-}
 
 /** Fingerprint a dist directory for change detection (exported for tests). */
 export async function computeDistFingerprint(dir: string): Promise<string> {
@@ -91,32 +78,19 @@ export async function computeDistFingerprint(dir: string): Promise<string> {
 	return Bun.hash(fingerprint).toString(16);
 }
 
-async function readDependencyMap(
-	projectRoot: string,
-	distPath: string,
-): Promise<Record<string, string> | null> {
-	const candidates = [
-		path.join(distPath, 'package.json'),
-		path.join(projectRoot, 'package.json'),
-	];
-	for (const pkgPath of candidates) {
-		if (!existsSync(pkgPath)) continue;
-		try {
-			const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-				dependencies?: Record<string, string>;
-				devDependencies?: Record<string, string>;
-			};
-			return {...pkg.dependencies, ...pkg.devDependencies};
-		} catch {
-			continue;
-		}
-	}
-	return null;
-}
-
 export class NetworkLoop {
 	private readonly options: Required<
-		Pick<NetworkLoopOptions, 'probeInterval' | 'watchInterval' | 'failOnHealth' | 'watch'>
+		Pick<
+			NetworkLoopOptions,
+			| 'probeInterval'
+			| 'watchInterval'
+			| 'failOnHealth'
+			| 'failOnDrift'
+			| 'watch'
+			| 'emitJson'
+			| 'emitHerdrTab'
+			| 'noColor'
+		>
 	> &
 		NetworkLoopOptions;
 	private running = false;
@@ -124,15 +98,21 @@ export class NetworkLoop {
 	private watchTimer?: ReturnType<typeof setInterval>;
 	private lastDistHash?: string;
 	private lastAuditAt?: string;
+	private resolvedHealthUrl?: string | null;
 	private probeCount = 0;
 	private auditCount = 0;
+	private lastExitCode = 0;
 
 	constructor(options: NetworkLoopOptions) {
 		this.options = {
 			probeInterval: DEFAULT_PROBE_INTERVAL_MS,
 			watchInterval: DEFAULT_WATCH_INTERVAL_MS,
 			failOnHealth: false,
+			failOnDrift: false,
 			watch: false,
+			emitJson: false,
+			emitHerdrTab: false,
+			noColor: false,
 			...options,
 		};
 	}
@@ -142,7 +122,11 @@ export class NetworkLoop {
 			running: this.running,
 			domain: this.options.domainId,
 			distPath: this.options.distPath,
-			healthUrl: this.options.healthUrl,
+			healthUrl: this.options.healthUrl ?? this.resolvedHealthUrl ?? undefined,
+			healthUrlSecret: this.options.healthUrlSecret,
+			baselinePath:
+				this.options.baselinePath ??
+				defaultNetworkBaselinePath(this.options.domainId, this.options.projectRoot),
 			probeIntervalMs: this.options.probeInterval,
 			watchEnabled: this.options.watch === true,
 			watchIntervalMs: this.options.watchInterval,
@@ -150,19 +134,27 @@ export class NetworkLoop {
 			lastDistHash: this.lastDistHash,
 			probeCount: this.probeCount,
 			auditCount: this.auditCount,
+			failOnHealth: this.options.failOnHealth,
+			failOnDrift: this.options.failOnDrift,
+			emitJson: this.options.emitJson,
+			emitHerdrTab: this.options.emitHerdrTab,
 		};
 	}
 
 	async start(): Promise<void> {
 		if (this.running) return;
 		this.running = true;
-		console.error(`[${this.options.domainId}] Starting network loop`);
 
-		await this.fullAudit();
+		const first = await this.runTick('initial');
+		this.lastExitCode = first.exitCode;
+		if (first.exitCode !== 0) {
+			this.handleFatalExit(first);
+			return;
+		}
 
-		if (this.options.healthUrl) {
+		if (this.resolvedHealthUrl) {
 			this.probeTimer = setInterval(() => {
-				void this.probeHealth();
+				void this.runProbeOnly();
 			}, this.options.probeInterval);
 		}
 
@@ -181,93 +173,136 @@ export class NetworkLoop {
 		if (this.watchTimer) clearInterval(this.watchTimer);
 		this.probeTimer = undefined;
 		this.watchTimer = undefined;
-		console.error(`[${this.options.domainId}] Network loop stopped`);
 	}
 
 	/** Run a single audit cycle (for tests and one-shot CLI use). */
 	async auditNow(): Promise<NetworkAuditSummary> {
-		return this.fullAudit();
+		const result = await this.runTick('audit');
+		return result.summary;
 	}
 
-	private async fullAudit(): Promise<NetworkAuditSummary> {
-		const distPath = this.options.distPath;
-		const summaryParts: string[] = [];
+	lastExit(): number {
+		return this.lastExitCode;
+	}
 
-		const patternMatches = await this.options.scanPatterns(distPath);
-		summaryParts.push(`patterns=${patternMatches.length}`);
-
-		const bundleNetwork = await auditBundleNetwork(distPath);
-		if (bundleNetwork.unique > 0) {
-			summaryParts.push(`endpoints=${bundleNetwork.unique}`);
-		}
-		if (bundleNetwork.healthRoutes.length > 0) {
-			summaryParts.push(`routes=${bundleNetwork.healthRoutes.length}`);
-		}
-
-		let semverViolations: PackageSemverViolation[] = [];
-		const deps = await readDependencyMap(this.options.projectRoot, distPath);
-		if (deps && Object.keys(deps).length > 0) {
-			semverViolations = await this.options.checkPackageVersions(deps);
-			summaryParts.push(`semver=${semverViolations.length}`);
-		}
-
-		let health: NetworkHealthProbeResult | undefined;
-		if (this.options.healthUrl) {
-			health = await this.probeHealth();
-			summaryParts.push(`health=${health.status} latency=${health.latencyMs}ms`);
-		}
-
-		const summary: NetworkAuditSummary = {
-			domain: this.options.domainId,
-			timestamp: new Date().toISOString(),
-			patternMatches: patternMatches.length,
-			semverViolations: semverViolations.length,
-			bundleEndpoints: bundleNetwork.unique,
-			bundleHealthRoutes: bundleNetwork.healthRoutes.length,
-			healthStatus: health?.status,
-			healthLatencyMs: health?.latencyMs,
+	private tickBase(phase: NetworkTickOptions['phase'], trigger?: string): NetworkTickOptions {
+		return {
+			domainId: this.options.domainId,
+			projectRoot: this.options.projectRoot,
+			distPath: this.options.distPath,
+			phase,
+			trigger,
+			healthUrl: this.options.healthUrl,
+			healthUrlSecret: this.options.healthUrlSecret,
+			baselinePath: this.options.baselinePath,
+			updateBaseline: this.options.updateBaseline,
+			failOnHealth: this.options.failOnHealth,
+			failOnDrift: this.options.failOnDrift,
+			emitJson: this.options.emitJson,
+			emitHerdrTab: this.options.emitHerdrTab,
+			noColor: this.options.noColor,
+			domainConfig: this.options.domainConfig,
+			scanPatterns: this.options.scanPatterns,
+			checkPackageVersions: this.options.checkPackageVersions,
 		};
+	}
 
-		this.lastAuditAt = summary.timestamp;
+	private async runTick(
+		phase: NetworkTickOptions['phase'],
+		trigger?: string,
+	): Promise<Awaited<ReturnType<typeof runNetworkTick>>> {
+		const result = await runNetworkTick(this.tickBase(phase, trigger));
+		if (!this.resolvedHealthUrl && result.summary.healthStatus) {
+			const {resolveHealthUrl} = await import('./health-secrets.ts');
+			const resolved = await resolveHealthUrl({
+				healthUrl: this.options.healthUrl,
+				healthUrlSecret: this.options.healthUrlSecret,
+				domain: this.options.domainId,
+				domainService: this.options.domainConfig?.secrets.service,
+			});
+			this.resolvedHealthUrl = resolved.url;
+		}
+
+		this.lastAuditAt = result.summary.timestamp;
 		this.auditCount += 1;
-		console.error(`[${this.options.domainId}] audit ${summaryParts.join(' ')}`);
 
 		if (this.options.recordAudit) {
-			await this.options.recordAudit(summary);
+			await this.options.recordAudit(result.summary);
 		}
 
-		return summary;
-	}
-
-	private async probeHealth(): Promise<NetworkHealthProbeResult> {
-		const url = this.options.healthUrl;
-		if (!url) {
-			return {status: 'unreachable', latencyMs: 0};
-		}
-
-		const result = await probeNetworkHealth(url);
-		this.probeCount += 1;
-		console.error(
-			`[${this.options.domainId}] probe health=${result.status} probes=${this.probeCount} latency=${result.latencyMs}ms`,
-		);
-
-		if (this.options.failOnHealth && result.status !== 'healthy') {
-			if (this.options.onHealthFailure) {
-				this.options.onHealthFailure(result);
-			} else {
-				throw new NetworkHealthFailure(result);
+		if (result.exitCode !== 0) {
+			this.lastExitCode = result.exitCode;
+			if (result.delta?.hasEndpointDrift) {
+				this.options.onDriftFailure?.(result.summary);
+			}
+			if (
+				this.options.failOnHealth &&
+				result.summary.healthStatus &&
+				result.summary.healthStatus !== 'healthy'
+			) {
+				this.options.onHealthFailure?.({
+					status: result.summary.healthStatus,
+					latencyMs: result.summary.healthLatencyMs ?? 0,
+				});
 			}
 		}
 
 		return result;
 	}
 
+	private async runProbeOnly(): Promise<void> {
+		if (!this.resolvedHealthUrl) return;
+		this.probeCount += 1;
+		const result = await runNetworkProbeTick(this.resolvedHealthUrl, this.options.domainId, {
+			noColor: this.options.noColor,
+			domainConfig: this.options.domainConfig,
+			emitJson: this.options.emitJson,
+			failOnHealth: false,
+		});
+		if (this.options.failOnHealth && result.status !== 'healthy') {
+			this.handleHealthFailure(result);
+		}
+	}
+
 	private async watchDist(): Promise<void> {
 		const currentHash = await computeDistFingerprint(this.options.distPath);
 		if (this.lastDistHash && currentHash !== this.lastDistHash) {
-			console.error(`[${this.options.domainId}] watch (dist changed) running audit`);
-			await this.fullAudit();
+			const tick = await this.runTick('watch', 'dist changed');
+			this.lastExitCode = tick.exitCode;
+			if (tick.exitCode !== 0) {
+				this.handleFatalExit(tick);
+			}
 		}
 		this.lastDistHash = currentHash;
+	}
+
+	private handleHealthFailure(result: NetworkHealthProbeResult): void {
+		this.stop();
+		if (this.options.onHealthFailure) {
+			this.options.onHealthFailure(result);
+		} else {
+			throw new NetworkHealthFailure(result);
+		}
+	}
+
+	private handleFatalExit(tick: Awaited<ReturnType<typeof runNetworkTick>>): void {
+		this.stop();
+		if (tick.delta?.hasEndpointDrift) {
+			if (this.options.onDriftFailure) {
+				this.options.onDriftFailure(tick.summary);
+			} else {
+				throw new NetworkDriftFailure(tick.delta);
+			}
+		}
+		if (
+			this.options.failOnHealth &&
+			tick.summary.healthStatus &&
+			tick.summary.healthStatus !== 'healthy'
+		) {
+			this.handleHealthFailure({
+				status: tick.summary.healthStatus,
+				latencyMs: tick.summary.healthLatencyMs ?? 0,
+			});
+		}
 	}
 }

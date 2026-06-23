@@ -52,7 +52,9 @@ import {snapshotPolicyFromDocument} from '../policy/engine.ts';
 import {loadProjectPolicies} from '../policy/loader.ts';
 import {resolveScannerVersion} from '../intel/scanner-version.ts';
 import {NetworkLoop, type NetworkLoopOptions} from '../network/loop.ts';
+import {resolveNetworkConfig, type NetworkConfigOverrides} from '../network/resolve-config.ts';
 import type {NetworkAuditSummary, NetworkLoopStatus} from '../network/types.ts';
+import {defaultNetworkBaselinePath} from '../intel/network-baseline.ts';
 import path from 'path';
 
 export type RouteHandler = (req: Request) => Response | Promise<Response>;
@@ -69,6 +71,7 @@ export class Service {
 	private domain?: Domain;
 	private server?: ReturnType<typeof Bun.serve>;
 	private networkLoop?: NetworkLoop;
+	private lastNetworkExitCode = 0;
 
 	private readonly registry: DomainRegistry;
 	private readonly domainName: string;
@@ -179,42 +182,66 @@ export class Service {
 	 * Start the per-domain network audit loop (dist patterns, semver, health).
 	 */
 	async startNetworkMonitor(
-		options: {onHealthFailure?: NetworkLoopOptions['onHealthFailure']} = {},
+		options: {
+			networkOverrides?: NetworkConfigOverrides;
+			onHealthFailure?: NetworkLoopOptions['onHealthFailure'];
+			onDriftFailure?: NetworkLoopOptions['onDriftFailure'];
+		} = {},
 	): Promise<NetworkLoopStatus> {
 		if (!this.domain) {
 			await this.initialize();
 		}
 
 		const config = this.registry.get(this.domainName);
-		const network = config.service?.network;
-		if (!network?.enabled) {
+		const baseNetwork = config.service?.network;
+		if (!baseNetwork?.enabled) {
 			throw new Error(`Network monitor is disabled for domain ${this.domainName}`);
 		}
-
 		if (this.networkLoop?.status().running) {
 			return this.networkLoop.status();
 		}
 
 		const projectRoot = this.registry.root;
-		const distPath = path.resolve(projectRoot, network.distPath ?? './dist');
+		const resolved = resolveNetworkConfig({
+			domain: this.domainName,
+			projectRoot,
+			network: baseNetwork,
+			domainConfig: config,
+			overrides: options.networkOverrides,
+		});
 
 		this.networkLoop = new NetworkLoop({
 			domainId: this.domainName,
 			projectRoot,
-			distPath,
-			healthUrl: network.healthUrl,
-			probeInterval: network.probeInterval,
-			watch: network.watch,
-			watchInterval: network.watchInterval,
-			failOnHealth: network.failOnHealth,
+			distPath: resolved.resolvedDistPath,
+			domainConfig: config,
+			healthUrl: resolved.healthUrl,
+			healthUrlSecret: resolved.healthUrlSecret,
+			baselinePath: resolved.resolvedBaselinePath,
+			updateBaseline: resolved.updateBaseline,
+			probeInterval: resolved.probeInterval,
+			watch: resolved.watch,
+			watchInterval: resolved.watchInterval,
+			failOnHealth: resolved.failOnHealth,
+			failOnDrift: resolved.failOnDrift,
+			emitJson: resolved.json,
+			emitHerdrTab: resolved.herdrTab,
+			noColor: resolved.noColor,
 			scanPatterns: dir => this.registry.scanPatterns(dir, projectRoot),
 			checkPackageVersions: packages => this.registry.checkPackageVersions(packages),
 			recordAudit: summary => this.recordNetworkAudit(summary),
 			onHealthFailure: options.onHealthFailure,
+			onDriftFailure: options.onDriftFailure,
 		});
 
 		await this.networkLoop.start();
+		this.lastNetworkExitCode = this.networkLoop.lastExit();
 		return this.networkLoop.status();
+	}
+
+	/** Exit code from the most recent network monitor start/tick (CI gates). */
+	lastNetworkExit(): number {
+		return this.networkLoop?.lastExit() ?? this.lastNetworkExitCode;
 	}
 
 	/** Stop the network audit loop without stopping the HTTP server. */
@@ -238,11 +265,19 @@ export class Service {
 			domain: this.domainName,
 			distPath: path.resolve(projectRoot, network?.distPath ?? './dist'),
 			healthUrl: network?.healthUrl,
+			healthUrlSecret: network?.healthUrlSecret,
+			baselinePath:
+				network?.baselinePath ??
+				defaultNetworkBaselinePath(this.domainName, projectRoot),
 			probeIntervalMs: network?.probeInterval ?? 8000,
 			watchEnabled: network?.watch === true,
 			watchIntervalMs: network?.watchInterval ?? 750,
 			probeCount: 0,
 			auditCount: 0,
+			failOnHealth: network?.failOnHealth === true,
+			failOnDrift: network?.failOnDrift === true,
+			emitJson: network?.json === true,
+			emitHerdrTab: network?.herdrTab === true,
 		};
 	}
 

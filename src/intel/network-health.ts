@@ -1,95 +1,15 @@
-import {colorize, TERMINAL} from '../color/index.ts';
-import {detectSecretsBackend} from '../secrets-backend.ts';
 import {probeEndpointMeta} from './endpoint-probe.ts';
 import type {EndpointMetaProbeResult} from './endpoint-types.ts';
 import type {NetworkHealthStatus} from './network-baseline.ts';
 
-export interface HealthUrlSecretRef {
-	service: string;
-	name: string;
-	raw: string;
-}
-
-export interface HealthUrlResolution {
-	url: string | null;
-	source: 'literal' | 'secret' | 'none';
-	secretRef?: HealthUrlSecretRef;
-	backend?: string;
-	platform?: string;
-	channel: 'vault';
-}
-
-/** Parse `service/name/path` secret spec (e.g. `sports-terminal/health/prod`). */
-export function parseHealthUrlSecretSpec(spec: string): HealthUrlSecretRef {
-	const trimmed = spec.trim();
-	const slash = trimmed.indexOf('/');
-	if (slash <= 0) {
-		return {service: trimmed, name: 'health', raw: trimmed};
-	}
-	return {
-		service: trimmed.slice(0, slash),
-		name: trimmed.slice(slash + 1),
-		raw: trimmed,
-	};
-}
-
-/**
- * Resolve a health probe URL from a literal or Bun.secrets reference.
- * Logs under the domain vault channel; on Windows uses credential-manager isolation.
- */
-export async function resolveHealthUrl(options: {
-	healthUrl?: string;
-	healthUrlSecret?: string;
-	domainService?: string;
-}): Promise<HealthUrlResolution> {
-	if (options.healthUrl?.trim()) {
-		return {url: options.healthUrl.trim(), source: 'literal', channel: 'vault'};
-	}
-
-	if (!options.healthUrlSecret?.trim()) {
-		return {url: null, source: 'none', channel: 'vault'};
-	}
-
-	const secretRef = parseHealthUrlSecretSpec(options.healthUrlSecret);
-	const service = options.domainService ?? secretRef.service;
-	const backend = await detectSecretsBackend();
-
-	if (typeof Bun.secrets === 'undefined') {
-		logSecretChannel(
-			`[secrets] Bun.secrets unavailable — cannot resolve ${secretRef.raw}`,
-			backend.platform,
-		);
-		return {url: null, source: 'secret', secretRef, ...backend, channel: 'vault'};
-	}
-
-	try {
-		const value = await Bun.secrets.get({service, name: secretRef.name});
-		const isolation =
-			backend.platform === 'win32' ? ' enterprise-credential-isolation' : '';
-		logSecretChannel(
-			`[secrets] resolved ${secretRef.raw} via ${backend.backend}${isolation} channel=vault`,
-			backend.platform,
-		);
-		return {
-			url: value,
-			source: 'secret',
-			secretRef: {...secretRef, service},
-			...backend,
-			channel: 'vault',
-		};
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		logSecretChannel(
-			`[secrets] failed ${secretRef.raw}: ${message}`,
-			backend.platform,
-		);
-		return {url: null, source: 'secret', secretRef, ...backend, channel: 'vault'};
-	}
-}
-
-function logSecretChannel(message: string, _platform?: string): void {
-	console.error(colorize(TERMINAL.primary, message));
-}
+export {
+	formatSecretLogLabel,
+	networkHealthSecretService,
+	resolveHealthSecretRef,
+	resolveHealthUrl,
+	type HealthUrlResolution,
+	type HealthUrlSecretRef,
+} from '../network/health-secrets.ts';
 
 export interface NetworkHealthProbeSummary {
 	status: NetworkHealthStatus;
