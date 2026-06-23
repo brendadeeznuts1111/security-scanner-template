@@ -4,7 +4,7 @@ import {setupEnvCleanup, startFeedServer, packageFixture, readLines} from '../he
 
 setupEnvCleanup();
 
-test('Should emit structured events to a log file', async () => {
+test('emit structured events to a log file', async () => {
 	const logPath = `/tmp/scanner-events-${crypto.randomUUID()}.log`;
 	process.env.SCANNER_LOG_PATH = logPath;
 

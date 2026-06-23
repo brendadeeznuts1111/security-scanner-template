@@ -55,14 +55,14 @@ test('discoverDomainFiles finds domain files', async () => {
 
 test('loadDomainFile parses JSON5 and applies defaults', async () => {
 	await writeDomain(
-		'ledger',
+		'com.example.ledger',
 		`{
 			domain: "com.example.ledger",
 			colors: { primary: "#00FF00" }
 		}`,
 	);
 
-	const loaded = await loadDomainFile(`${TEST_DIR}/domains/ledger.security.json5`);
+	const loaded = await loadDomainFile(`${TEST_DIR}/domains/com.example.ledger.security.json5`);
 	expect(loaded.domain).toBe('com.example.ledger');
 	expect(loaded.config.colors.primary).toBe('#00FF00');
 	expect(loaded.config.colors.fatal).toBe('#FF453A');

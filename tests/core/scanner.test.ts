@@ -39,7 +39,7 @@ test('Safe packages should return no advisories', async () => {
 	expect(advisories.length).toBe(0);
 });
 
-test('Should handle multiple packages with mixed security status', async () => {
+test('handle multiple packages with mixed security status', async () => {
 	const advisories = await scanner.scan({
 		packages: [
 			packageFixture('event-stream', '3.3.6', '^3.3.0'), // malicious
@@ -51,7 +51,7 @@ test('Should handle multiple packages with mixed security status', async () => {
 	expect(advisories[0]?.package).toBe('event-stream');
 });
 
-test('Should differentiate between versions of the same package', async () => {
+test('differentiate between versions of the same package', async () => {
 	const maliciousVersion = await scanner.scan({
 		packages: [packageFixture('event-stream', '3.3.6', '3.3.6')],
 	});
@@ -64,7 +64,7 @@ test('Should differentiate between versions of the same package', async () => {
 	expect(safeVersion.length).toBe(0);
 });
 
-test('Should handle scoped packages correctly', async () => {
+test('handle scoped packages correctly', async () => {
 	const advisories = await scanner.scan({
 		packages: [packageFixture('@types/node', '20.0.0', '^20.0.0')],
 	});
@@ -72,7 +72,7 @@ test('Should handle scoped packages correctly', async () => {
 	expect(advisories.length).toBe(0);
 });
 
-test('Should warn about protestware and adware', async () => {
+test('warn about protestware and adware', async () => {
 	const {server, url} = startFeedServer([
 		{
 			package: 'protest-pkg',
@@ -104,7 +104,7 @@ test('Should warn about protestware and adware', async () => {
 	server.stop(true);
 });
 
-test('Should warn about deprecated packages', async () => {
+test('warn about deprecated packages', async () => {
 	const {server, url} = startFeedServer([
 		{
 			package: 'deprecated-pkg',
@@ -132,7 +132,7 @@ test('Should warn about deprecated packages', async () => {
 	server.stop(true);
 });
 
-test('Should ignore unknown threat categories', async () => {
+test('ignore unknown threat categories', async () => {
 	const {server, url} = startFeedServer([
 		{
 			package: 'unknown-cat-pkg',
@@ -154,7 +154,7 @@ test('Should ignore unknown threat categories', async () => {
 	server.stop(true);
 });
 
-test('Should expose scanner capabilities', () => {
+test('expose scanner capabilities', () => {
 	expect(scannerCapabilities).toMatchObject({
 		version: '1.0.0',
 		apiVersion: '1',
@@ -172,7 +172,7 @@ test('Should expose scanner capabilities', () => {
 	});
 });
 
-test('Should load default rules from rules/security-rules.json', async () => {
+test('load default rules from rules/security-rules.json', async () => {
 	const rules = await Bun.file('./rules/security-rules.json').json();
 	const eventStreamRule = rules.find((rule: any) => rule.package === 'event-stream');
 	expect(eventStreamRule).toBeDefined();
@@ -191,7 +191,7 @@ test('Should load default rules from rules/security-rules.json', async () => {
 	]);
 });
 
-test('Should suppress threats for packages on the allowlist', async () => {
+test('suppress threats for packages on the allowlist', async () => {
 	const {server, url} = startFeedServer({
 		rules: [
 			{
@@ -215,7 +215,7 @@ test('Should suppress threats for packages on the allowlist', async () => {
 	server.stop(true);
 });
 
-test('Should not suppress non-allowlisted versions of an allowlisted package', async () => {
+test('not suppress non-allowlisted versions of an allowlisted package', async () => {
 	const {server, url} = startFeedServer({
 		rules: [
 			{

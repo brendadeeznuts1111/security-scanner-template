@@ -182,7 +182,7 @@ export class SecurityShell {
 			'  domains                           List loaded domains',
 			'  status [domain]                   Show domain configuration summary',
 			'  branding                          Branding + service profile for active domain',
-			'  matrix [section] [--desc]         Field matrix (template/domain/branding/service/secrets)',
+			'  matrix [section] [--desc|--alignment]  Field / alignment matrix (defaults + options)',
 			'  colors                            Show domain palette (Bun.color ANSI swatches)',
 			'  badge [--size N]                  Write domain badge PNG (Bun.Image)',
 			'  features                          Show compile-time feature flags',

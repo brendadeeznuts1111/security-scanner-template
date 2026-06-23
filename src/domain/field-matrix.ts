@@ -1,4 +1,5 @@
 import type {DomainConfig} from '../config/types.ts';
+import {applyDefaults} from '../config/defaults.ts';
 import {TEMPLATE_PATH, loadTemplate} from '../config/loader.ts';
 import {domainBrandingProfile, type DomainBrandingProfile} from './branding.ts';
 import {defaultJsonlAuditPath, resolveDomainAuditPath} from './audit-paths.ts';
@@ -47,12 +48,47 @@ export interface DomainFieldValueRow extends DomainFieldRow {
 	source: 'config' | 'default' | 'derived';
 }
 
+/** Resolved value vs strong default — for operator alignment views. */
+export interface DomainFieldAlignmentRow extends DomainFieldValueRow {
+	defaultValue: string;
+	options?: readonly string[];
+	aligned: boolean;
+}
+
 export interface FieldMatrixOptions {
 	section?: DomainFieldSection;
 	onlySet?: boolean;
 }
 
 const MATRIX_COLUMNS = ['field', 'template', 'domain', 'branding', 'service', 'secrets'] as const;
+
+const STRONG_DEFAULT_DOMAIN = 'com.example.defaults';
+
+/** Allowed values for enum-like catalog fields (shown in alignment matrix). */
+export const FIELD_OPTIONS: Partial<Record<string, readonly string[]>> = {
+	'identity.algorithm': ['bcrypt', 'argon2id', 'argon2i', 'argon2d'],
+	'csrf.mode': ['stateless', 'session-bound'],
+	'csrf.encoding': ['base64', 'base64url', 'hex'],
+	'csrf.algorithm': ['blake2b256', 'blake2b512', 'sha256', 'sha384', 'sha512', 'sha512-256'],
+	'ops.report.format': ['markdown', 'html', 'json'],
+	'audit.jsonl.compressionFormat': ['gzip', 'zstd'],
+	'audit.sqlite.compressionFormat': ['gzip', 'zstd'],
+	'service.http3': ['true', 'false'],
+	'service.http1': ['true', 'false'],
+	'service.interactive': ['true', 'false'],
+	'supplyChain.enabled': ['true', 'false'],
+	'csrf.enabled': ['true', 'false'],
+	'secrets.allowUnrestrictedAccess': ['true', 'false'],
+	'visual.qr.enabled': ['true', 'false'],
+	'ops.report.operatorQr.enabled': ['true', 'false'],
+	'audit.jsonl.compress': ['true', 'false'],
+	'audit.sqlite.compress': ['true', 'false'],
+	'identity.requireSpecialChar': ['true', 'false'],
+	'intel.dns.requireResolution': ['true', 'false'],
+	'tls.useSystemCA': ['true', 'false'],
+};
+
+let strongDefaultByField: Map<string, string> | null = null;
 
 /**
  * Canonical catalog of every domain config field and how it maps across layers.
@@ -611,6 +647,64 @@ function formatValue(value: unknown): string {
 	return String(value);
 }
 
+function resolveStrongDefaultByField(): Map<string, string> {
+	if (strongDefaultByField) return strongDefaultByField;
+
+	const config = applyDefaults({
+		domain: STRONG_DEFAULT_DOMAIN,
+		csrf: {enabled: false, tokenLength: 32},
+	});
+
+	strongDefaultByField = new Map(
+		DOMAIN_FIELD_MATRIX.map(row => {
+			let value: string;
+			if (row.field === 'secrets.service' || row.field === 'token.issuer') {
+				value = STRONG_DEFAULT_DOMAIN;
+			} else if (row.field === 'audit.jsonl.path') {
+				value = defaultJsonlAuditPath(STRONG_DEFAULT_DOMAIN);
+			} else {
+				value = formatValue(getByPath(config, row.field));
+			}
+			return [row.field, value] as const;
+		}),
+	);
+
+	return strongDefaultByField;
+}
+
+export function strongDefaultForField(field: string): string {
+	return resolveStrongDefaultByField().get(field) ?? '(unset)';
+}
+
+function isFieldAligned(
+	value: string,
+	defaultValue: string,
+	source: DomainFieldValueRow['source'],
+): boolean {
+	if (source === 'derived') return true;
+	return value === defaultValue;
+}
+
+/**
+ * Alignment rows: resolved value, strong default, options, and match flag.
+ */
+export function domainFieldAlignmentRows(
+	config: DomainConfig,
+	options: FieldMatrixOptions = {},
+): DomainFieldAlignmentRow[] {
+	const defaults = resolveStrongDefaultByField();
+	return domainFieldValueRows(config, options).map(row => {
+		const defaultValue = defaults.get(row.field) ?? '(unset)';
+		const fieldOptions = FIELD_OPTIONS[row.field];
+		return {
+			...row,
+			defaultValue,
+			options: fieldOptions,
+			aligned: isFieldAligned(row.value, defaultValue, row.source),
+		};
+	});
+}
+
 /**
  * Rows with resolved values from a loaded domain config.
  */
@@ -681,6 +775,41 @@ export function formatFieldMatrixTable(
 		}
 	}
 
+	return lines.join('\n');
+}
+
+/**
+ * Alignment table: field | value | default | source | aligned | options.
+ */
+export function formatAlignmentMatrixTable(rows: readonly DomainFieldAlignmentRow[]): string {
+	const fieldWidth = 28;
+	const valueWidth = 22;
+	const defaultWidth = 22;
+	const sourceWidth = 8;
+	const alignedWidth = 7;
+	const header = [
+		pad('field', fieldWidth),
+		pad('value', valueWidth),
+		pad('default', defaultWidth),
+		pad('source', sourceWidth),
+		pad('aligned', alignedWidth),
+		pad('options', 24),
+	].join(' ');
+
+	const lines = [header, '-'.repeat(header.length)];
+	for (const row of rows) {
+		const options = row.options?.join('|') ?? '·';
+		lines.push(
+			[
+				pad(row.field, fieldWidth),
+				pad(row.value, valueWidth),
+				pad(row.defaultValue, defaultWidth),
+				pad(row.source, sourceWidth),
+				pad(row.aligned ? 'yes' : 'no', alignedWidth),
+				pad(options, 24),
+			].join(' '),
+		);
+	}
 	return lines.join('\n');
 }
 

@@ -55,7 +55,7 @@ case "${1:-all}" in
     commit_group 7 "feat(cli): sp, scan, xref, csrf, build commands and domain templates" \
       src/cli/sp.ts src/cli/scan.ts src/cli/xref.ts src/cli/csrf.ts src/cli/build.ts \
       src/domains/csrf.ts src/domains/identity.ts src/csrf/ src/identity/ \
-      domains/shadow.security.json5 domains/telegram.security.json5 domains/toolchain.security.json5 \
+      domains/com.factory-wager.shadow.security.json5 domains/com.factory-wager.telegram.security.json5 domains/com.factory-wager.toolchain.security.json5 \
       templates/domain.template.json5 \
       tests/cli/csrf.test.ts tests/domains/csrf.test.ts tests/domains/identity.test.ts \
       tests/csrf/ tests/xref/ tests/build/

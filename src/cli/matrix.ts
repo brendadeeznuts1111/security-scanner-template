@@ -5,8 +5,10 @@ import {domainRegistry} from '../config/registry.ts';
 import {loadDomainConfigById, loadTemplate} from '../config/loader.ts';
 import {
 	DOMAIN_FIELD_MATRIX,
+	domainFieldAlignmentRows,
 	domainFieldValueRows,
 	filterFieldMatrix,
+	formatAlignmentMatrixTable,
 	formatBrandingShowcase,
 	formatFieldMatrixTable,
 	listFieldMatrixSections,
@@ -41,6 +43,8 @@ async function main(): Promise<void> {
 			'description': {type: 'boolean'},
 			'only-set': {type: 'boolean'},
 			'concerns': {type: 'boolean'},
+			'alignment': {type: 'boolean'},
+			'defaults': {type: 'boolean'},
 			'tag': {type: 'string'},
 			'json': {type: 'boolean'},
 			'help': {type: 'boolean', short: 'h'},
@@ -54,8 +58,11 @@ async function main(): Promise<void> {
   bun run matrix --branding --domain <reverse-dns>
   bun run matrix --concerns [--domain <reverse-dns> | --template] [--tag vault]
   bun run matrix --validate
+  bun run matrix --domain <reverse-dns> --alignment [--section <name>] [--json]
+  bun run matrix --template --defaults
 
 Show the domain field matrix: template × domain × branding × service × secrets.
+--alignment adds value/default/source/options columns with strong defaults.
 Concern map: ast-grep-style tags → channels/colors with base + bright values.
 
 Sections: ${SECTIONS.join(', ')}`);
@@ -154,6 +161,17 @@ Sections: ${SECTIONS.join(', ')}`);
 
 	if (values.template || positionals[0] === 'template') {
 		const loaded = await loadTemplateFieldMatrix();
+		if (values.alignment || values.defaults) {
+			const alignmentRows = domainFieldAlignmentRows(loaded.template, {section});
+			title = `template alignment matrix (${loaded.template.domain})`;
+			if (values.json) {
+				console.log(JSON.stringify(alignmentRows, null, 2));
+				process.exit(0);
+			}
+			console.log(colorize(TERMINAL.scannerInfo, title));
+			console.log(formatAlignmentMatrixTable(alignmentRows));
+			process.exit(0);
+		}
 		valueRows = loaded.rows;
 		if (section) {
 			valueRows = valueRows.filter(row => row.section === section);
@@ -163,6 +181,20 @@ Sections: ${SECTIONS.join(', ')}`);
 	} else if (values.domain) {
 		await domainRegistry.loadAll();
 		const config = domainRegistry.get(values.domain);
+		if (values.alignment) {
+			const alignmentRows = domainFieldAlignmentRows(config, {
+				section,
+				onlySet: values['only-set'] === true,
+			});
+			title = `alignment matrix (${values.domain})`;
+			if (values.json) {
+				console.log(JSON.stringify(alignmentRows, null, 2));
+				process.exit(0);
+			}
+			console.log(colorize(TERMINAL.scannerInfo, title));
+			console.log(formatAlignmentMatrixTable(alignmentRows));
+			process.exit(0);
+		}
 		valueRows = domainFieldValueRows(config, {
 			section,
 			onlySet: values['only-set'] === true,
@@ -182,11 +214,26 @@ Sections: ${SECTIONS.join(', ')}`);
 		process.exit(0);
 	}
 
+	if (values.defaults && valueRows) {
+		const alignmentRows = domainFieldAlignmentRows(
+			values.domain
+				? domainRegistry.get(values.domain)
+				: (await loadTemplateFieldMatrix()).template,
+			{section},
+		);
+		title = values.domain
+			? `alignment matrix (${values.domain})`
+			: `template alignment matrix (${alignmentRows[0]?.value ? 'template' : 'defaults'})`;
+		console.log(colorize(TERMINAL.scannerInfo, title));
+		console.log(formatAlignmentMatrixTable(alignmentRows));
+		process.exit(0);
+	}
+
 	console.log(colorize(TERMINAL.scannerInfo, title));
 	console.log(
 		formatFieldMatrixTable(rows, {
 			includeDescription: values.description === true,
-			values: valueRows !== undefined,
+			values: valueRows !== undefined || values.defaults === true,
 			valueRows,
 		}),
 	);

@@ -23,9 +23,10 @@ async function writeDomain(name: string, contents: string): Promise<void> {
 }
 
 function loadedFixture(config: Record<string, unknown>) {
+	const domain = (config.domain as string) ?? 'com.example.test';
 	return {
-		domain: (config.domain as string) ?? 'com.example.test',
-		path: '/tmp/test.security.json5',
+		domain,
+		path: `/tmp/domains/${domain}.security.json5`,
 		config: applyDefaults(config),
 	};
 }
@@ -56,6 +57,36 @@ test('checkDomain reports invalid domain name', () => {
 	expect(result.issues.some(i => i.field === 'domain')).toBe(true);
 });
 
+test('checkDomain reports domain filename mismatch', () => {
+	const result = checkDomain({
+		domain: 'com.example.filename',
+		path: '/tmp/domains/short.security.json5',
+		config: applyDefaults({
+			domain: 'com.example.filename',
+			csrf: {enabled: false, tokenLength: 32},
+		}),
+	});
+	expect(result.ok).toBe(false);
+	expect(
+		result.issues.some(i => i.field === '_filename' && i.code === 'DOMAIN_FILENAME_MISMATCH'),
+	).toBe(true);
+});
+
+test('checkDomain reports invalid secret inventory names', () => {
+	const result = checkDomain(
+		loadedFixture({
+			domain: 'com.example.secrets-name',
+			secrets: {inventory: [{name: 'BAD_NAME', required: false}]},
+		}),
+	);
+	expect(result.ok).toBe(false);
+	expect(
+		result.issues.some(
+			i => i.field === 'secrets.inventory.BAD_NAME' && i.code === 'SECRET_NAME_INVALID',
+		),
+	).toBe(true);
+});
+
 test('checkDomain reports secrets.service drift after defaults merge', () => {
 	const config = applyDefaults({
 		domain: 'com.example.secrets',
@@ -84,7 +115,7 @@ test('checkDomain warns when audit path is set without master key', () => {
 	try {
 		const result = checkDomain({
 			domain: config.domain,
-			path: '/tmp/test.security.json5',
+			path: `/tmp/domains/${config.domain}.security.json5`,
 			config,
 		});
 		expect(
@@ -105,7 +136,7 @@ test('checkDomain reports token.issuer drift after defaults merge', () => {
 	config.token.issuer = 'com.other.issuer';
 	const result = checkDomain({
 		domain: config.domain,
-		path: '/tmp/test.security.json5',
+		path: `/tmp/domains/${config.domain}.security.json5`,
 		config,
 	});
 	expect(result.ok).toBe(true);
@@ -203,7 +234,33 @@ test('checkAllDomains validates discovered domain files', async () => {
 	expect(result.runtime.diagnostics.utilities.nanosecondsAvailable).toBe(true);
 	expect(result.runtime.diagnostics.utilities.stringWidthAvailable).toBe(true);
 	expect(result.runtime.diagnostics.signals.ctrlCDocsUrl).toContain('ctrl-c');
+	expect(result.runtime.install.docsUrl).toContain('cli/install');
+	expect(result.runtime.install.defaultBackend).toBeTruthy();
+	expect(result.runtime.install.targetValid).toBe(true);
+	expect(result.runtime.configFormat.json5Available).toBe(true);
+	expect(result.runtime.configFormat.tomlAvailable).toBe(true);
 	expect(Array.isArray(result.peerMetaIssues)).toBe(true);
+});
+
+test('checkAllDomains surfaces config format audit findings for wrong extensions', async () => {
+	await writeDomain('legacy', '{ domain: "com.example.legacy" }');
+	await Bun.write(
+		`${TEST_DIR}/domains/com.example.legacy.security.json`,
+		'{"domain":"com.example.legacy"}',
+	);
+
+	const result = await checkAllDomains(TEST_DIR);
+	const configIssues = result.crossDomainIssues.filter(i => i.domain === 'config');
+	expect(configIssues.some(i => i.code === 'CONFIG_WRONG_EXTENSION')).toBe(true);
+	expect(result.runtime.configFormat.invalidFiles.length).toBeGreaterThan(0);
+});
+
+test('checkAllDomains surfaces install audit findings for invalid target override', async () => {
+	const result = await checkAllDomains(TEST_DIR, {installCpu: 'mips'});
+	const installIssues = result.crossDomainIssues.filter(i => i.domain === 'install');
+	expect(installIssues.some(i => i.code === 'INSTALL_INVALID_TARGET')).toBe(true);
+	expect(result.runtime.install?.targetValid).toBe(false);
+	expect(result.runtime.install?.installCommand).toContain('--cpu=mips');
 });
 
 test('checkDomain warns when system CA is available but tls.useSystemCA is explicitly false', () => {

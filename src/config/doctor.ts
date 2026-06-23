@@ -25,6 +25,17 @@ import {
 	type PlatformRuntimeInfo,
 } from '../utils/platform-runtime.ts';
 import {collectDoctorDiagnostics, type DoctorDiagnostics} from '../utils/doctor-diagnostics.ts';
+import {
+	auditConfigFormats,
+	getConfigFormatRuntimeInfo,
+	type ConfigFormatRuntimeInfo,
+} from '../utils/config-format-runtime.ts';
+import {
+	auditInstallState,
+	getInstallRuntimeInfo,
+	validateInstallTarget,
+	type InstallRuntimeInfo,
+} from '../utils/install-runtime.ts';
 import {isInteractiveForced, isInteractiveSession} from '../utils/process.ts';
 import {
 	getTerminalIORuntimeInfo,
@@ -42,6 +53,7 @@ import {
 	resolveDomainAuditMasterKey,
 	resolveDomainAuditPath,
 } from '../domain/audit-paths.ts';
+import {isReverseDnsDomain, isValidSecretName, validateDomainConfigPath} from '../domain/naming.ts';
 import {detectPublicTokenIssuerMismatch, resolveTokenIssuer} from '../domain/token-issuer.ts';
 import {domainBrandingProfile, type DomainBrandingProfile} from '../domain/branding.ts';
 import {
@@ -81,6 +93,10 @@ export interface DoctorRuntimeReport extends BunRuntimeInfo {
 	platform: PlatformRuntimeInfo;
 	/** Process spawn, OS signals, Bun.nanoseconds / stringWidth / inspect.custom. */
 	diagnostics: DoctorDiagnostics;
+	/** Bun install target, lockfile, backend, and peer policy. */
+	install: InstallRuntimeInfo;
+	/** JSON5 domain/vault vs TOML policy format separation. */
+	configFormat: ConfigFormatRuntimeInfo;
 }
 
 export interface DoctorTemplateCoverage {
@@ -134,6 +150,10 @@ export interface DoctorCheckOptions {
 	/** Write snapshot files (`bun test --update-snapshots` compatible flag). */
 	updateSnapshots?: boolean;
 	argv?: readonly string[];
+	/** Preview `bun install --cpu` target (doctor cross-build diagnostics). */
+	installCpu?: string;
+	/** Preview `bun install --os` target (doctor cross-build diagnostics). */
+	installOs?: string;
 }
 
 export interface DoctorResult {
@@ -328,8 +348,13 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 
 	if (!config.domain || config.domain.length === 0) {
 		report('domain', 'Domain identifier is required', 'error');
-	} else if (!/^[a-zA-Z0-9][-a-zA-Z0-9.]*$/.test(config.domain)) {
+	} else if (!isReverseDnsDomain(config.domain)) {
 		report('domain', 'Domain must be a valid reverse-DNS string', 'error');
+	}
+
+	const filenameCheck = validateDomainConfigPath(config.domain, loaded.path);
+	if (!filenameCheck.ok && filenameCheck.message) {
+		report('_filename', filenameCheck.message, 'error', 'DOMAIN_FILENAME_MISMATCH');
 	}
 
 	for (const [key, value] of Object.entries(config.colors)) {
@@ -371,6 +396,14 @@ function validateDomain(loaded: LoadedDomain): DoctorIssue[] {
 	const inventoryNames = new Set<string>();
 	for (const entry of config.secrets.inventory) {
 		if (!entry.name) continue;
+		if (!isValidSecretName(entry.name)) {
+			report(
+				`secrets.inventory.${entry.name}`,
+				`Secret name "${entry.name}" must be kebab-case (lowercase, digits, hyphens)`,
+				'error',
+				'SECRET_NAME_INVALID',
+			);
+		}
 		if (inventoryNames.has(entry.name)) {
 			report(
 				`secrets.inventory.${entry.name}`,
@@ -802,6 +835,11 @@ export async function checkAllDomains(
 	});
 	const terminalIO = getTerminalIORuntimeInfo();
 	const platform = await getPlatformRuntimeInfo(`${root}/package.json`);
+	const installOverride = {cpu: options.installCpu, os: options.installOs};
+	const [install, configFormat] = await Promise.all([
+		getInstallRuntimeInfo(root, installOverride),
+		getConfigFormatRuntimeInfo(root),
+	]);
 	const runtime: DoctorRuntimeReport = {
 		...runtimeValidation.info,
 		apisOk: runtimeValidation.ok,
@@ -811,7 +849,47 @@ export async function checkAllDomains(
 		terminalIO,
 		platform,
 		diagnostics: collectDoctorDiagnostics(),
+		install,
+		configFormat,
 	};
+
+	const installFindings = auditInstallState(
+		install.lockfile,
+		validateInstallTarget(installOverride),
+		root,
+	);
+	for (const finding of installFindings) {
+		crossDomainIssues.push({
+			domain: 'install',
+			path: root,
+			field: finding.field,
+			message: finding.message,
+			severity: finding.severity,
+			code: finding.code,
+		});
+		if (finding.severity === 'error') {
+			errors += 1;
+		} else {
+			warnings += 1;
+		}
+	}
+
+	const configFormatFindings = auditConfigFormats(configFormat);
+	for (const finding of configFormatFindings) {
+		crossDomainIssues.push({
+			domain: 'config',
+			path: finding.path ?? root,
+			field: finding.field,
+			message: finding.message,
+			severity: finding.severity,
+			code: finding.code,
+		});
+		if (finding.severity === 'error') {
+			errors += 1;
+		} else {
+			warnings += 1;
+		}
+	}
 
 	if (platform.platform === 'win32' && !platform.windowsRuntimeSafe) {
 		crossDomainIssues.push({
